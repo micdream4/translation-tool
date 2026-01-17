@@ -1,0 +1,5 @@
+{
+  "name": "Copy of POCT Medical Document Translator",
+  "description": "Enterprise-grade medical data translation tool. Preserves ID mapping and Excel grid structure while translating all clinical text content via Gemini AI.",
+  "requestFramePermissions": []
+}

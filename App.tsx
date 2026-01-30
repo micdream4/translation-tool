@@ -1703,7 +1703,9 @@ const App: React.FC = () => {
                   <option value="openrouter" disabled={!capabilities.openrouter}>
                     OpenRouter Gemini 3 Flash {capabilities.openrouter ? '' : '(未配置)'}
                   </option>
-                  <option value="deepseek">Deepseek</option>
+                  <option value="deepseek" disabled={!capabilities.deepseek}>
+                    Deepseek {capabilities.deepseek ? '' : '(未配置)'}
+                  </option>
                 </select>
               </div>
               </div>

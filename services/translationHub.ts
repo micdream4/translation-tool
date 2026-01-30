@@ -1,6 +1,7 @@
 import { MedicalAIService } from "./geminiService";
 import { DeepseekService } from "./deepseekService";
 import { OpenRouterService } from "./openRouterService";
+import { ProxyTranslationService, ProxyEngine } from "./proxyService";
 import { POCTRecord, TargetLanguage } from "../types";
 
 export interface TranslationRequest {
@@ -11,10 +12,40 @@ export interface TranslationRequest {
   };
 }
 
+const getEnvValue = (key: string): string | undefined => {
+  if (typeof import.meta !== "undefined") {
+    const metaEnv = (import.meta as any).env || {};
+    const value = metaEnv[key];
+    if (value !== undefined) return String(value);
+  }
+  if (typeof process !== "undefined") {
+    const value = (process as any).env?.[key];
+    if (value !== undefined) return String(value);
+  }
+  return undefined;
+};
+
+const isProxyMode = () =>
+  (getEnvValue("VITE_TRANSLATION_MODE") || "").toLowerCase() === "proxy";
+
+const parseProxyCapabilities = () => {
+  const raw = (getEnvValue("VITE_PROXY_ENGINES") || "").toLowerCase();
+  if (!raw) {
+    return { openrouter: true, deepseek: false, gemini: false };
+  }
+  const items = raw.split(",").map((item) => item.trim()).filter(Boolean);
+  return {
+    openrouter: items.includes("openrouter"),
+    deepseek: items.includes("deepseek"),
+    gemini: items.includes("gemini")
+  };
+};
+
 export class TranslationHub {
   private readonly deepseek: DeepseekService;
   private readonly gemini: MedicalAIService;
   private readonly openRouter?: OpenRouterService;
+  private readonly proxy?: ProxyTranslationService;
   private readonly cache = new Map<string, POCTRecord[]>();
   private readonly hasGeminiKey: boolean;
   private readonly hasOpenRouterKey: boolean;
@@ -27,16 +58,25 @@ export class TranslationHub {
   private lastEngine: "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
 
   constructor() {
-    this.deepseek = new DeepseekService();
-    this.gemini = new MedicalAIService();
-    this.hasGeminiKey = this.detectGeminiKey();
-    this.hasOpenRouterKey = this.detectOpenRouterKey();
-    this.openRouter = this.hasOpenRouterKey ? new OpenRouterService() : undefined;
-    this.capabilities = {
-      openrouter: !!this.openRouter,
-      deepseek: true,
-      gemini: this.hasGeminiKey
-    };
+    if (isProxyMode()) {
+      this.deepseek = new DeepseekService();
+      this.gemini = new MedicalAIService();
+      this.hasGeminiKey = false;
+      this.hasOpenRouterKey = false;
+      this.proxy = new ProxyTranslationService();
+      this.capabilities = parseProxyCapabilities();
+    } else {
+      this.deepseek = new DeepseekService();
+      this.gemini = new MedicalAIService();
+      this.hasGeminiKey = this.detectGeminiKey();
+      this.hasOpenRouterKey = this.detectOpenRouterKey();
+      this.openRouter = this.hasOpenRouterKey ? new OpenRouterService() : undefined;
+      this.capabilities = {
+        openrouter: !!this.openRouter,
+        deepseek: true,
+        gemini: this.hasGeminiKey
+      };
+    }
   }
 
   private detectGeminiKey() {
@@ -83,6 +123,18 @@ export class TranslationHub {
 
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
+    }
+
+    if (this.proxy) {
+      const engine = (req.options?.model || "auto") as ProxyEngine;
+      const translated = await this.proxy.translateBatch(
+        req.records,
+        req.targetLang,
+        engine
+      );
+      this.lastEngine = this.proxy.getLastEngine();
+      this.cache.set(cacheKey, translated);
+      return translated;
     }
 
     const runDeepseek = async () => {

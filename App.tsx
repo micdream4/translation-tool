@@ -9,8 +9,14 @@ import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
 import { MultiAIJudge } from './services/multiAIJudge';
 import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
+import type { UntranslatedCell } from './utils/language';
 import { summarizeUntranslated } from './utils/untranslated';
-import { loadTranslationProgress, saveTranslationProgress, clearTranslationProgress } from './utils/storage';
+import {
+  loadTranslationProgress,
+  saveTranslationProgress,
+  clearTranslationProgress,
+  type TranslationProgressSnapshot
+} from './utils/storage';
 import { normalizeTerminology } from './utils/terminology';
 import { polishTranslation, fixSpacingArtifacts } from './utils/postprocess';
 import { guardTranslationTokens, restoreTranslationTokens, isLikelyIdentifier } from './utils/translationTokens';
@@ -79,13 +85,15 @@ type IssueSummaryState = {
   rows: number;
   rowIndices: number[];
   missingRows: number[];
+  details: UntranslatedCell[];
 };
 
 const createIssueSummary = (): IssueSummaryState => ({
   cells: 0,
   rows: 0,
   rowIndices: [],
-  missingRows: []
+  missingRows: [],
+  details: []
 });
 
 const formatRowRanges = (indices: number[], limit: number = 3) => {
@@ -133,9 +141,9 @@ const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 
 const shouldLockCell = (key: string, value: unknown) => {
   if (typeof value !== 'string') return false;
-  if (LOCKED_KEY_REGEX.test(key)) return true;
   if (!value.trim()) return false;
   if (SOURCE_LANG_REGEX.test(value)) return false;
+  if (LOCKED_KEY_REGEX.test(key)) return true;
   return isLikelyIdentifier(value);
 };
 
@@ -182,9 +190,12 @@ const App: React.FC = () => {
   const [activeStage, setActiveStage] = useState<WorkflowStageKey | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [translationStatus, setTranslationStatus] = useState<'idle' | 'running' | 'paused' | 'completed'>('idle');
+  const [isRetryingMissing, setIsRetryingMissing] = useState(false);
   const [translatedFlags, setTranslatedFlags] = useState<boolean[]>([]);
   const [missingRowIndices, setMissingRowIndices] = useState<number[]>([]);
+  const [writeFailedRowIndices, setWriteFailedRowIndices] = useState<number[]>([]);
   const [translationMode, setTranslationMode] = useState<'full' | 'selective'>('full');
+  const [savedSnapshot, setSavedSnapshot] = useState<TranslationProgressSnapshot | null>(null);
   const [stringInput, setStringInput] = useState<string>('');
   const [stringOutputs, setStringOutputs] = useState<Record<string, string>>({});
   const [stringStatus, setStringStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
@@ -204,6 +215,7 @@ const App: React.FC = () => {
   const [docxIssueIndices, setDocxIssueIndices] = useState<number[]>([]);
   const [docxStats, setDocxStats] = useState<{ total: number; translated: number }>({ total: 0, translated: 0 });
   const pauseRequestedRef = useRef(false);
+  const snapshotPromptKeyRef = useRef<string>('');
 
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
@@ -217,11 +229,19 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, msg]);
   };
 
-  const getFallbackPriority = (): Array<'openrouter' | 'deepseek' | 'gemini'> => {
+  const getFallbackPriority = (
+    respectSelectedEngine: boolean = false
+  ): Array<'openrouter' | 'deepseek' | 'gemini'> => {
     const engines: Array<'openrouter' | 'deepseek' | 'gemini'> = [];
     if (capabilities.openrouter) engines.push('openrouter');
     if (capabilities.deepseek) engines.push('deepseek');
     if (capabilities.gemini) engines.push('gemini');
+
+    if (respectSelectedEngine && enginePreference !== 'auto') {
+      if (enginePreference === 'openrouter' && capabilities.openrouter) return ['openrouter'];
+      if (enginePreference === 'deepseek' && capabilities.deepseek) return ['deepseek'];
+    }
+
     return engines.length > 0 ? engines : ['openrouter'];
   };
 
@@ -248,6 +268,8 @@ const App: React.FC = () => {
     if (!uploadedFile) return;
 
     setFile(uploadedFile);
+    setSavedSnapshot(null);
+    snapshotPromptKeyRef.current = '';
     const identifier = `${uploadedFile.name}-${uploadedFile.size}-${uploadedFile.lastModified || Date.now()}`;
     setFileId(identifier);
     setQualityReport(null);
@@ -272,7 +294,9 @@ const App: React.FC = () => {
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags([]);
       setMissingRowIndices([]);
+      setWriteFailedRowIndices([]);
       setDocxStats({ total: 0, translated: 0 });
+      setSavedSnapshot(null);
       try {
         const context = await parseDocxFile(uploadedFile);
         docxContextRef.current = context;
@@ -297,8 +321,9 @@ const App: React.FC = () => {
     setDocumentKind('excel');
     docxContextRef.current = null;
     setExcelContext(null);
-    setDocxStats({ total: 0, translated: 0 });
-    try {
+      setDocxStats({ total: 0, translated: 0 });
+      setSavedSnapshot(null);
+      try {
       const { records, context } = await parseExcelFile(uploadedFile);
       setData(records);
       setExcelContext(context);
@@ -309,6 +334,7 @@ const App: React.FC = () => {
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags(Array(records.length).fill(false));
       setMissingRowIndices([]);
+      setWriteFailedRowIndices([]);
       setProcessingState({
         status: 'analyzing',
         progress: 0,
@@ -329,38 +355,70 @@ const App: React.FC = () => {
     if (!fileId || data.length === 0 || processedData.length > 0) return;
     const snapshot = loadTranslationProgress(fileId, targetLang);
     if (snapshot && snapshot.records?.length) {
-      const normalized =
-        snapshot.records.length === data.length
-          ? snapshot.records.map(rec => ({ ...rec }))
-          : data.map((row, idx) => ({ ...(snapshot.records[idx] || row) }));
-
-      const flags =
-        snapshot.translatedFlags && snapshot.translatedFlags.length === data.length
-          ? snapshot.translatedFlags
-          : Array.from({ length: data.length }, (_, idx) => idx < snapshot.records.length);
-
-      const missing = snapshot.missingRows ?? [];
-      const translatedCount = flags.filter(Boolean).length;
-
-      setProcessedData(normalized);
-      setTranslatedFlags(flags);
-      setMissingRowIndices(missing);
-
-      const progress = Math.round((translatedCount / data.length) * 100);
-      setProcessingState(prev => ({
-        ...prev,
-        status: 'idle',
-        progress,
-        total: data.length,
-        currentBatch: Math.ceil(translatedCount / BATCH_SIZE)
-      }));
-      setTranslationStatus('paused');
-      const remaining = Math.max(0, data.length - translatedCount);
-      addLog(
-        `检测到本地进度：已翻译 ${translatedCount}/${data.length} 行，剩余 ${remaining} 行；失败行 ${missing.length} 行，可继续翻译或直接导出。`
-      );
+      setSavedSnapshot(snapshot);
+      const promptKey = `${fileId}_${targetLang}_${snapshot.updatedAt}`;
+      if (snapshotPromptKeyRef.current !== promptKey) {
+        const flags =
+          snapshot.translatedFlags && snapshot.translatedFlags.length === data.length
+            ? snapshot.translatedFlags
+            : Array.from({ length: data.length }, (_, idx) => idx < snapshot.records.length);
+        const missing = snapshot.missingRows ?? [];
+        const writeFailed = snapshot.writeFailedRows ?? [];
+        const translatedCount = flags.filter(Boolean).length;
+        const remaining = Math.max(0, data.length - translatedCount);
+        addLog(
+          `检测到本地进度：已翻译 ${translatedCount}/${data.length} 行，剩余 ${remaining} 行；未写入 ${writeFailed.length} 行。点击 Load Saved Progress 可恢复，或直接 Run Global Translation 重新开始。`
+        );
+        snapshotPromptKeyRef.current = promptKey;
+      }
+    } else {
+      setSavedSnapshot(null);
+      snapshotPromptKeyRef.current = '';
     }
   }, [fileId, targetLang, data.length, processedData.length, documentKind]);
+
+  const applySavedProgress = () => {
+    if (!savedSnapshot || data.length === 0) return;
+    const normalized =
+      savedSnapshot.records.length === data.length
+        ? savedSnapshot.records.map(rec => ({ ...rec }))
+        : data.map((row, idx) => ({ ...(savedSnapshot.records[idx] || row) }));
+
+    const flags =
+      savedSnapshot.translatedFlags && savedSnapshot.translatedFlags.length === data.length
+        ? savedSnapshot.translatedFlags
+        : Array.from({ length: data.length }, (_, idx) => idx < savedSnapshot.records.length);
+
+    const missing = savedSnapshot.missingRows ?? [];
+    const writeFailed = savedSnapshot.writeFailedRows ?? [];
+    const translatedCount = flags.filter(Boolean).length;
+    const progress = Math.round((translatedCount / data.length) * 100);
+
+    setProcessedData(normalized);
+    setTranslatedFlags(flags);
+    setMissingRowIndices(missing);
+    setWriteFailedRowIndices(writeFailed);
+    setProcessingState(prev => ({
+      ...prev,
+      status: 'idle',
+      progress,
+      total: data.length,
+      currentBatch: Math.ceil(translatedCount / BATCH_SIZE)
+    }));
+    setTranslationStatus('paused');
+    addLog(`已恢复本地进度：${translatedCount}/${data.length} 行。`);
+    setSavedSnapshot(null);
+  };
+
+  const discardSavedProgress = () => {
+    if (!fileId) return;
+    clearTranslationProgress(fileId, targetLang);
+    setSavedSnapshot(null);
+    snapshotPromptKeyRef.current = '';
+    setMissingRowIndices([]);
+    setWriteFailedRowIndices([]);
+    addLog('已清除当前语言的本地进度，将从头翻译。');
+  };
 
   useEffect(() => {
     setStringHistoryCount(loadStringHistory().length);
@@ -369,44 +427,65 @@ const App: React.FC = () => {
   const persistProgress = (
     records: POCTRecord[],
     flags: boolean[],
-    missingRows: number[]
+    missingRows: number[],
+    writeFailedRows: number[] = writeFailedRowIndices
   ) => {
     if (!fileId) return;
     saveTranslationProgress(fileId, targetLang, {
       records,
       translatedFlags: flags,
-      missingRows
+      missingRows,
+      writeFailedRows
     });
   };
 
-  const refreshTranslationIssues = (
-    records: POCTRecord[],
-    missingCandidates: number[]
-  ) => {
+  const refreshTranslationIssues = (records: POCTRecord[]) => {
     const summary = summarizeUntranslated(records, targetLang);
     const summaryRows = new Set(summary.rowIndices);
-    const refreshedMissing = Array.from(new Set(missingCandidates))
-      .filter((idx) => summaryRows.has(idx))
+    const refreshedMissing = summary.rowIndices;
+    const mergedRowIndices = [...refreshedMissing];
+    const refreshedWriteFailed = Array.from(new Set(writeFailedRowIndices))
+      .filter((idx) => idx >= 0 && idx < records.length && summaryRows.has(idx))
       .sort((a, b) => a - b);
-    const mergedRowIndices = Array.from(
-      new Set([...summary.rowIndices, ...refreshedMissing])
-    ).sort((a, b) => a - b);
     setMissingRowIndices(refreshedMissing);
+    setWriteFailedRowIndices(refreshedWriteFailed);
     setTranslationIssues({
       ...summary,
       rowIndices: mergedRowIndices,
-      missingRows: refreshedMissing
+      missingRows: refreshedWriteFailed,
+      details: summary.details || []
     });
     return {
       summary,
       refreshedMissing,
+      refreshedWriteFailed,
       mergedRowIndices
     };
   };
 
   const formatExcelRowNumber = (rowIndex: number) => {
     if (!excelContext) return rowIndex + 1;
-    return excelContext.headerRow + rowIndex + 2;
+    const startRow =
+      Number.isFinite(excelContext.dataStartRow)
+        ? excelContext.dataStartRow
+        : excelContext.headerRow + 1;
+    return startRow + rowIndex + 1;
+  };
+
+  const formatIssueLocationPreview = (details: UntranslatedCell[], limit: number = 5) => {
+    if (!details.length) return '';
+    const seen = new Set<string>();
+    const picked: string[] = [];
+    details.forEach((issue) => {
+      const rowNo = formatExcelRowNumber(issue.rowIndex);
+      const location = `R${rowNo}/${issue.columnKey}`;
+      if (seen.has(location)) return;
+      seen.add(location);
+      picked.push(location);
+    });
+    if (!picked.length) return '';
+    const displayed = picked.slice(0, limit);
+    return displayed.join(', ') + (picked.length > limit ? ', ...' : '');
   };
 
   const runQualityCheck = () => {
@@ -421,12 +500,37 @@ const App: React.FC = () => {
     }
     const report = runQualityChecks(data, target);
     setQualityReport(report);
+    // Keep top warning banners in sync with the latest dataset snapshot.
+    const { summary, refreshedMissing, refreshedWriteFailed } = refreshTranslationIssues(target);
+    persistProgress(
+      target.map((row) => ({ ...row })),
+      translatedFlags.length === target.length ? [...translatedFlags] : Array(target.length).fill(false),
+      refreshedMissing,
+      refreshedWriteFailed
+    );
     addLog(
-      `Quality Check: 中文残留 ${report.totals.chineseCells} 个，` +
+      `Quality Check: 非目标语言残留 ${summary.cells} 个（${summary.rows} 行），中文残留 ${report.totals.chineseCells} 个，` +
       `占位符 ${report.totals.placeholderCells} 个，` +
       `ID 异常 ${report.totals.idMismatches} 个，` +
       `格式问题 ${report.totals.spacingIssues} 个。`
     );
+    if (summary.details.length > 0) {
+      const preview = formatIssueLocationPreview(summary.details, 6);
+      if (preview) {
+        addLog(`Quality Check: 非目标语言位置示例 -> ${preview}`);
+      }
+    }
+    if (report.issues.chinese.length > 0) {
+      const preview = report.issues.chinese
+        .slice(0, 5)
+        .map((issue) => {
+          const rowNo = formatExcelRowNumber(issue.rowIndex);
+          const value = String(issue.value || '').replace(/\s+/g, ' ').slice(0, 28);
+          return `R${rowNo}/${issue.columnKey}: ${value}`;
+        })
+        .join(' | ');
+      addLog(`Quality Check: 中文残留位置示例 -> ${preview}`);
+    }
   };
 
   const applyQualityFixes = () => {
@@ -462,11 +566,12 @@ const App: React.FC = () => {
         ? translatedFlags
         : Array(fixed.length).fill(true);
     const {
-      refreshedMissing
-    } = refreshTranslationIssues(fixed, missingRowIndices);
+      refreshedMissing,
+      refreshedWriteFailed
+    } = refreshTranslationIssues(fixed);
     setProcessedData(fixed);
     setTranslatedFlags(flags);
-    persistProgress(fixed, flags, refreshedMissing);
+    persistProgress(fixed, flags, refreshedMissing, refreshedWriteFailed);
     setQualityReport(runQualityChecks(data, fixed));
     addLog('Quality Fix: 已应用常见格式与 ID 修复。');
   };
@@ -930,10 +1035,13 @@ const App: React.FC = () => {
       shouldResume && translatedFlags.length === data.length
         ? [...translatedFlags]
         : [...initialFlags];
-    const workingMissing = new Set<number>(shouldResume ? missingRowIndices : []);
+    const resumeMissing = shouldResume ? summarizeUntranslated(workingResults, targetLang).rowIndices : [];
+    const workingMissing = new Set<number>(resumeMissing);
 
     if (!shouldResume) {
       clearTranslationProgress(fileId, targetLang);
+      setSavedSnapshot(null);
+      snapshotPromptKeyRef.current = '';
       setProcessedData([]);
       setRules([]);
       setMissingCombinations([]);
@@ -941,6 +1049,7 @@ const App: React.FC = () => {
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags([...initialFlags]);
       setMissingRowIndices([]);
+      setWriteFailedRowIndices([]);
       setProcessingState(prev => ({ ...prev, status: 'processing', progress: 0, currentBatch: 0, total: data.length }));
       updateStageStatus('ruleCheck', 'pending', '等待组合校验');
       updateStageStatus('aiValidate', 'pending', '等待多 AI 核验');
@@ -985,6 +1094,9 @@ const App: React.FC = () => {
         const finalResults = [...workingResults];
         const flags = [...workingFlags];
         const missingRows = new Set<number>(workingMissing);
+        const writeFailedRows = new Set<number>(
+          (shouldResume ? writeFailedRowIndices : []).filter((idx) => missingRows.has(idx))
+        );
         const totalBatches = Math.ceil(data.length / BATCH_SIZE);
         let paused = false;
 
@@ -1036,9 +1148,11 @@ const App: React.FC = () => {
           } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
             addLog(`Translation warning: 批次 ${batchNum} 行 ${rowLabel} 失败 (${errMsg})，将跳过该批继续。`);
-            pendingIndices.forEach(idx => missingRows.add(idx));
+            pendingIndices.forEach(idx => writeFailedRows.add(idx));
             const missingSnapshot = Array.from(missingRows).sort((a, b) => a - b);
-            persistProgress(finalResults, flags, missingSnapshot);
+            const writeFailedSnapshot = Array.from(writeFailedRows).sort((a, b) => a - b);
+            persistProgress(finalResults, flags, missingSnapshot, writeFailedSnapshot);
+            setWriteFailedRowIndices(writeFailedSnapshot);
             setMissingRowIndices(missingSnapshot);
             continue;
           }
@@ -1049,17 +1163,6 @@ const App: React.FC = () => {
             const original = data[rowIdx];
             const merged: POCTRecord = { ...original };
             const placeholdersForRow = batchPlaceholders[index] || {};
-
-            const requiredKeys = Object.entries(original)
-              .filter(([, value]) => typeof value === 'string' && shouldTranslateValue(value))
-              .map(([key]) => key);
-            const missingKeys: string[] = [];
-
-            requiredKeys.forEach((key) => {
-              if (!translated || translated[key] === undefined) {
-                missingKeys.push(key);
-              }
-            });
 
             Object.keys(original).forEach(key => {
               if (!translated || translated[key] === undefined) return;
@@ -1087,7 +1190,7 @@ const App: React.FC = () => {
             finalResults[rowIdx] = normalizeTerminology(merged, targetLang);
             const stillUntranslated =
               detectUntranslatedCells([finalResults[rowIdx]], targetLang).length > 0;
-            if (missingKeys.length > 0 || stillUntranslated) {
+            if (stillUntranslated) {
               incompleteRows.push(rowIdx);
               missingRows.add(rowIdx);
               flags[rowIdx] = false;
@@ -1095,6 +1198,7 @@ const App: React.FC = () => {
               flags[rowIdx] = true;
               missingRows.delete(rowIdx);
             }
+            writeFailedRows.delete(rowIdx);
           });
           if (incompleteRows.length > 0) {
             addLog(
@@ -1104,11 +1208,14 @@ const App: React.FC = () => {
 
           const snapshot = finalResults.map(row => ({ ...row }));
           const flagsSnapshot = [...flags];
-          const missingSnapshot = Array.from(missingRows).sort((a, b) => a - b);
-          persistProgress(snapshot, flagsSnapshot, missingSnapshot);
+          const summarySnapshot = summarizeUntranslated(snapshot, targetLang);
+          const missingSnapshot = summarySnapshot.rowIndices;
+          const writeFailedSnapshot = Array.from(writeFailedRows).sort((a, b) => a - b);
+          persistProgress(snapshot, flagsSnapshot, missingSnapshot, writeFailedSnapshot);
           setProcessedData(snapshot);
           setTranslatedFlags(flagsSnapshot);
           setMissingRowIndices(missingSnapshot);
+          setWriteFailedRowIndices(writeFailedSnapshot);
 
           const completedCount = flagsSnapshot.filter(Boolean).length;
           const progress = Math.round((completedCount / data.length) * 100);
@@ -1128,12 +1235,15 @@ const App: React.FC = () => {
         }
 
         const completedCount = flags.filter(Boolean).length;
-        const missingSnapshot = Array.from(missingRows).sort((a, b) => a - b);
+        const finalSummary = summarizeUntranslated(finalResults, targetLang);
+        const missingSnapshot = finalSummary.rowIndices;
+        const writeFailedSnapshot = Array.from(writeFailedRows).sort((a, b) => a - b);
         setMissingRowIndices(missingSnapshot);
+        setWriteFailedRowIndices(writeFailedSnapshot);
         setTranslatedFlags([...flags]);
         const snapshot = finalResults.map(row => ({ ...row }));
         setProcessedData(snapshot);
-        persistProgress(snapshot, [...flags], missingSnapshot);
+        persistProgress(snapshot, [...flags], missingSnapshot, writeFailedSnapshot);
         latestResults = snapshot;
 
         if (paused) {
@@ -1143,7 +1253,15 @@ const App: React.FC = () => {
         }
 
         const completionMsg = `Translation Completed: ${completedCount}/${data.length} 行。`;
-        addLog(missingSnapshot.length > 0 ? `${completionMsg} 尚有 ${missingSnapshot.length} 行待处理，可使用 Retry Missing Cells。` : completionMsg);
+        const statusSuffix =
+          missingSnapshot.length > 0
+            ? ` 尚有 ${missingSnapshot.length} 行未翻译。`
+            : '';
+        const writeSuffix =
+          writeFailedSnapshot.length > 0
+            ? ` 未写入 ${writeFailedSnapshot.length} 行，可使用 Retry Missing Cells。`
+            : '';
+        addLog(`${completionMsg}${statusSuffix}${writeSuffix}`.trim());
         setProcessingState(prev => ({
           ...prev,
           status: 'completed',
@@ -1194,15 +1312,16 @@ const App: React.FC = () => {
 
   const auditTranslation = async (records: POCTRecord[]) => {
     const summary = summarizeUntranslated(records, targetLang);
-    const mergedRowIndices = Array.from(
-      new Set([...summary.rowIndices, ...missingRowIndices])
-    ).sort((a, b) => a - b);
+    const mergedRowIndices = [...summary.rowIndices];
+    const filteredWriteFailed = writeFailedRowIndices.filter((idx) => mergedRowIndices.includes(idx));
     const mergedSummary: IssueSummaryState = {
       ...summary,
       rowIndices: mergedRowIndices,
-      missingRows: [...missingRowIndices]
+      missingRows: filteredWriteFailed,
+      details: summary.details || []
     };
     setTranslationIssues(mergedSummary);
+    setWriteFailedRowIndices(filteredWriteFailed);
 
     if (mergedSummary.cells === 0 && mergedSummary.missingRows.length === 0) {
       addLog('Translation audit: 所有单元格均为目标语言。');
@@ -1215,7 +1334,7 @@ const App: React.FC = () => {
     }
 
     addLog(
-      `Translation audit: 检测到 ${summary.cells} 个未翻译单元格，涉及 ${mergedRowIndices.length} 行。`
+      `Translation audit: 检测到 ${summary.cells} 个未翻译单元格，涉及 ${summary.rowIndices.length} 行；未写入 ${filteredWriteFailed.length} 行。`
     );
 
     await retryMissingRows(mergedRowIndices, records);
@@ -1225,7 +1344,13 @@ const App: React.FC = () => {
     rowIndices: number[],
     baseSnapshot?: POCTRecord[]
   ) => {
-    const uniqueIndices = Array.from(new Set(rowIndices))
+    if (isRetryingMissing) {
+      addLog('Retry Missing Cells: 正在处理中，请等待当前重译完成。');
+      return;
+    }
+    setIsRetryingMissing(true);
+    try {
+      const uniqueIndices = Array.from(new Set(rowIndices))
       .filter(idx => idx >= 0 && idx < data.length)
       .sort((a, b) => a - b);
     if (uniqueIndices.length === 0) {
@@ -1234,7 +1359,7 @@ const App: React.FC = () => {
     }
     addLog(`Retry Missing Cells: 针对 ${uniqueIndices.length} 行重新翻译...`);
 
-    const fallbackPriority = getFallbackPriority();
+    const fallbackPriority = getFallbackPriority(enginePreference !== 'auto');
 
     const sourceRecords =
       baseSnapshot && baseSnapshot.length === data.length
@@ -1261,16 +1386,20 @@ const App: React.FC = () => {
     uniqueIndices.forEach((rowIdx) => {
       const keys = missingByRow.get(rowIdx);
       if (!keys || keys.size === 0) return;
-      const row = data[rowIdx];
+      const originalRow = data[rowIdx] || {};
+      const sourceRow = sourceRecords[rowIdx] || originalRow;
       const sanitizedRow: POCTRecord = {};
       const placeholdersForRow: Record<string, Record<string, string> | null> = {};
       keys.forEach((key) => {
-        const value = row?.[key];
+        const sourceValue = sourceRow?.[key];
+        const originalValue = originalRow?.[key];
+        const value = typeof sourceValue === 'string' ? sourceValue : originalValue;
         if (typeof value !== 'string') {
           sanitizedRow[key] = value;
           return;
         }
-        if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value)) {
+        const lockBasis = typeof originalValue === 'string' ? originalValue : value;
+        if (!value.trim() || shouldLockCell(key, lockBasis) || isNeutralToken(value.trim())) {
           return;
         }
         const { sanitized, placeholders } = guardTranslationTokens(value);
@@ -1297,16 +1426,22 @@ const App: React.FC = () => {
         translatedFlags.length === data.length
           ? [...translatedFlags]
           : Array(data.length).fill(false);
-      const { refreshedMissing, mergedRowIndices } = refreshTranslationIssues(
-        synced,
-        missingRowIndices
+      const { summary: refreshedSummary, refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(
+        synced
       );
       setProcessedData(synced);
       setTranslatedFlags(flagsSnapshot);
-      persistProgress(synced, flagsSnapshot, refreshedMissing);
+      setWriteFailedRowIndices(refreshedWriteFailed);
+      persistProgress(synced, flagsSnapshot, refreshedMissing, refreshedWriteFailed);
       addLog('Retry Missing Cells: 当前没有可重译的单元格。');
       if (mergedRowIndices.length === 0) {
         addLog('Retry Missing Cells: 状态已刷新，当前无待补译内容。');
+      } else {
+        addLog('Retry Missing Cells: 剩余项可能是锁定字段或纯符号单元格，请先执行 Quality Check / Apply Cleanup 后再试。');
+        const preview = formatIssueLocationPreview(refreshedSummary.details || [], 6);
+        if (preview) {
+          addLog(`Retry Missing Cells: 残留位置示例 -> ${preview}`);
+        }
       }
       return;
     }
@@ -1319,7 +1454,10 @@ const App: React.FC = () => {
       translatedFlags.length === data.length
         ? [...translatedFlags]
         : Array(data.length).fill(false);
-    const missingSet = new Set(missingRowIndices);
+    const missingSet = new Set(missingSummary.rowIndices);
+    const writeFailedSet = new Set(
+      writeFailedRowIndices.filter((idx) => missingSummary.rowIndices.includes(idx))
+    );
 
     const totalBatches = Math.ceil(retryItems.length / RETRY_BATCH_SIZE);
     for (let i = 0; i < retryItems.length; i += RETRY_BATCH_SIZE) {
@@ -1344,6 +1482,7 @@ const App: React.FC = () => {
 
       if (!translatedBatch) {
         addLog(`Retry Missing Cells: Batch ${batchNum} 所有备用模型失败，已跳过。`);
+        chunk.forEach((item) => writeFailedSet.add(item.rowIdx));
         continue;
       }
 
@@ -1352,13 +1491,19 @@ const App: React.FC = () => {
         if (!updated) return;
         const rowIdx = item.rowIdx;
         const original = data[rowIdx];
+        const sourceRow = sourceRecords[rowIdx] || original;
         const merged: POCTRecord = { ...(baseProcessed[rowIdx] || original) };
         const placeholdersForRow = item.placeholders || {};
-        let updatedCount = 0;
-
         item.keys.forEach((key) => {
           const originalValue = original[key];
-          if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue)) {
+          const sourceValue = sourceRow?.[key];
+          const lockBasis =
+            typeof originalValue === 'string'
+              ? originalValue
+              : typeof sourceValue === 'string'
+                ? sourceValue
+                : '';
+          if (shouldLockCell(key, lockBasis)) {
             return;
           }
           if (updated[key] === undefined) return;
@@ -1366,7 +1511,11 @@ const App: React.FC = () => {
           merged[key] =
             typeof candidate === 'string'
               ? polishTranslation(
-                  typeof originalValue === 'string' ? (originalValue as string) : '',
+                  typeof sourceValue === 'string'
+                    ? sourceValue
+                    : typeof originalValue === 'string'
+                      ? originalValue
+                      : '',
                   candidate
                 )
               : candidate;
@@ -1376,52 +1525,52 @@ const App: React.FC = () => {
               placeholdersForRow[key]
             );
           }
-          updatedCount += 1;
         });
 
         baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang);
         const stillUntranslated =
           detectUntranslatedCells([baseProcessed[rowIdx]], targetLang).length > 0;
-        const isComplete = updatedCount >= item.keys.size && !stillUntranslated;
+        const isComplete = !stillUntranslated;
         updatedFlags[rowIdx] = isComplete;
         if (isComplete) {
           missingSet.delete(rowIdx);
         } else {
           missingSet.add(rowIdx);
         }
+        writeFailedSet.delete(rowIdx);
       });
 
       const synced = baseProcessed.map(row => ({ ...row }));
       const flagsSnapshot = [...updatedFlags];
-      const missingSnapshot = Array.from(missingSet)
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value))
-        .sort((a, b) => a - b);
+      const summarySnapshot = summarizeUntranslated(synced, targetLang);
+      const missingSnapshot = summarySnapshot.rowIndices;
+      const writeFailedSnapshot = Array.from(writeFailedSet).sort((a, b) => a - b);
       setProcessedData(synced);
       setTranslatedFlags(flagsSnapshot);
       setMissingRowIndices(missingSnapshot);
-      persistProgress(synced, flagsSnapshot, missingSnapshot);
+      setWriteFailedRowIndices(writeFailedSnapshot);
+      persistProgress(synced, flagsSnapshot, missingSnapshot, writeFailedSnapshot);
     }
 
     const synced = baseProcessed.map(row => ({ ...row }));
     const flagsSnapshot = [...updatedFlags];
-    const missingSnapshot = Array.from(missingSet)
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value))
-      .sort((a, b) => a - b);
+    const summary = summarizeUntranslated(synced, targetLang);
+    const missingSnapshot = summary.rowIndices;
+    const writeFailedSnapshot = Array.from(writeFailedSet).sort((a, b) => a - b);
     setProcessedData(synced);
     setTranslatedFlags(flagsSnapshot);
     setMissingRowIndices(missingSnapshot);
-    persistProgress(synced, flagsSnapshot, missingSnapshot);
+    setWriteFailedRowIndices(writeFailedSnapshot);
+    persistProgress(synced, flagsSnapshot, missingSnapshot, writeFailedSnapshot);
 
-    const summary = summarizeUntranslated(synced, targetLang);
     const mergedRowIndices = Array.from(
       new Set([...summary.rowIndices, ...missingSnapshot])
     ).sort((a, b) => a - b);
     setTranslationIssues({
       ...summary,
       rowIndices: mergedRowIndices,
-      missingRows: missingSnapshot
+      missingRows: writeFailedSnapshot,
+      details: summary.details || []
     });
 
     if (mergedRowIndices.length === 0) {
@@ -1430,6 +1579,9 @@ const App: React.FC = () => {
       addLog(
         `Retry Missing Cells: 仍有 ${summary.cells} 个单元格或 ${missingSnapshot.length} 行未完全翻译，可继续重试。`
       );
+    }
+    } finally {
+      setIsRetryingMissing(false);
     }
   };
 
@@ -1480,7 +1632,7 @@ const App: React.FC = () => {
 
     addLog(`${label}: 针对 ${retryItems.length} 行重新翻译...`);
 
-    const fallbackPriority = getFallbackPriority();
+    const fallbackPriority = getFallbackPriority(enginePreference !== 'auto');
 
     const baseProcessed =
       processedData.length === data.length
@@ -1554,15 +1706,20 @@ const App: React.FC = () => {
       const synced = baseProcessed.map(row => ({ ...row }));
       setProcessedData(synced);
       setTranslatedFlags([...updatedFlags]);
-      persistProgress(synced, [...updatedFlags], missingRowIndices);
+      persistProgress(synced, [...updatedFlags], missingRowIndices, writeFailedRowIndices);
     }
 
     const synced = baseProcessed.map(row => ({ ...row }));
     setProcessedData(synced);
     setTranslatedFlags([...updatedFlags]);
-    persistProgress(synced, [...updatedFlags], missingRowIndices);
+    const { refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(synced);
+    persistProgress(synced, [...updatedFlags], refreshedMissing, refreshedWriteFailed);
     setQualityReport(runQualityChecks(data, synced));
-    addLog(`${label}: 完成重译。`);
+    if (mergedRowIndices.length === 0) {
+      addLog(`${label}: 完成重译，当前无待补译内容。`);
+    } else {
+      addLog(`${label}: 完成重译，仍有 ${mergedRowIndices.length} 行待处理。`);
+    }
   };
 
   const retryPlaceholderCells = async () => {
@@ -1692,10 +1849,65 @@ const App: React.FC = () => {
       : processedData.length > 0 && translationStatus !== 'running';
   const canRunTranslation =
     documentKind === 'docx' ? docxContextRef.current !== null : data.length > 0;
-  const issueRowsForRetry = Array.from(new Set([...translationIssues.rowIndices, ...missingRowIndices]));
-  const hasTranslationAlerts = issueRowsForRetry.length > 0 && documentKind === 'excel';
+  const currentRowsForRetry =
+    processedData.length === data.length && processedData.length > 0 ? processedData : data;
+  const currentIssueSummary = useMemo(
+    () => (documentKind === 'excel' ? summarizeUntranslated(currentRowsForRetry, targetLang) : createIssueSummary()),
+    [documentKind, currentRowsForRetry, targetLang]
+  );
+  const retryableRowsFromDetails = useMemo(() => {
+    const grouped = new Map<number, Set<string>>();
+    currentIssueSummary.details.forEach((item) => {
+      if (item.rowIndex < 0 || item.rowIndex >= data.length) return;
+      if (!grouped.has(item.rowIndex)) {
+        grouped.set(item.rowIndex, new Set());
+      }
+      grouped.get(item.rowIndex)!.add(item.columnKey);
+    });
+
+    const rows: number[] = [];
+    grouped.forEach((keys, rowIdx) => {
+      const originalRow = data[rowIdx] || {};
+      const sourceRow = currentRowsForRetry[rowIdx] || originalRow;
+      let retryable = false;
+      keys.forEach((key) => {
+        if (retryable) return;
+        const sourceValue = sourceRow?.[key];
+        const originalValue = originalRow?.[key];
+        const value = typeof sourceValue === 'string' ? sourceValue : originalValue;
+        if (typeof value !== 'string' || !value.trim()) return;
+        const lockBasis = typeof originalValue === 'string' ? originalValue : value;
+        if (shouldLockCell(key, lockBasis) || isNeutralToken(value.trim())) return;
+        retryable = true;
+      });
+      if (retryable) rows.push(rowIdx);
+    });
+    return rows.sort((a, b) => a - b);
+  }, [currentIssueSummary.details, currentRowsForRetry, data]);
+  const retryableCellCount = useMemo(() => {
+    let count = 0;
+    currentIssueSummary.details.forEach((item) => {
+      if (item.rowIndex < 0 || item.rowIndex >= data.length) return;
+      const originalRow = data[item.rowIndex] || {};
+      const sourceRow = currentRowsForRetry[item.rowIndex] || originalRow;
+      const sourceValue = sourceRow?.[item.columnKey];
+      const originalValue = originalRow?.[item.columnKey];
+      const value = typeof sourceValue === 'string' ? sourceValue : originalValue;
+      if (typeof value !== 'string' || !value.trim()) return;
+      const lockBasis = typeof originalValue === 'string' ? originalValue : value;
+      if (shouldLockCell(item.columnKey, lockBasis) || isNeutralToken(value.trim())) return;
+      count += 1;
+    });
+    return count;
+  }, [currentIssueSummary.details, currentRowsForRetry, data]);
+  const untranslatedLocationPreview = useMemo(
+    () => formatIssueLocationPreview(currentIssueSummary.details, 6),
+    [currentIssueSummary.details, excelContext]
+  );
+  const retryCandidates = [...retryableRowsFromDetails];
+  const hasTranslationAlerts = (currentIssueSummary.rows > 0 || writeFailedRowIndices.length > 0) && documentKind === 'excel';
   const hasDocxIssues = documentKind === 'docx' && docxIssueIndices.length > 0;
-  const missingRowPreview = formatRowRanges(missingRowIndices);
+  const writeFailedRowPreview = formatRowRanges(writeFailedRowIndices);
   const isStringTranslating = stringStatus === 'running';
   const hasStringOutputs = Object.keys(stringOutputs).length > 0;
   const hasQualityReport = Boolean(qualityReport);
@@ -1857,6 +2069,29 @@ const App: React.FC = () => {
 
               <div className="space-y-3 pt-4 border-t border-slate-800">
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">核心操作</h3>
+                {savedSnapshot && processedData.length === 0 && (
+                  <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                    <p className="text-xs text-amber-300">
+                      发现本地缓存进度，可恢复上次翻译结果。
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={applySavedProgress}
+                        className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold"
+                      >
+                        Load Saved Progress
+                      </button>
+                      <button
+                        type="button"
+                        onClick={discardSavedProgress}
+                        className="w-full py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-sm font-semibold"
+                      >
+                        Discard Saved
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <button 
                   onClick={() => runTranslation('fresh')}
                   disabled={!canRunTranslation || isTranslating}
@@ -1902,19 +2137,32 @@ const App: React.FC = () => {
 
               {hasTranslationAlerts && (
                 <div className="text-xs text-amber-300 text-center space-y-1">
-                  {translationIssues.cells > 0 && (
-                    <p>检测到 {translationIssues.cells} 个未翻译单元格（{translationIssues.rows} 行）。</p>
+                  {currentIssueSummary.cells > 0 && (
+                    <p>检测到 {currentIssueSummary.cells} 个非目标语言单元格（{currentIssueSummary.rows} 行）。</p>
                   )}
-                  {missingRowIndices.length > 0 && (
-                    <p>有 {missingRowIndices.length} 行未写入（示例行：{missingRowPreview || 'N/A'}）。</p>
+                  {currentIssueSummary.cells > 0 && (
+                    <p>
+                      可自动重译 {retryableCellCount} 个单元格（{retryCandidates.length} 行）。
+                    </p>
+                  )}
+                  {currentIssueSummary.cells > 0 && untranslatedLocationPreview && (
+                    <p className="text-[11px] text-slate-400">
+                      定位示例：{untranslatedLocationPreview}
+                    </p>
+                  )}
+                  {writeFailedRowIndices.length > 0 && (
+                    <p>有 {writeFailedRowIndices.length} 行未写入（示例行：{writeFailedRowPreview || 'N/A'}）。</p>
                   )}
                   <button
-                    onClick={() => retryMissingRows(issueRowsForRetry)}
+                    onClick={() => retryMissingRows(currentIssueSummary.rowIndices)}
                     className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold transition-all shadow-amber-500/20"
-                    disabled={translationStatus === 'running'}
+                    disabled={translationStatus === 'running' || isRetryingMissing}
                   >
-                    Retry Missing Cells
+                    {isRetryingMissing ? 'Retrying...' : 'Retry Missing Cells'}
                   </button>
+                  {retryCandidates.length === 0 && currentIssueSummary.cells > 0 && (
+                    <p className="text-[11px] text-slate-500">当前缺失项多为锁定字段或符号列，无法自动重译。</p>
+                  )}
                 </div>
               )}
               {hasDocxIssues && (
@@ -2056,12 +2304,12 @@ const App: React.FC = () => {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-center text-sm">
               <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
                 <p className="text-[11px] text-slate-500">Translation Flags</p>
-                <p className={`text-xl font-semibold ${translationIssues.cells > 0 ? 'text-amber-300' : 'text-slate-200'}`}>
-                  {translationIssues.cells}
+                <p className={`text-xl font-semibold ${currentIssueSummary.cells > 0 ? 'text-amber-300' : 'text-slate-200'}`}>
+                  {currentIssueSummary.cells}
                 </p>
-                <p className="text-[11px] text-slate-500">{translationIssues.rows} rows</p>
-                {missingRowIndices.length > 0 && (
-                  <p className="text-[11px] text-amber-300">Missing rows: {missingRowIndices.length}</p>
+                <p className="text-[11px] text-slate-500">{currentIssueSummary.rows} rows</p>
+                {writeFailedRowIndices.length > 0 && (
+                  <p className="text-[11px] text-amber-300">Write-failed rows: {writeFailedRowIndices.length}</p>
                 )}
               </div>
               <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">

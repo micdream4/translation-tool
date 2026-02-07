@@ -1,4 +1,5 @@
 import { POCTRecord, TargetLanguage } from "../types";
+import { isLikelyIdentifier } from "./translationTokens";
 
 export interface UntranslatedCell {
   rowIndex: number;
@@ -14,6 +15,8 @@ const LATIN_WORD_REGEX = /[A-Za-z\u00C0-\u024F]/;
 const SHORT_CODE_REGEX = /^[A-Z0-9#%+_.\-\/]+$/;
 const SYMBOL_ONLY_REGEX = /^[\s\-–—=+<>↑↓*·•.()（）【】[\]{}\\/]+$/;
 const CODE_WITH_ARROW_REGEX = /^[A-Z]{1,6}[#%]?[↑↓]?$/
+const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
+const ID_TOKEN_REGEX = /^(id|uuid)$/i;
 
 const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[]> = {
   en: [
@@ -219,6 +222,11 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   if (targetCode === "zh") return CJK_REGEX.test(trimmed);
   if (targetCode === "ru") return CYRILLIC_REGEX.test(trimmed);
 
+  // For non-Chinese / non-Russian targets, any residual CJK/Cyrillic means not fully translated.
+  if (CJK_REGEX.test(trimmed) || CYRILLIC_REGEX.test(trimmed)) {
+    return false;
+  }
+
   const scores = getLanguageScores(trimmed);
   const best = scores[0] || { lang: "en", score: 0 };
   const second = scores[1] || { lang: "en", score: 0 };
@@ -250,6 +258,14 @@ export const detectUntranslatedCells = (
       if (typeof value !== "string") return;
       const trimmed = value.trim();
       if (!trimmed) return;
+      if (
+        LOCKED_KEY_REGEX.test(key) ||
+        ID_TOKEN_REGEX.test(trimmed) ||
+        isNeutralToken(trimmed) ||
+        isLikelyIdentifier(trimmed)
+      ) {
+        return;
+      }
       if (!isLikelyTargetLanguage(trimmed, targetLang)) {
         flagged.push({ rowIndex, columnKey: key, value: trimmed });
       }

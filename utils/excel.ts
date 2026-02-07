@@ -7,6 +7,7 @@ export interface ExcelContext {
   worksheet: XLSX.WorkSheet;
   sheetName: string;
   headerRow: number;
+  dataStartRow: number;
   headerKeys: string[];
   range: XLSX.Range;
 }
@@ -35,6 +36,11 @@ const buildHeaderKeys = (
   return keys;
 };
 
+const detectDataStartRow = (headerRow: number) => {
+  // Always include rows below the first header row so multi-line headers are translated too.
+  return headerRow + 1;
+};
+
 export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -47,10 +53,11 @@ export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
         const ref = worksheet?.['!ref'] || 'A1';
         const range = XLSX.utils.decode_range(ref);
         const headerRow = range.s.r;
+        const dataStartRow = detectDataStartRow(headerRow);
         const headerKeys = buildHeaderKeys(worksheet, headerRow, range);
         const records: POCTRecord[] = [];
 
-        for (let r = headerRow + 1; r <= range.e.r; r++) {
+        for (let r = dataStartRow; r <= range.e.r; r++) {
           const row: POCTRecord = {};
           for (let c = range.s.c; c <= range.e.c; c++) {
             const key = headerKeys[c - range.s.c];
@@ -67,6 +74,7 @@ export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
             worksheet,
             sheetName,
             headerRow,
+            dataStartRow,
             headerKeys,
             range
           }
@@ -115,8 +123,8 @@ export function exportToExcel(
   }
 
   const overwriteFormulas = options.overwriteFormulas === true;
-  const { workbook, worksheet, headerRow, headerKeys, range } = context;
-  const startRow = headerRow + 1;
+  const { workbook, worksheet, headerRow, dataStartRow, headerKeys, range } = context;
+  const startRow = Number.isFinite(dataStartRow) ? dataStartRow : headerRow + 1;
 
   data.forEach((row, rowIndex) => {
     const sheetRow = startRow + rowIndex;

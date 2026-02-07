@@ -7,6 +7,7 @@ export interface TranslationProgressSnapshot {
   records: POCTRecord[];
   translatedFlags?: boolean[];
   missingRows?: number[];
+  writeFailedRows?: number[];
   updatedAt: number;
 }
 
@@ -14,6 +15,7 @@ export interface TranslationProgressPayload {
   records: POCTRecord[];
   translatedFlags?: boolean[];
   missingRows?: number[];
+  writeFailedRows?: number[];
 }
 
 const getKey = (fileId: string, targetLang: TargetLanguage) =>
@@ -31,6 +33,7 @@ export const saveTranslationProgress = (
       records: payload.records,
       translatedFlags: payload.translatedFlags,
       missingRows: payload.missingRows,
+      writeFailedRows: payload.writeFailedRows,
       updatedAt: Date.now()
     };
     localStorage.setItem(getKey(fileId, targetLang), JSON.stringify(snapshot));

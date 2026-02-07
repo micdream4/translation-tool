@@ -42,9 +42,9 @@ const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 
 const shouldLockCell = (key: string, value: unknown) => {
   if (typeof value !== 'string') return false;
-  if (LOCKED_KEY_REGEX.test(key)) return true;
   if (!value.trim()) return false;
   if (CHINESE_REGEX.test(value)) return false;
+  if (LOCKED_KEY_REGEX.test(key)) return true;
   return isLikelyIdentifier(value);
 };
 

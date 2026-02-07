@@ -379,6 +379,31 @@ const App: React.FC = () => {
     });
   };
 
+  const refreshTranslationIssues = (
+    records: POCTRecord[],
+    missingCandidates: number[]
+  ) => {
+    const summary = summarizeUntranslated(records, targetLang);
+    const summaryRows = new Set(summary.rowIndices);
+    const refreshedMissing = Array.from(new Set(missingCandidates))
+      .filter((idx) => summaryRows.has(idx))
+      .sort((a, b) => a - b);
+    const mergedRowIndices = Array.from(
+      new Set([...summary.rowIndices, ...refreshedMissing])
+    ).sort((a, b) => a - b);
+    setMissingRowIndices(refreshedMissing);
+    setTranslationIssues({
+      ...summary,
+      rowIndices: mergedRowIndices,
+      missingRows: refreshedMissing
+    });
+    return {
+      summary,
+      refreshedMissing,
+      mergedRowIndices
+    };
+  };
+
   const formatExcelRowNumber = (rowIndex: number) => {
     if (!excelContext) return rowIndex + 1;
     return excelContext.headerRow + rowIndex + 2;
@@ -436,9 +461,12 @@ const App: React.FC = () => {
       translatedFlags.length === fixed.length
         ? translatedFlags
         : Array(fixed.length).fill(true);
+    const {
+      refreshedMissing
+    } = refreshTranslationIssues(fixed, missingRowIndices);
     setProcessedData(fixed);
     setTranslatedFlags(flags);
-    persistProgress(fixed, flags, missingRowIndices);
+    persistProgress(fixed, flags, refreshedMissing);
     setQualityReport(runQualityChecks(data, fixed));
     addLog('Quality Fix: 已应用常见格式与 ID 修复。');
   };
@@ -1261,7 +1289,25 @@ const App: React.FC = () => {
     });
 
     if (retryItems.length === 0) {
+      const synced =
+        sourceRecords.length === data.length
+          ? sourceRecords.map(row => ({ ...row }))
+          : data.map(row => ({ ...row }));
+      const flagsSnapshot =
+        translatedFlags.length === data.length
+          ? [...translatedFlags]
+          : Array(data.length).fill(false);
+      const { refreshedMissing, mergedRowIndices } = refreshTranslationIssues(
+        synced,
+        missingRowIndices
+      );
+      setProcessedData(synced);
+      setTranslatedFlags(flagsSnapshot);
+      persistProgress(synced, flagsSnapshot, refreshedMissing);
       addLog('Retry Missing Cells: 当前没有可重译的单元格。');
+      if (mergedRowIndices.length === 0) {
+        addLog('Retry Missing Cells: 状态已刷新，当前无待补译内容。');
+      }
       return;
     }
 

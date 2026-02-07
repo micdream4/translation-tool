@@ -1713,8 +1713,8 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200">
       <Header />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-6">
+      <main className="flex-1 max-w-[1700px] mx-auto w-full p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+        <div className="lg:col-span-5 2xl:col-span-4 space-y-6">
           <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">使用说明</h2>
@@ -2152,8 +2152,8 @@ const App: React.FC = () => {
           </section>
         </div>
 
-        <div className="lg:col-span-2 space-y-6 flex flex-col">
-          <section className="flex-1 flex flex-col space-y-4">
+        <div className="lg:col-span-7 2xl:col-span-8 space-y-6">
+          <section className="flex flex-col space-y-4">
              <div className="flex items-center justify-between">
                <h2 className="text-lg font-semibold flex items-center gap-2">
                 <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>

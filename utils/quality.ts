@@ -33,10 +33,11 @@ export interface QualityReport {
 }
 
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
-export const PLACEHOLDER_REGEX = /__TKN_\d+__|__ID_\d+__/;
+export const PLACEHOLDER_REGEX = /__TKN_\d+__|__ID_\d+__|__FMT_\d+__/;
 const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
+const LETTER_DIGIT_SPACE_REGEX = /\b[A-Za-z]\s+\d{1,3}\b|\b\d{1,3}\s+[A-Za-z]\b/;
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 
 const shouldLockCell = (key: string, value: unknown) => {
@@ -51,7 +52,8 @@ export const hasSpacingIssue = (value: string) => {
   return (
     EG_REGEX.test(value) ||
     EXTRA_SPACE_REGEX.test(value) ||
-    SPACE_BEFORE_PUNCT_REGEX.test(value)
+    SPACE_BEFORE_PUNCT_REGEX.test(value) ||
+    LETTER_DIGIT_SPACE_REGEX.test(value)
   );
 };
 

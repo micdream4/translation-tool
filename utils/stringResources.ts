@@ -73,4 +73,14 @@ export const guardStringResourceTokens = (
 export const restoreStringResourceTokens = (
   text: string,
   placeholders?: PlaceholderMap | null
-) => restoreInlineTokens(text, placeholders);
+) => {
+  if (!text || !placeholders) return text;
+  let normalized = text;
+  Object.keys(placeholders).forEach((key) => {
+    const core = key.replace(/^_+|_+$/g, "");
+    if (!core) return;
+    const pattern = new RegExp(`_{0,2}${core}_{0,2}`, "g");
+    normalized = normalized.replace(pattern, key);
+  });
+  return restoreInlineTokens(normalized, placeholders);
+};

@@ -93,19 +93,28 @@ const setCellValue = (cell: XLSX.CellObject, value: unknown) => {
   }
 };
 
+export interface ExportOptions {
+  overwriteFormulas?: boolean;
+}
+
 export function exportToExcel(
   data: any[],
   filename: string,
-  context?: ExcelContext
+  context?: ExcelContext,
+  options: ExportOptions = {}
 ) {
+  let overwrittenFormulas = 0;
+  let skippedFormulas = 0;
+
   if (!context) {
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Results');
     XLSX.writeFile(workbook, filename);
-    return;
+    return { overwrittenFormulas, skippedFormulas };
   }
 
+  const overwriteFormulas = options.overwriteFormulas === true;
   const { workbook, worksheet, headerRow, headerKeys, range } = context;
   const startRow = headerRow + 1;
 
@@ -119,11 +128,19 @@ export function exportToExcel(
       if (value === undefined) continue;
       const address = XLSX.utils.encode_cell({ r: sheetRow, c });
       const existing = worksheet[address];
-      if (existing?.f) continue;
+      if (existing?.f) {
+        if (!overwriteFormulas) {
+          skippedFormulas += 1;
+          continue;
+        }
+        delete existing.f;
+        overwrittenFormulas += 1;
+      }
       const cell = existing || (worksheet[address] = { t: 's', v: '' });
       setCellValue(cell, value);
     }
   });
 
   XLSX.writeFile(workbook, filename);
+  return { overwrittenFormulas, skippedFormulas };
 }

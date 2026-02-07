@@ -8,15 +8,15 @@ import { parseDocxFile, exportDocxFile, DocxContext, guardInlineTokens, restoreI
 import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
 import { MultiAIJudge } from './services/multiAIJudge';
-import { detectUntranslatedCells } from './utils/language';
+import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
 import { summarizeUntranslated } from './utils/untranslated';
 import { loadTranslationProgress, saveTranslationProgress, clearTranslationProgress } from './utils/storage';
 import { normalizeTerminology } from './utils/terminology';
-import { polishTranslation } from './utils/postprocess';
+import { polishTranslation, fixSpacingArtifacts } from './utils/postprocess';
 import { guardTranslationTokens, restoreTranslationTokens, isLikelyIdentifier } from './utils/translationTokens';
 import { guardStringResourceTokens, parseStringResourceLine, restoreStringResourceTokens } from './utils/stringResources';
-import { appendStringHistory, clearStringHistory, loadStringHistory } from './utils/stringHistory';
-import { hasSpacingIssue, runQualityChecks, QualityReport } from './utils/quality';
+import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
+import { hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX } from './utils/quality';
 import {
   ClinicalRule,
   CrossCheckResult,
@@ -42,6 +42,37 @@ const STRING_TARGET_LANGS: TargetLanguage[] = [
   'Russian',
   'Portuguese'
 ];
+
+const downloadTextFile = (filename: string, content: string) => {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const formatStringHistoryText = (history: StringTranslationHistoryEntry[]) => {
+  const separator = '\n' + '='.repeat(80) + '\n';
+  return history
+    .map((entry, index) => {
+      const lines: string[] = [
+        `Record ${index + 1}`,
+        `Timestamp: ${new Date(entry.createdAt).toLocaleString()}`,
+        '',
+        '[Original]',
+        entry.source || ''
+      ];
+      STRING_TARGET_LANGS.forEach((lang) => {
+        lines.push('', `[${lang}]`, entry.outputs[lang] || '');
+      });
+      return lines.join('\n');
+    })
+    .join(separator);
+};
 
 type IssueSummaryState = {
   cells: number;
@@ -82,32 +113,20 @@ const formatRowRanges = (indices: number[], limit: number = 3) => {
   return displayed.join(', ') + (segments.length > limit ? '...' : '');
 };
 
-const rowNeedsTranslation = (row: POCTRecord) => {
+const rowNeedsTranslation = (row: POCTRecord, targetLang: TargetLanguage) => {
   return Object.values(row).some(value => {
     if (typeof value !== 'string') return false;
     const trimmed = value.trim();
     if (!trimmed) return false;
-    return SOURCE_LANG_REGEX.test(trimmed);
+    return !isLikelyTargetLanguage(trimmed, targetLang);
   });
 };
 
-const valueNeedsTranslation = (value: unknown) => {
+const valueNeedsTranslation = (value: unknown, target: TargetLanguage) => {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
-  return SOURCE_LANG_REGEX.test(trimmed);
-};
-
-const hasRequiredTranslationKeys = (
-  original: POCTRecord,
-  translated: POCTRecord | undefined
-) => {
-  if (!translated || typeof translated !== 'object') return false;
-  const requiredKeys = Object.entries(original)
-    .filter(([, value]) => typeof value === 'string' && valueNeedsTranslation(value))
-    .map(([key]) => key);
-  if (requiredKeys.length === 0) return true;
-  return requiredKeys.every((key) => Object.prototype.hasOwnProperty.call(translated, key));
+  return !isLikelyTargetLanguage(trimmed, target);
 };
 
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
@@ -170,6 +189,9 @@ const App: React.FC = () => {
   const [stringOutputs, setStringOutputs] = useState<Record<string, string>>({});
   const [stringStatus, setStringStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
   const [stringError, setStringError] = useState<string | null>(null);
+  const [stringQualitySummary, setStringQualitySummary] = useState<string | null>(null);
+  const [stringErrorDetails, setStringErrorDetails] = useState<string | null>(null);
+  const [stringAutoFix, setStringAutoFix] = useState<boolean>(true);
   const [stringHistoryCount, setStringHistoryCount] = useState<number>(0);
   const [processingState, setProcessingState] = useState<ProcessingState>({
     status: 'idle',
@@ -193,6 +215,15 @@ const App: React.FC = () => {
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, msg]);
+  };
+
+  const shouldTranslateValue = (value: unknown) => {
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    if (isNeutralToken(trimmed)) return false;
+    if (translationMode === 'full') return true;
+    return valueNeedsTranslation(value, targetLang);
   };
 
   const updateStageStatus = (key: WorkflowStageKey, status: WorkflowStageState['status'], message?: string) => {
@@ -405,15 +436,7 @@ const App: React.FC = () => {
   };
 
   const shouldTranslateDocxText = (text: string) => {
-    if (!text || !text.trim()) return false;
-    const hasChinese = containsChinese(text);
-    if (!hasChinese) {
-      return false;
-    }
-    if (translationMode === 'selective') {
-      return hasChinese;
-    }
-    return true;
+    return shouldTranslateValue(text);
   };
 
   const auditDocxTranslation = () => {
@@ -422,7 +445,7 @@ const App: React.FC = () => {
     const pending: number[] = [];
     context.textNodes.forEach((node, idx) => {
       const text = node.node.textContent ?? node.original ?? '';
-      if (containsChinese(text)) {
+      if (!isLikelyTargetLanguage(text, targetLang)) {
         pending.push(idx);
       }
     });
@@ -651,6 +674,8 @@ const App: React.FC = () => {
       setStringOutputs({});
       setStringStatus('idle');
       setStringError(null);
+      setStringQualitySummary(null);
+      setStringErrorDetails(null);
       return;
     }
 
@@ -689,6 +714,11 @@ const App: React.FC = () => {
       return;
     }
 
+    const applyStringAutoFix = (text: string) => {
+      const base = fixSpacingArtifacts(text);
+      return base.replace(/\b([A-Za-z])\s+(\d{1,3})\b/g, '$1$2');
+    };
+
     const buildOutput = (translatedBatch: POCTRecord[], lang: TargetLanguage) => {
       const mergedLines = entries.map((entry, index) => {
         if (!entry.needsTranslation) {
@@ -703,7 +733,8 @@ const App: React.FC = () => {
             : entry.content;
         const placeholders = placeholderStore.get(index);
         const restored = restoreStringResourceTokens(candidate, placeholders);
-        const polished = polishTranslation(entry.content || '', restored);
+        const fixed = stringAutoFix ? applyStringAutoFix(restored) : restored;
+        const polished = polishTranslation(entry.content || '', fixed);
         const normalized = normalizeTerminology({ content: polished }, lang);
         const normalizedContent =
           typeof normalized.content === 'string' ? normalized.content : polished;
@@ -714,6 +745,8 @@ const App: React.FC = () => {
 
     setStringStatus('running');
     setStringError(null);
+    setStringQualitySummary(null);
+    setStringErrorDetails(null);
 
     const results = await Promise.allSettled(
       STRING_TARGET_LANGS.map(async (lang) => {
@@ -728,12 +761,15 @@ const App: React.FC = () => {
 
     const outputs: Record<string, string> = {};
     const failed: string[] = [];
+    const failureDetails: string[] = [];
     results.forEach((result, index) => {
       const lang = STRING_TARGET_LANGS[index];
       if (result.status === 'fulfilled') {
         outputs[lang] = result.value;
       } else {
         failed.push(lang);
+        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        failureDetails.push(`${lang}: ${reason}`);
       }
     });
     STRING_TARGET_LANGS.forEach((lang) => {
@@ -754,9 +790,48 @@ const App: React.FC = () => {
       const updated = appendStringHistory(entry);
       setStringHistoryCount(updated.length);
     }
+    const qualityIssues: string[] = [];
+    const analyzeStringOutput = (output: string, lang: TargetLanguage) => {
+      const lines = output.split(/\r?\n/);
+      const entries = lines.map(parseStringResourceLine);
+      const contents = entries.map((entry) => entry.content);
+      const untranslated = summarizeUntranslated(
+        contents.map((content) => ({ content })),
+        lang
+      ).cells;
+      const placeholderLeaks = contents.filter((content) =>
+        PLACEHOLDER_REGEX.test(content)
+      ).length;
+      const spacingIssues = contents.filter((content) =>
+        hasSpacingIssue(content)
+      ).length;
+      return { untranslated, placeholderLeaks, spacingIssues };
+    };
+
+    STRING_TARGET_LANGS.forEach((lang) => {
+      const output = outputs[lang] || '';
+      if (!output.trim()) return;
+      const { untranslated, placeholderLeaks, spacingIssues } = analyzeStringOutput(output, lang);
+      const parts: string[] = [];
+      if (untranslated > 0) parts.push(`未翻译 ${untranslated}`);
+      if (placeholderLeaks > 0) parts.push(`占位符 ${placeholderLeaks}`);
+      if (spacingIssues > 0) parts.push(`空格异常 ${spacingIssues}`);
+      if (parts.length > 0) {
+        qualityIssues.push(`${lang}: ${parts.join('，')}`);
+      }
+    });
+    if (qualityIssues.length > 0) {
+      const summaryText = `质量检查：${qualityIssues.join('；')}。`;
+      setStringQualitySummary(summaryText);
+      addLog(summaryText);
+    }
+
     if (failed.length > 0) {
       setStringStatus('error');
       setStringError(`翻译失败：${failed.join(', ')}`);
+      if (failureDetails.length > 0) {
+        setStringErrorDetails(failureDetails.slice(0, 4).join(' | '));
+      }
     } else {
       setStringStatus('completed');
       setStringError(null);
@@ -768,6 +843,8 @@ const App: React.FC = () => {
     setStringOutputs({});
     setStringStatus('idle');
     setStringError(null);
+    setStringQualitySummary(null);
+    setStringErrorDetails(null);
   };
 
   const copyStringOutput = async (lang: TargetLanguage) => {
@@ -787,20 +864,10 @@ const App: React.FC = () => {
       addLog('暂无字符串翻译记录可导出。');
       return;
     }
-    const rows = history.map((entry) => ({
-      Timestamp: new Date(entry.createdAt).toLocaleString(),
-      Original: entry.source,
-      English: entry.outputs.English || '',
-      Spanish: entry.outputs.Spanish || '',
-      French: entry.outputs.French || '',
-      German: entry.outputs.German || '',
-      Italian: entry.outputs.Italian || '',
-      Russian: entry.outputs.Russian || '',
-      Portuguese: entry.outputs.Portuguese || ''
-    }));
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    exportToExcel(rows, `String_Translation_History_${stamp}.xlsx`);
-    addLog(`已导出字符串翻译记录：${history.length} 条。`);
+    const content = formatStringHistoryText(history);
+    downloadTextFile(`String_Translation_History_${stamp}.txt`, content);
+    addLog(`已导出字符串翻译记录（TXT）：${history.length} 条。`);
   };
 
   const clearStringHistoryData = () => {
@@ -821,7 +888,7 @@ const App: React.FC = () => {
     const workingResults = shouldResume ? [...processedData] : baseResults;
     const initialFlags =
       translationMode === 'selective'
-        ? data.map(row => (rowNeedsTranslation(row) ? false : true))
+        ? data.map(row => (rowNeedsTranslation(row, targetLang) ? false : true))
         : Array(data.length).fill(false);
     const workingFlags =
       shouldResume && translatedFlags.length === data.length
@@ -910,7 +977,7 @@ const App: React.FC = () => {
                   sanitizedRow[key] = value;
                   return;
                 }
-                if (!value.trim() || shouldLockCell(key, value) || !valueNeedsTranslation(value)) {
+                if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value)) {
                   sanitizedRow[key] = value;
                   return;
                 }
@@ -944,40 +1011,54 @@ const App: React.FC = () => {
           pendingIndices.forEach((rowIdx, index) => {
             const translated = translatedBatch[index];
             const original = data[rowIdx];
-            if (!hasRequiredTranslationKeys(original, translated)) {
-              incompleteRows.push(rowIdx);
-              missingRows.add(rowIdx);
-              return;
-            }
             const merged: POCTRecord = { ...original };
             const placeholdersForRow = batchPlaceholders[index] || {};
 
-            Object.keys(original).forEach(key => {
-              if (translated[key] !== undefined) {
-                const originalValue = original[key];
-                if (shouldLockCell(key, originalValue) || !valueNeedsTranslation(originalValue)) {
-                  merged[key] = originalValue;
-                  return;
-                }
-                const candidate = translated[key];
-                merged[key] =
-                  typeof candidate === 'string'
-                    ? polishTranslation(
-                        typeof originalValue === 'string' ? (originalValue as string) : '',
-                        candidate
-                      )
-                    : candidate;
-                if (typeof merged[key] === 'string' && placeholdersForRow[key]) {
-                  merged[key] = restoreTranslationTokens(
-                    merged[key] as string,
-                    placeholdersForRow[key]
-                  );
-                }
+            const requiredKeys = Object.entries(original)
+              .filter(([, value]) => typeof value === 'string' && shouldTranslateValue(value))
+              .map(([key]) => key);
+            const missingKeys: string[] = [];
+
+            requiredKeys.forEach((key) => {
+              if (!translated || translated[key] === undefined) {
+                missingKeys.push(key);
               }
             });
+
+            Object.keys(original).forEach(key => {
+              if (!translated || translated[key] === undefined) return;
+              const originalValue = original[key];
+              if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue)) {
+                merged[key] = originalValue;
+                return;
+              }
+              const candidate = translated[key];
+              merged[key] =
+                typeof candidate === 'string'
+                  ? polishTranslation(
+                      typeof originalValue === 'string' ? (originalValue as string) : '',
+                      candidate
+                    )
+                  : candidate;
+              if (typeof merged[key] === 'string' && placeholdersForRow[key]) {
+                merged[key] = restoreTranslationTokens(
+                  merged[key] as string,
+                  placeholdersForRow[key]
+                );
+              }
+            });
+
             finalResults[rowIdx] = normalizeTerminology(merged, targetLang);
-            flags[rowIdx] = true;
-            missingRows.delete(rowIdx);
+            const stillUntranslated =
+              detectUntranslatedCells([finalResults[rowIdx]], targetLang).length > 0;
+            if (missingKeys.length > 0 || stillUntranslated) {
+              incompleteRows.push(rowIdx);
+              missingRows.add(rowIdx);
+              flags[rowIdx] = false;
+            } else {
+              flags[rowIdx] = true;
+              missingRows.delete(rowIdx);
+            }
           });
           if (incompleteRows.length > 0) {
             addLog(
@@ -1101,10 +1182,13 @@ const App: React.FC = () => {
       `Translation audit: 检测到 ${summary.cells} 个未翻译单元格，涉及 ${mergedRowIndices.length} 行。`
     );
 
-    await retryMissingRows(mergedRowIndices);
+    await retryMissingRows(mergedRowIndices, records);
   };
 
-  const retryMissingRows = async (rowIndices: number[]) => {
+  const retryMissingRows = async (
+    rowIndices: number[],
+    baseSnapshot?: POCTRecord[]
+  ) => {
     const uniqueIndices = Array.from(new Set(rowIndices))
       .filter(idx => idx >= 0 && idx < data.length)
       .sort((a, b) => a - b);
@@ -1121,7 +1205,11 @@ const App: React.FC = () => {
     ];
 
     const sourceRecords =
-      processedData.length === data.length ? processedData : data;
+      baseSnapshot && baseSnapshot.length === data.length
+        ? baseSnapshot
+        : processedData.length === data.length
+          ? processedData
+          : data;
     const missingSummary = summarizeUntranslated(sourceRecords, targetLang);
     const missingByRow = new Map<number, Set<string>>();
     (missingSummary.details || []).forEach((cell) => {
@@ -1150,7 +1238,7 @@ const App: React.FC = () => {
           sanitizedRow[key] = value;
           return;
         }
-        if (!value.trim() || shouldLockCell(key, value) || !valueNeedsTranslation(value)) {
+        if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value)) {
           return;
         }
         const { sanitized, placeholders } = guardTranslationTokens(value);
@@ -1174,8 +1262,8 @@ const App: React.FC = () => {
     }
 
     const baseProcessed =
-      processedData.length === data.length
-        ? [...processedData]
+      sourceRecords.length === data.length
+        ? sourceRecords.map(row => ({ ...row }))
         : data.map(row => ({ ...row }));
     const updatedFlags =
       translatedFlags.length === data.length
@@ -1220,7 +1308,7 @@ const App: React.FC = () => {
 
         item.keys.forEach((key) => {
           const originalValue = original[key];
-          if (shouldLockCell(key, originalValue) || !valueNeedsTranslation(originalValue)) {
+          if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue)) {
             return;
           }
           if (updated[key] === undefined) return;
@@ -1242,7 +1330,9 @@ const App: React.FC = () => {
         });
 
         baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang);
-        const isComplete = updatedCount >= item.keys.size;
+        const stillUntranslated =
+          detectUntranslatedCells([baseProcessed[rowIdx]], targetLang).length > 0;
+        const isComplete = updatedCount >= item.keys.size && !stillUntranslated;
         updatedFlags[rowIdx] = isComplete;
         if (isComplete) {
           missingSet.delete(rowIdx);
@@ -1315,7 +1405,7 @@ const App: React.FC = () => {
           sanitizedRow[key] = value;
           return;
         }
-        if (!value.trim() || shouldLockCell(key, value) || !valueNeedsTranslation(value)) {
+        if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value)) {
           return;
         }
         const { sanitized, placeholders } = guardTranslationTokens(value);
@@ -1391,7 +1481,7 @@ const App: React.FC = () => {
 
         item.keys.forEach((key) => {
           const originalValue = original[key];
-          if (shouldLockCell(key, originalValue) || !valueNeedsTranslation(originalValue)) {
+          if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue)) {
             return;
           }
           if (updated[key] === undefined) return;
@@ -1499,7 +1589,12 @@ const App: React.FC = () => {
     const outputRows = processedData.map((row, idx) =>
       applyPostprocessRow(data[idx], row, targetLang)
     );
-    exportToExcel(outputRows, filename, excelContext || undefined);
+    const stats = exportToExcel(outputRows, filename, excelContext || undefined, {
+      overwriteFormulas: true
+    });
+    if (stats?.overwrittenFormulas) {
+      addLog(`已覆盖 ${stats.overwrittenFormulas} 个公式单元格以写入翻译结果。`);
+    }
   };
 
   const handlePause = () => {
@@ -2060,6 +2155,16 @@ const App: React.FC = () => {
                 >
                   {isStringTranslating ? 'Translating...' : 'Translate 7 Languages'}
                 </button>
+                <label className="flex items-center gap-2 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={stringAutoFix}
+                    onChange={(e) => setStringAutoFix(e.target.checked)}
+                    disabled={isStringTranslating}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
+                  />
+                  自动修复空格
+                </label>
               </div>
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
                 <span className="text-xs text-slate-500">
@@ -2075,7 +2180,7 @@ const App: React.FC = () => {
                         : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                     }`}
                   >
-                    Export History
+                    Export TXT
                   </button>
                   <button
                     onClick={clearStringHistoryData}
@@ -2090,8 +2195,18 @@ const App: React.FC = () => {
                   </button>
                 </div>
               </div>
+              {stringQualitySummary && (
+                <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
+                  {stringQualitySummary}
+                </div>
+              )}
               {stringError && (
-                <p className="text-xs text-rose-300">{stringError}</p>
+                <div className="text-xs text-rose-300 space-y-1">
+                  <p>{stringError}</p>
+                  {stringErrorDetails && (
+                    <p className="text-rose-200/80">{stringErrorDetails}</p>
+                  )}
+                </div>
               )}
               {hasStringOutputs && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t border-slate-800">

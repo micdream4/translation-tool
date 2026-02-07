@@ -13,7 +13,7 @@ Rules:
 - Always use the preferred glossary wording verbatim when the source contains those concepts.
 - Preserve numbers, IDs, measurement units, and codes exactly.
 - If a cell mixes code + text, keep the code intact and only translate the descriptive part.
-- Keep placeholder tokens such as "__TKN_0__" exactly as provided; they mark UI strings or product UI terms.
+- Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark UI strings, product UI terms, or format placeholders.
 - Inline English UI terms (e.g., Login, admin, START) must remain unchanged even when surrounded by other languages.
 - Optimize spacing between words/punctuation to read like native technical English (no missing spaces).
 - Always return a valid JSON array with the same length/keys. No explanations outside JSON.

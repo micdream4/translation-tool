@@ -44,7 +44,7 @@ Rules:
 - Always map glossary terms to the preferred wording exactly.
 - Preserve IDs, numeric values, and codes exactly.
 - If a cell mixes codes with descriptive text, keep the code and only translate the descriptive part.
-- Keep placeholder tokens such as "__TKN_0__" exactly as provided; they mark UI literals, product names, or inline English that must stay untouched.
+- Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark UI literals, product names, inline English, or format placeholders that must stay untouched.
 - Inline English UI terms (Login, admin, START, etc.) must remain unchanged even within Chinese sentences.
 - Produce natural manual-style sentences instead of literal word-by-word output.
 - Return a JSON array with the same length/keys as input. Respond with JSON only, no explanations.

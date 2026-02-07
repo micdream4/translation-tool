@@ -113,17 +113,42 @@ export class TranslationHub {
     return Boolean(key);
   }
 
-  async translateBatch(req: TranslationRequest): Promise<POCTRecord[]> {
-    const preferred = req.options?.model;
-    const cacheKey = JSON.stringify({
-      lang: req.targetLang,
-      sample: req.records.slice(0, 2),
-      model: preferred || "auto"
-    });
+  private isRecoverableBatchError(error: unknown) {
+    const message =
+      error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    return (
+      message.includes("failed to parse model json") ||
+      message.includes("expected ':' after property name") ||
+      message.includes("invalid json") ||
+      message.includes("did not return a json array") ||
+      message.includes("returned invalid json")
+    );
+  }
 
-    if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!;
+  private async translateWithRecovery(req: TranslationRequest): Promise<POCTRecord[]> {
+    try {
+      return await this.translateDirect(req);
+    } catch (error) {
+      if (!this.isRecoverableBatchError(error) || req.records.length <= 1) {
+        throw error;
+      }
+      const mid = Math.ceil(req.records.length / 2);
+      const leftRecords = req.records.slice(0, mid);
+      const rightRecords = req.records.slice(mid);
+      const left = await this.translateWithRecovery({
+        ...req,
+        records: leftRecords
+      });
+      const right = await this.translateWithRecovery({
+        ...req,
+        records: rightRecords
+      });
+      return [...left, ...right];
     }
+  }
+
+  private async translateDirect(req: TranslationRequest): Promise<POCTRecord[]> {
+    const preferred = req.options?.model;
 
     if (this.proxy) {
       const engine = (req.options?.model || "auto") as ProxyEngine;
@@ -133,7 +158,6 @@ export class TranslationHub {
         engine
       );
       this.lastEngine = this.proxy.getLastEngine();
-      this.cache.set(cacheKey, translated);
       return translated;
     }
 
@@ -221,6 +245,23 @@ export class TranslationHub {
       throw new Error("Translation returned invalid record data.");
     }
 
+    return translated;
+  }
+
+  async translateBatch(req: TranslationRequest): Promise<POCTRecord[]> {
+    const preferred = req.options?.model;
+    const cacheKey = JSON.stringify({
+      lang: req.targetLang,
+      records: req.records,
+      model: preferred || "auto",
+      mode: this.proxy ? "proxy" : "direct"
+    });
+
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
+    }
+
+    const translated = await this.translateWithRecovery(req);
     this.cache.set(cacheKey, translated);
     return translated;
   }

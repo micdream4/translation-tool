@@ -1,5 +1,6 @@
 import { POCTRecord, TargetLanguage } from "../types";
 import { GLOSSARY_PROMPT } from "../utils/glossary";
+import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "google/gemini-3.0-flash-preview";
@@ -48,7 +49,7 @@ const getEnvKey = (): string => {
 };
 
 const sanitizeResponse = (text: string) =>
-  text.replace(/```json|```/gi, "").trim();
+  sanitizeModelJson(text.replace(/```json|```/gi, ""));
 
 export class OpenRouterService {
   private readonly model: string;
@@ -79,7 +80,7 @@ Rules:
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark UI strings, product UI terms, or format placeholders.
 - Inline English UI terms (e.g., Login, admin, START) must remain unchanged even when surrounded by other languages.
 - Optimize spacing between words/punctuation to read like native technical English (no missing spaces).
-- Always return a valid JSON array with the same length/keys. No explanations outside JSON.
+- Always return a valid JSON object: {"records":[...]} where records keeps the same length/keys. No explanations outside JSON.
 
 INPUT:
 ${JSON.stringify(records)}
@@ -99,6 +100,9 @@ ${JSON.stringify(records)}
       body: JSON.stringify({
         model: this.model,
         temperature: 0.2,
+        response_format: {
+          type: "json_object"
+        },
         messages: [
           {
             role: "system",
@@ -130,10 +134,6 @@ ${JSON.stringify(records)}
       throw new Error("OpenRouter API returned empty content.");
     }
 
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) {
-      throw new Error("OpenRouter API did not return a JSON array.");
-    }
-    return parsed;
+    return parseModelJsonArray(text);
   }
 }

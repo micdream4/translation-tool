@@ -1,5 +1,6 @@
 import { GLOSSARY_PROMPT } from "../../utils/glossary";
 import type { POCTRecord, TargetLanguage } from "../../types";
+import { parseModelJsonArray, sanitizeModelJson } from "../../utils/jsonRepair";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -16,13 +17,14 @@ Rules:
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark UI strings, product UI terms, or format placeholders.
 - Inline English UI terms (e.g., Login, admin, START) must remain unchanged even when surrounded by other languages.
 - Optimize spacing between words/punctuation to read like native technical English (no missing spaces).
-- Always return a valid JSON array with the same length/keys. No explanations outside JSON.
+- Always return a valid JSON object: {"records":[...]} where records keeps the same length/keys. No explanations outside JSON.
 
 INPUT:
 ${JSON.stringify(records)}
 `;
 
-const sanitizeResponse = (text: string) => text.replace(/```json|```/gi, "").trim();
+const sanitizeResponse = (text: string) =>
+  sanitizeModelJson(text.replace(/```json|```/gi, ""));
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -68,6 +70,9 @@ export const onRequestPost = async (context: any) => {
         body: JSON.stringify({
           model,
           temperature: 0.2,
+          response_format: {
+            type: "json_object"
+          },
           messages: [
             {
               role: "system",
@@ -91,8 +96,7 @@ export const onRequestPost = async (context: any) => {
       }
       const text = typeof content === "string" ? sanitizeResponse(content) : "";
       if (!text) return json({ error: "OpenRouter returned empty content." }, 500);
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) return json({ error: "OpenRouter returned invalid JSON." }, 500);
+      const parsed = parseModelJsonArray(text);
       return json({ engine: "openrouter", records: parsed });
     }
 

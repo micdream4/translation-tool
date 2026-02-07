@@ -1,5 +1,6 @@
 import { POCTRecord, TargetLanguage } from "../types";
 import { GLOSSARY_PROMPT } from "../utils/glossary";
+import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 
 const API_URL = "https://api.deepseek.com/v1/chat/completions";
 const DEFAULT_MODEL = "deepseek-chat";
@@ -83,16 +84,11 @@ ${JSON.stringify(records)}
 
     const result = await response.json();
     const text =
-      result.choices?.[0]?.message?.content?.replace(/```json|```/g, "").trim() ??
-      "";
+      result.choices?.[0]?.message?.content?.replace(/```json|```/g, "") ?? "";
     if (!text) {
       throw new Error("Deepseek API returned empty response.");
     }
 
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed)) {
-      throw new Error("Deepseek API did not return a JSON array.");
-    }
-    return parsed;
+    return parseModelJsonArray(sanitizeModelJson(text));
   }
 }

@@ -1,6 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { POCTRecord, TargetLanguage } from "../types";
+import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 
 export class MedicalAIService {
   constructor() {}
@@ -46,14 +47,8 @@ export class MedicalAIService {
       const text = response.text;
       if (!text) throw new Error("API returned an empty response.");
       
-      const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed = JSON.parse(cleanedText);
-      
-      if (!Array.isArray(parsed)) {
-        throw new Error("API did not return a JSON array.");
-      }
-      
-      return parsed;
+      const cleanedText = text.replace(/```json\n?|\n?```/g, '');
+      return parseModelJsonArray(sanitizeModelJson(cleanedText));
     } catch (error) {
       console.error("Batch translation error:", error);
       throw error;

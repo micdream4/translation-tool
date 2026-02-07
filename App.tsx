@@ -217,6 +217,14 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, msg]);
   };
 
+  const getFallbackPriority = (): Array<'openrouter' | 'deepseek' | 'gemini'> => {
+    const engines: Array<'openrouter' | 'deepseek' | 'gemini'> = [];
+    if (capabilities.openrouter) engines.push('openrouter');
+    if (capabilities.deepseek) engines.push('deepseek');
+    if (capabilities.gemini) engines.push('gemini');
+    return engines.length > 0 ? engines : ['openrouter'];
+  };
+
   const shouldTranslateValue = (value: unknown) => {
     if (typeof value !== 'string') return false;
     const trimmed = value.trim();
@@ -1198,11 +1206,7 @@ const App: React.FC = () => {
     }
     addLog(`Retry Missing Cells: 针对 ${uniqueIndices.length} 行重新翻译...`);
 
-    const fallbackPriority: Array<'openrouter' | 'deepseek' | 'gemini'> = [
-      'openrouter',
-      'deepseek',
-      'gemini'
-    ];
+    const fallbackPriority = getFallbackPriority();
 
     const sourceRecords =
       baseSnapshot && baseSnapshot.length === data.length
@@ -1430,11 +1434,7 @@ const App: React.FC = () => {
 
     addLog(`${label}: 针对 ${retryItems.length} 行重新翻译...`);
 
-    const fallbackPriority: Array<'openrouter' | 'deepseek' | 'gemini'> = [
-      'openrouter',
-      'deepseek',
-      'gemini'
-    ];
+    const fallbackPriority = getFallbackPriority();
 
     const baseProcessed =
       processedData.length === data.length

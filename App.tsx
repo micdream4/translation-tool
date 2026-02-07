@@ -1726,6 +1726,7 @@ const App: React.FC = () => {
               <li>点击 Run Global Translation 开始。</li>
               <li>中途可 Pause 再导出检查进度。</li>
               <li>提示缺失时用 Retry Missing Cells 补译。</li>
+              <li>翻译后运行 Run Quality Check，必要时执行 Apply Cleanup 与 Retry Placeholder Cells。</li>
             </ol>
             <details className="mt-3 border border-slate-800 rounded-lg bg-slate-950/40 p-3">
               <summary className="cursor-pointer text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -1735,7 +1736,10 @@ const App: React.FC = () => {
                 <li>全量翻译：重写所有行，适合首次翻译。</li>
                 <li>智能补译：仅补中文单元格，适合修补或续翻。</li>
                 <li>Retry Missing Cells：只重译缺失单元格，避免重复消耗。</li>
-                <li>组合校验 / 多 AI 核验：可选质量检查。</li>
+                <li>Quality Check：扫描中文残留、占位符、ID 异常与格式问题。</li>
+                <li>Apply Cleanup：自动修复常见空格与术语格式问题。</li>
+                <li>Retry Placeholder Cells：仅重译占位符异常单元格。</li>
+                <li>组合校验 / 多 AI 核验：可选进一步核查。</li>
                 <li>进度保存在浏览器本地，重新上传同一文件可继续。</li>
               </ul>
             </details>
@@ -1926,6 +1930,45 @@ const App: React.FC = () => {
                 </div>
               )}
 
+              <div className="space-y-2 pt-3 border-t border-slate-800">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quality Check</h3>
+                <button
+                  onClick={runQualityCheck}
+                  disabled={documentKind !== 'excel' || data.length === 0}
+                  className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
+                    documentKind !== 'excel' || data.length === 0
+                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+                  }`}
+                >
+                  Run Quality Check
+                </button>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={applyQualityFixes}
+                    disabled={documentKind !== 'excel' || processedData.length === 0}
+                    className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
+                      documentKind !== 'excel' || processedData.length === 0
+                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20'
+                    }`}
+                  >
+                    Apply Cleanup
+                  </button>
+                  <button
+                    onClick={retryPlaceholderCells}
+                    disabled={!placeholderIssueCount || translationStatus === 'running'}
+                    className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
+                      !placeholderIssueCount || translationStatus === 'running'
+                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                        : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-500/20'
+                    }`}
+                  >
+                    Retry Placeholder Cells
+                  </button>
+                </div>
+              </div>
+
               <details className="mt-2 border border-slate-800 rounded-lg p-3 bg-slate-950/40">
                 <summary className="cursor-pointer text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Advanced Checks
@@ -2037,44 +2080,7 @@ const App: React.FC = () => {
           </section>
 
           <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Quality Check</h3>
-            <div className="space-y-3">
-              <button
-                onClick={runQualityCheck}
-                disabled={documentKind !== 'excel' || data.length === 0}
-                className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
-                  documentKind !== 'excel' || data.length === 0
-                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
-                }`}
-              >
-                Run Quality Check
-              </button>
-              <div className="grid grid-cols-1 gap-2">
-                <button
-                  onClick={applyQualityFixes}
-                  disabled={documentKind !== 'excel' || processedData.length === 0}
-                  className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
-                    documentKind !== 'excel' || processedData.length === 0
-                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20'
-                  }`}
-                >
-                  Apply Cleanup
-                </button>
-                <button
-                  onClick={retryPlaceholderCells}
-                  disabled={!placeholderIssueCount || translationStatus === 'running'}
-                  className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
-                    !placeholderIssueCount || translationStatus === 'running'
-                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                      : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-500/20'
-                  }`}
-                >
-                  Retry Placeholder Cells
-                </button>
-              </div>
-            </div>
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Quality Report</h3>
 
             {!hasQualityReport && (
               <p className="text-xs text-slate-500 mt-4">

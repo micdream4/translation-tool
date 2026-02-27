@@ -7,7 +7,7 @@ export interface UntranslatedCell {
   value: string;
 }
 
-type LangCode = "zh" | "en" | "es" | "fr" | "de" | "it" | "pt" | "ru" | "unknown";
+type LangCode = "zh" | "en" | "es" | "fr" | "de" | "it" | "pt" | "tr" | "ru" | "unknown";
 
 const CJK_REGEX = /[\u4e00-\u9fff]/;
 const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
@@ -126,6 +126,21 @@ const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[
     "leve",
     "moderado",
     "grave"
+  ],
+  tr: [
+    "ve",
+    "ile",
+    "bu",
+    "bir",
+    "olasi",
+    "onerir",
+    "artis",
+    "azalis",
+    "yuksek",
+    "gosterir",
+    "hafif",
+    "orta",
+    "agir"
   ]
 };
 
@@ -138,7 +153,8 @@ const LANGUAGE_DIACRITICS: Record<
   fr: /[éèêëàâçîïôûùüÿœ]/i,
   de: /[äöüß]/i,
   it: /[àèéìòù]/i,
-  pt: /[ãõçáéíóúàâêô]/i
+  pt: /[ãõçáéíóúàâêô]/i,
+  tr: /[çğıöşü]/i
 };
 
 const normalizeLatin = (text: string) =>
@@ -202,6 +218,7 @@ const targetLangToCode = (targetLang: TargetLanguage): LangCode => {
   if (normalized.includes("german")) return "de";
   if (normalized.includes("italian")) return "it";
   if (normalized.includes("portuguese")) return "pt";
+  if (normalized.includes("turkish")) return "tr";
   if (normalized.includes("russian")) return "ru";
   return "unknown";
 };

@@ -10,6 +10,7 @@ export type TargetLanguage =
   | 'French'
   | 'German'
   | 'Italian'
+  | 'Turkish'
   | 'Russian'
   | 'Portuguese'
   | string;

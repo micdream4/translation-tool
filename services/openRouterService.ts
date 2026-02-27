@@ -1,5 +1,5 @@
 import { POCTRecord, TargetLanguage } from "../types";
-import { GLOSSARY_PROMPT } from "../utils/glossary";
+import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "../utils/glossary";
 import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -67,19 +67,29 @@ export class OpenRouterService {
     records: POCTRecord[],
     targetLang: TargetLanguage
   ): Promise<POCTRecord[]> {
+    const useEnglishGlossary = shouldUseEnglishGlossary(targetLang);
+    const glossarySection = useEnglishGlossary
+      ? `\nGlossary (Chinese => preferred term):\n${GLOSSARY_PROMPT}\n`
+      : "";
+    const glossaryRule = useEnglishGlossary
+      ? "- Always use the preferred glossary wording verbatim when the source contains those concepts."
+      : `- Translate medical terminology fully into ${targetLang}. Keep only true codes, model numbers, and standard abbreviations (e.g., WBC, RBC, QC) unchanged.`;
+
     const prompt = `
 You are a senior hematology-manual translator. Convert every string within the JSON array to ${targetLang} while maintaining fluent instructions.
-
-Glossary (Chinese => preferred term):
-${GLOSSARY_PROMPT}
+${glossarySection}
 
 Rules:
-- Always use the preferred glossary wording verbatim when the source contains those concepts.
+${glossaryRule}
+- Translate any non-${targetLang} natural-language text (including full English sentences) into ${targetLang}.
+- Translate address/common nouns such as "Room", "Building", "Street", "District", "City", "Province" into ${targetLang}; keep only true proper names transliterated or unchanged.
 - Preserve numbers, IDs, measurement units, and codes exactly.
 - If a cell mixes code + text, keep the code intact and only translate the descriptive part.
-- Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark UI strings, product UI terms, or format placeholders.
-- Inline English UI terms (e.g., Login, admin, START) must remain unchanged even when surrounded by other languages.
-- Optimize spacing between words/punctuation to read like native technical English (no missing spaces).
+- Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark protected IDs, codes, or format placeholders.
+- Do not invent or introduce new placeholder tokens; only preserve placeholders already present in input.
+- Keep only true UI/code tokens unchanged (e.g., "Login", "admin", "START", button labels, product code literals). Do NOT keep full English prose unchanged when target is not English.
+- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); do not replace them with straight quotes.
+- Optimize spacing and punctuation to read naturally in ${targetLang}.
 - Always return a valid JSON object: {"records":[...]} where records keeps the same length/keys. No explanations outside JSON.
 
 INPUT:
@@ -99,7 +109,7 @@ ${JSON.stringify(records)}
       headers,
       body: JSON.stringify({
         model: this.model,
-        temperature: 0.2,
+        temperature: 0,
         response_format: {
           type: "json_object"
         },

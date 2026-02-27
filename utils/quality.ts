@@ -33,11 +33,18 @@ export interface QualityReport {
 }
 
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
-export const PLACEHOLDER_REGEX = /__TKN_\d+__|__ID_\d+__|__FMT_\d+__/;
+export const PLACEHOLDER_REGEX = /_+(?:TKN|ID|FMT)_\d+_+/i;
 const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
 const LETTER_DIGIT_SPACE_REGEX = /\b[A-Za-z]\s+\d{1,3}\b|\b\d{1,3}\s+[A-Za-z]\b/;
+const GLUED_PUNCT_REGEX = /\b[A-Za-z]+[,.:][A-Za-z]+\b/;
+const CAMEL_GLUE_REGEX = /\b[a-z]{2,}[A-Z][a-z]+\b/;
+const UPPER_ABBR_GLUE_REGEX = /\b(?:[A-Z]{2,}\d*(?:\/[A-Z]+)?)(?:[A-Z][a-z]+|[a-z]{2,})\b/;
+const DIGIT_BOUNDARY_GLUE_REGEX =
+  /\b(?:[a-z]{2,}\d+(?:[-/.]\d+)*[A-Za-z]{2,}|[A-Z][a-z]{3,}\d+|[A-Za-z]{3,}\d+[A-Za-z]{2,})\b/;
+const LOWER_COMPOUND_GLUE_REGEX =
+  /\b(?:connectthe|intothe|displaywbc|usesledlight|providesusbinterface|withtcp\/ipprotocol|withgb\/t|andgb\/t|thedcpower|cbcdetection|cbctest|pltthe|aianalysis|retand|supplyrequirements|compositiondescription|routineimaging|fluorescenceimage|andperformmaintenance|powerswitchto|tostart|is1year|enter\d+(?:[-/.]\d+)*digits|than\d+digits)\b/i;
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 
 const shouldLockCell = (key: string, value: unknown) => {
@@ -54,6 +61,16 @@ export const hasSpacingIssue = (value: string) => {
     EXTRA_SPACE_REGEX.test(value) ||
     SPACE_BEFORE_PUNCT_REGEX.test(value) ||
     LETTER_DIGIT_SPACE_REGEX.test(value)
+  );
+};
+
+export const hasGlueIssue = (value: string) => {
+  return (
+    GLUED_PUNCT_REGEX.test(value) ||
+    CAMEL_GLUE_REGEX.test(value) ||
+    UPPER_ABBR_GLUE_REGEX.test(value) ||
+    DIGIT_BOUNDARY_GLUE_REGEX.test(value) ||
+    LOWER_COMPOUND_GLUE_REGEX.test(value)
   );
 };
 

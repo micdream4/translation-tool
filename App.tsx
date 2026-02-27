@@ -4,7 +4,13 @@ import Header from './components/Header';
 import LogConsole from './components/LogConsole';
 import { parseExcelFile, exportToExcel } from './utils/excel';
 import type { ExcelContext } from './utils/excel';
-import { parseDocxFile, exportDocxFile, DocxContext, guardInlineTokens, restoreInlineTokens, containsChinese } from './utils/docx';
+import {
+  parseDocxFile,
+  exportDocxFile,
+  DocxContext,
+  getDocxSegmentText,
+  setDocxSegmentText
+} from './utils/docx';
 import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
 import { MultiAIJudge } from './services/multiAIJudge';
@@ -19,10 +25,17 @@ import {
 } from './utils/storage';
 import { normalizeTerminology } from './utils/terminology';
 import { polishTranslation, fixSpacingArtifacts } from './utils/postprocess';
-import { guardTranslationTokens, restoreTranslationTokens, isLikelyIdentifier } from './utils/translationTokens';
+import {
+  guardTranslationTokens,
+  restoreTranslationTokens,
+  isLikelyIdentifier,
+  containsProtectedTerm,
+  setRuntimeProtectedTerms,
+  stripProtectedTerms
+} from './utils/translationTokens';
 import { guardStringResourceTokens, parseStringResourceLine, restoreStringResourceTokens } from './utils/stringResources';
 import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
-import { hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX } from './utils/quality';
+import { hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX } from './utils/quality';
 import {
   ClinicalRule,
   CrossCheckResult,
@@ -45,9 +58,21 @@ const STRING_TARGET_LANGS: TargetLanguage[] = [
   'French',
   'German',
   'Italian',
+  'Turkish',
   'Russian',
   'Portuguese'
 ];
+const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
+
+const parseRuntimeProtectedTerms = (raw: string) =>
+  Array.from(
+    new Set(
+      String(raw || '')
+        .split(/[\n;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
 
 const downloadTextFile = (filename: string, content: string) => {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -88,6 +113,22 @@ type IssueSummaryState = {
   details: UntranslatedCell[];
 };
 
+type DocxIssueDetail = {
+  index: number;
+  id: string;
+  text: string;
+  snippet: string;
+  chineseChars: number;
+  lowPriority: boolean;
+  issueType: 'source' | 'placeholder' | 'glue';
+};
+
+const isSevereDocxIssue = (issue: DocxIssueDetail) => {
+  if (issue.issueType === 'placeholder') return true;
+  if (issue.issueType === 'source' && issue.chineseChars >= 2) return true;
+  return false;
+};
+
 const createIssueSummary = (): IssueSummaryState => ({
   cells: 0,
   rows: 0,
@@ -95,6 +136,35 @@ const createIssueSummary = (): IssueSummaryState => ({
   missingRows: [],
   details: []
 });
+
+const DOCX_CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/g;
+const DOCX_TEXT_CLEANUP_REGEX = /\s+/g;
+const DOCX_WORD_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜçğıöşü][A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜçğıöşü0-9-]{0,32}$/;
+const DOCX_PLACEHOLDER_VARIANT_REGEX = /(?:_+)?(?:TKN|ID|FMT)_\d+_+/i;
+
+const countChineseChars = (text: string) => (text.match(DOCX_CHINESE_CHAR_REGEX) || []).length;
+
+const toDocxSnippet = (text: string, limit: number = 36) => {
+  const normalized = text.replace(DOCX_TEXT_CLEANUP_REGEX, ' ').trim();
+  if (!normalized) return '(empty)';
+  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+};
+
+const dedupeLeadingRepeat = (source: string, translated: string) => {
+  const sourceTrimmed = source.trim();
+  const targetTrimmed = translated.trim();
+  if (!sourceTrimmed || targetTrimmed.length < 2) return translated;
+  const first = targetTrimmed[0];
+  const second = targetTrimmed[1];
+  if (first.toLowerCase() !== second.toLowerCase()) return translated;
+  const sourceFirst = sourceTrimmed[0];
+  const sourceSecond = sourceTrimmed[1] || '';
+  if (sourceFirst.toLowerCase() !== first.toLowerCase()) return translated;
+  if (sourceSecond && sourceSecond.toLowerCase() === sourceFirst.toLowerCase()) return translated;
+  const prefixLength = translated.length - translated.trimStart().length;
+  const prefix = translated.slice(0, prefixLength);
+  return `${prefix}${targetTrimmed.slice(1)}`;
+};
 
 const formatRowRanges = (indices: number[], limit: number = 3) => {
   if (!indices.length) return '';
@@ -160,7 +230,7 @@ const applyPostprocessRow = (
       typeof originalValue === 'string' ? originalValue : value;
     if (shouldLockCell(key, lockValue)) return;
     const sourceText = typeof originalValue === 'string' ? originalValue : '';
-    output[key] = polishTranslation(sourceText, value);
+    output[key] = polishTranslation(sourceText, value, lang);
   });
   return normalizeTerminology(output, lang);
 };
@@ -203,6 +273,7 @@ const App: React.FC = () => {
   const [stringQualitySummary, setStringQualitySummary] = useState<string | null>(null);
   const [stringErrorDetails, setStringErrorDetails] = useState<string | null>(null);
   const [stringAutoFix, setStringAutoFix] = useState<boolean>(true);
+  const [runtimeProtectedTermsRaw, setRuntimeProtectedTermsRaw] = useState<string>('');
   const [stringHistoryCount, setStringHistoryCount] = useState<number>(0);
   const [processingState, setProcessingState] = useState<ProcessingState>({
     status: 'idle',
@@ -213,6 +284,7 @@ const App: React.FC = () => {
   const docxContextRef = useRef<DocxContext | null>(null);
   const docxPlaceholderStore = useRef<Map<string, Record<string, string>>>(new Map());
   const [docxIssueIndices, setDocxIssueIndices] = useState<number[]>([]);
+  const [docxIssueDetails, setDocxIssueDetails] = useState<DocxIssueDetail[]>([]);
   const [docxStats, setDocxStats] = useState<{ total: number; translated: number }>({ total: 0, translated: 0 });
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
@@ -286,6 +358,7 @@ const App: React.FC = () => {
       docxContextRef.current = null;
       docxPlaceholderStore.current.clear();
       setDocxIssueIndices([]);
+      setDocxIssueDetails([]);
       setData([]);
       setProcessedData([]);
       setRules([]);
@@ -300,16 +373,17 @@ const App: React.FC = () => {
       try {
         const context = await parseDocxFile(uploadedFile);
         docxContextRef.current = context;
-        setDocxStats({ total: context.textNodes.length, translated: 0 });
+        setDocxStats({ total: context.segments.length, translated: 0 });
         setDocxIssueIndices([]);
+        setDocxIssueDetails([]);
         setProcessingState({
           status: 'idle',
           progress: 0,
-          total: context.textNodes.length,
+          total: context.segments.length,
           currentBatch: 0
         });
-        updateStageStatus('ingest', 'completed', `DOCX: 检测到 ${context.textNodes.length} 个文本节点`);
-        addLog(`Success: Loaded DOCX with ${context.textNodes.length} text segments.`);
+        updateStageStatus('ingest', 'completed', `DOCX: 检测到 ${context.segments.length} 个语义段`);
+        addLog(`Success: Loaded DOCX with ${context.segments.length} semantic segments.`);
       } catch (err) {
         addLog(`Error: ${err instanceof Error ? err.message : String(err)}`);
         setProcessingState(prev => ({ ...prev, status: 'error' }));
@@ -320,6 +394,8 @@ const App: React.FC = () => {
 
     setDocumentKind('excel');
     docxContextRef.current = null;
+    setDocxIssueIndices([]);
+    setDocxIssueDetails([]);
     setExcelContext(null);
       setDocxStats({ total: 0, translated: 0 });
       setSavedSnapshot(null);
@@ -376,6 +452,25 @@ const App: React.FC = () => {
       snapshotPromptKeyRef.current = '';
     }
   }, [fileId, targetLang, data.length, processedData.length, documentKind]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem(PROTECTED_TERMS_STORAGE_KEY) || '';
+    setRuntimeProtectedTermsRaw(saved);
+    setRuntimeProtectedTerms(parseRuntimeProtectedTerms(saved));
+  }, []);
+
+  useEffect(() => {
+    const parsed = parseRuntimeProtectedTerms(runtimeProtectedTermsRaw);
+    setRuntimeProtectedTerms(parsed);
+    if (typeof window !== 'undefined') {
+      if (runtimeProtectedTermsRaw.trim()) {
+        window.localStorage.setItem(PROTECTED_TERMS_STORAGE_KEY, runtimeProtectedTermsRaw);
+      } else {
+        window.localStorage.removeItem(PROTECTED_TERMS_STORAGE_KEY);
+      }
+    }
+  }, [runtimeProtectedTermsRaw]);
 
   const applySavedProgress = () => {
     if (!savedSnapshot || data.length === 0) return;
@@ -555,7 +650,8 @@ const App: React.FC = () => {
         if (typeof value === 'string' && hasSpacingIssue(value)) {
           output[key] = polishTranslation(
             typeof originalValue === 'string' ? originalValue : '',
-            value
+            value,
+            targetLang
           );
         }
       });
@@ -580,37 +676,120 @@ const App: React.FC = () => {
     return shouldTranslateValue(text);
   };
 
+  const isLowPriorityDocxIssue = (text: string) => {
+    if (containsProtectedTerm(text)) {
+      const stripped = stripProtectedTerms(text).trim();
+      if (!stripped) return true;
+    }
+    const trimmed = stripProtectedTerms(text).trim();
+    if (!trimmed) return true;
+    if (isNeutralToken(trimmed) || isLikelyIdentifier(trimmed)) return true;
+    if (DOCX_WORD_REGEX.test(trimmed)) return true;
+    const chineseChars = countChineseChars(trimmed);
+    if (chineseChars <= 1 && trimmed.length <= 12) return true;
+    return false;
+  };
+
+  const buildDocxIssueDetails = (context: DocxContext) => {
+    const pending: number[] = [];
+    const details: DocxIssueDetail[] = [];
+    context.segments.forEach((segment, idx) => {
+      const text = getDocxSegmentText(segment) || segment.original || '';
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const stripped = stripProtectedTerms(trimmed);
+      if (!stripped) return;
+      const hasSourceLanguage = !isLikelyTargetLanguage(stripped, targetLang);
+      const hasPlaceholderLeak =
+        PLACEHOLDER_REGEX.test(trimmed) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(trimmed);
+      const hasGlueLeak =
+        String(targetLang || '').toLowerCase().includes('english') && hasGlueIssue(trimmed);
+      if (!hasSourceLanguage && !hasPlaceholderLeak && !hasGlueLeak) return;
+      pending.push(idx);
+      details.push({
+        index: idx,
+        id: segment.id,
+        text: trimmed,
+        snippet: toDocxSnippet(trimmed),
+        chineseChars: countChineseChars(stripped),
+        lowPriority: hasPlaceholderLeak || hasGlueLeak ? false : isLowPriorityDocxIssue(trimmed),
+        issueType: hasPlaceholderLeak ? 'placeholder' : hasGlueLeak ? 'glue' : 'source'
+      });
+    });
+    return { pending, details };
+  };
+
+  const exportDocxIssueReport = () => {
+    if (!docxIssueDetails.length) {
+      addLog('Docx report: 当前没有可导出的审计问题。');
+      return;
+    }
+    const now = new Date();
+    const iso = now.toISOString();
+    const retryable = docxIssueDetails.filter((item) => !item.lowPriority).length;
+    const lowPriority = docxIssueDetails.length - retryable;
+    const lines: string[] = [
+      `Generated At: ${iso}`,
+      `Target Language: ${targetLang}`,
+      `Total Issues: ${docxIssueDetails.length}`,
+      `Retryable (recommended): ${retryable}`,
+      `Low Priority: ${lowPriority}`,
+      'Index Mapping: #N means the Nth semantic segment in document order (NOT page number).',
+      'Segment ID Mapping: docx-segment-(N-1) is the internal zero-based segment id.',
+      ''
+    ];
+    docxIssueDetails.forEach((item) => {
+      lines.push(
+        `#${item.index + 1} (${item.id}) [Type=${item.issueType}] [CJKChars=${item.chineseChars}] [${item.lowPriority ? 'LowPriority' : 'Retryable'}]`,
+        item.text || '(empty)',
+        ''
+      );
+    });
+    const safeStamp = iso.replace(/[:.]/g, '-');
+    downloadTextFile(`Docx_Issue_Report_${targetLang}_${safeStamp}.txt`, lines.join('\n'));
+    addLog(`Docx report: 已导出 ${docxIssueDetails.length} 段问题文本明细。`);
+  };
+
   const auditDocxTranslation = () => {
     const context = docxContextRef.current;
     if (!context) return;
-    const pending: number[] = [];
-    context.textNodes.forEach((node, idx) => {
-      const text = node.node.textContent ?? node.original ?? '';
-      if (!isLikelyTargetLanguage(text, targetLang)) {
-        pending.push(idx);
-      }
-    });
+    const { pending, details } = buildDocxIssueDetails(context);
     setDocxIssueIndices(pending);
+    setDocxIssueDetails(details);
     if (pending.length === 0) {
-      addLog('Docx audit: 所有段落均已翻译为目标语言。');
+      addLog('Docx audit: 所有段落均已通过源语言/占位符/粘词检查。');
     } else {
-      addLog(`Docx audit: 检测到 ${pending.length} 段文本仍包含源语言，可重译。`);
+      const retryable = details.filter((item) => !item.lowPriority).length;
+      const lowPriority = details.length - retryable;
+      const placeholderCount = details.filter((item) => item.issueType === 'placeholder').length;
+      const glueCount = details.filter((item) => item.issueType === 'glue').length;
+      const sourceCount = details.filter((item) => item.issueType === 'source').length;
+      addLog(
+        `Docx audit: 检测到 ${pending.length} 段异常文本；源语言 ${sourceCount}，占位符 ${placeholderCount}，粘词 ${glueCount}。建议重译/修复 ${retryable} 段，低优先级 ${lowPriority} 段。`
+      );
+      const preview = details
+        .slice(0, 6)
+        .map((item) => `#${item.index + 1}[${item.issueType}]: ${item.snippet}`)
+        .join(' | ');
+      if (preview) {
+        addLog(`Docx audit: 示例 -> ${preview}`);
+      }
     }
   };
 
-  const runDocxTranslation = async () => {
+  const runDocxTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
     const context = docxContextRef.current;
     if (!context) {
       addLog('Docx: 未检测到可翻译的内容。');
       return;
     }
-    const nodes = context.textNodes;
-    if (!nodes.length) {
-      addLog('Docx: 文档中没有可翻译的文本节点。');
+    const segments = context.segments;
+    if (!segments.length) {
+      addLog('Docx: 文档中没有可翻译的语义段。');
       return;
     }
-    const candidates = nodes.filter((node) =>
-      shouldTranslateDocxText(node.node.textContent ?? node.original)
+    const candidates = segments.filter((segment) =>
+      shouldTranslateDocxText(getDocxSegmentText(segment) || segment.original)
     );
     if (!candidates.length) {
       addLog('Docx: 当前文档已经是目标语言或没有可翻译的文本。');
@@ -618,9 +797,16 @@ const App: React.FC = () => {
     }
 
     pauseRequestedRef.current = false;
-    setDocxStats({ total: nodes.length, translated: 0 });
+    const alreadyTranslated = Math.max(0, segments.length - candidates.length);
+    setDocxStats({ total: segments.length, translated: alreadyTranslated });
     setDocxIssueIndices([]);
+    setDocxIssueDetails([]);
     setTranslationStatus('running');
+    if (mode === 'resume') {
+      addLog(
+        `Docx Resume: 已处理 ${alreadyTranslated}/${segments.length}，继续处理剩余 ${candidates.length} 个语义段。`
+      );
+    }
     setProcessingState({
       status: 'processing',
       progress: 0,
@@ -631,21 +817,25 @@ const App: React.FC = () => {
     try {
       const result = await runStage('translate', async () => {
         let completed = 0;
+        let paused = false;
         const totalBatches = Math.ceil(candidates.length / DOCX_BATCH_SIZE);
 
         for (let i = 0; i < candidates.length; i += DOCX_BATCH_SIZE) {
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`Docx translation paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
+            break;
+          }
           const chunk = candidates.slice(i, i + DOCX_BATCH_SIZE);
           const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
-          addLog(`Docx Batch ${batchNum}/${totalBatches}: ${chunk.length} 段文本`);
+          addLog(`Docx Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段`);
           let translatedBatch: POCTRecord[];
           try {
-            const payload = chunk.map((node) => {
-              const rawText = node.node.textContent ?? node.original;
-              const { sanitized, placeholders } = guardInlineTokens(rawText);
+            const payload = chunk.map((segment) => {
+              const rawText = getDocxSegmentText(segment) || segment.original;
+              const { sanitized, placeholders } = guardTranslationTokens(rawText);
               if (placeholders) {
-                docxPlaceholderStore.current.set(node.id, placeholders);
-              } else {
-                docxPlaceholderStore.current.delete(node.id);
+                docxPlaceholderStore.current.set(segment.id, placeholders);
               }
               return {
                 content: sanitized
@@ -663,28 +853,45 @@ const App: React.FC = () => {
             continue;
           }
 
-          chunk.forEach((node, index) => {
+          chunk.forEach((segment, index) => {
             const translatedRecord = translatedBatch[index] || {};
-            const rawText = node.node.textContent ?? node.original;
-            const placeholders = docxPlaceholderStore.current.get(node.id);
+            const rawText = getDocxSegmentText(segment) || segment.original;
+            const placeholders = docxPlaceholderStore.current.get(segment.id);
             const sanitizedResult =
               typeof translatedRecord.content === 'string'
                 ? translatedRecord.content
                 : rawText;
-            const restored = restoreInlineTokens(sanitizedResult, placeholders);
-            const polished = polishTranslation(rawText || '', restored);
-            node.node.textContent = polished;
-            node.original = polished;
+            const restored = restoreTranslationTokens(sanitizedResult, placeholders);
+            const polished = dedupeLeadingRepeat(
+              rawText || '',
+              polishTranslation(rawText || '', restored, targetLang)
+            );
+            setDocxSegmentText(segment, polished);
           });
 
           completed += chunk.length;
-          setDocxStats({ total: nodes.length, translated: completed });
+          setDocxStats({
+            total: segments.length,
+            translated: Math.min(alreadyTranslated + completed, segments.length)
+          });
           const progress = Math.round((completed / candidates.length) * 100);
           setProcessingState((prev) => ({
             ...prev,
             progress,
             currentBatch: batchNum
           }));
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`Docx translation paused after batch ${batchNum}.`);
+            break;
+          }
+        }
+
+        if (paused) {
+          setProcessingState((prev) => ({ ...prev, status: 'idle' }));
+          setTranslationStatus('paused');
+          return 'paused';
         }
 
         setProcessingState((prev) => ({
@@ -692,7 +899,7 @@ const App: React.FC = () => {
           status: 'completed',
           progress: 100
         }));
-        addLog(`DOCX Translation Completed: ${completed}/${candidates.length} 段文本处理完成。`);
+        addLog(`DOCX Translation Completed: ${completed}/${candidates.length} 个语义段处理完成。`);
         return 'completed';
       });
 
@@ -712,14 +919,72 @@ const App: React.FC = () => {
   const retryDocxSegments = async () => {
     const context = docxContextRef.current;
     if (!context) return;
-    if (docxIssueIndices.length === 0) {
+    let pendingIndices = docxIssueIndices;
+    if (pendingIndices.length === 0) {
+      const { pending, details } = buildDocxIssueDetails(context);
+      setDocxIssueIndices(pending);
+      setDocxIssueDetails(details);
+      pendingIndices = pending;
+    }
+    if (pendingIndices.length === 0) {
       addLog('Docx: 当前没有需要重译的段落。');
       return;
     }
-    const targets = docxIssueIndices
-      .map(index => context.textNodes[index])
+    const recommended = docxIssueDetails
+      .filter((item) => !item.lowPriority)
+      .map((item) => item.index);
+    const targetIndices = recommended.length > 0 ? recommended : pendingIndices;
+    if (recommended.length === 0 && docxIssueDetails.length > 0) {
+      addLog('Docx Retry: 当前剩余问题均为低优先级短文本，将尝试全量重译。');
+    } else if (docxIssueDetails.length > recommended.length) {
+      addLog(
+        `Docx Retry: 已自动聚焦 ${recommended.length} 段高优先级文本，跳过 ${docxIssueDetails.length - recommended.length} 段低优先级项。`
+      );
+    }
+    const detailByIndex = new Map(docxIssueDetails.map((item) => [item.index, item]));
+    let targets = targetIndices
+      .map(index => context.segments[index])
       .filter(Boolean);
     if (!targets.length) return;
+
+    let locallyFixed = 0;
+    targets.forEach((segment) => {
+      const rawText = getDocxSegmentText(segment) || segment.original;
+      const detail = detailByIndex.get(
+        Number(segment.id.replace('docx-segment-', ''))
+      );
+      if (!detail || detail.issueType !== 'placeholder') return;
+      const placeholders = docxPlaceholderStore.current.get(segment.id);
+      if (!placeholders) return;
+      const restored = restoreTranslationTokens(rawText, placeholders);
+      if (restored === rawText) return;
+      const polished = dedupeLeadingRepeat(
+        rawText || '',
+        polishTranslation(rawText || '', restored, targetLang)
+      );
+      setDocxSegmentText(segment, polished);
+      locallyFixed += 1;
+    });
+
+    if (locallyFixed > 0) {
+      addLog(`Docx Retry: 已本地修复 ${locallyFixed} 段占位符问题（无需调用模型）。`);
+      const { pending, details } = buildDocxIssueDetails(context);
+      setDocxIssueIndices(pending);
+      setDocxIssueDetails(details);
+      targets = targetIndices
+        .map(index => context.segments[index])
+        .filter(Boolean)
+        .filter((segment) => {
+          const text = getDocxSegmentText(segment) || segment.original;
+          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(stripProtectedTerms(text), targetLang);
+        });
+      if (targets.length === 0) {
+        addLog('Docx Retry: 占位符问题已清零。');
+        setTranslationStatus('completed');
+        auditDocxTranslation();
+        return;
+      }
+    }
 
     pauseRequestedRef.current = false;
     setTranslationStatus('running');
@@ -731,22 +996,26 @@ const App: React.FC = () => {
     });
 
     try {
-      await runStage('translate', async () => {
+      const result = await runStage('translate', async () => {
         let completed = 0;
+        let paused = false;
         const totalBatches = Math.ceil(targets.length / DOCX_BATCH_SIZE);
         for (let i = 0; i < targets.length; i += DOCX_BATCH_SIZE) {
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`Docx retry paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
+            break;
+          }
           const chunk = targets.slice(i, i + DOCX_BATCH_SIZE);
           const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
-          addLog(`Docx Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 段文本`);
+          addLog(`Docx Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段`);
           let translatedBatch: POCTRecord[];
           try {
-            const payload = chunk.map((node) => {
-              const rawText = node.node.textContent ?? node.original;
-              const { sanitized, placeholders } = guardInlineTokens(rawText);
+            const payload = chunk.map((segment) => {
+              const rawText = getDocxSegmentText(segment) || segment.original;
+              const { sanitized, placeholders } = guardTranslationTokens(rawText);
               if (placeholders) {
-                docxPlaceholderStore.current.set(node.id, placeholders);
-              } else {
-                docxPlaceholderStore.current.delete(node.id);
+                docxPlaceholderStore.current.set(segment.id, placeholders);
               }
               return {
                 content: sanitized
@@ -763,24 +1032,26 @@ const App: React.FC = () => {
             continue;
           }
 
-          chunk.forEach((node, index) => {
+          chunk.forEach((segment, index) => {
             const translatedRecord = translatedBatch[index] || {};
-            const rawText = node.node.textContent ?? node.original;
-            const placeholders = docxPlaceholderStore.current.get(node.id);
+            const rawText = getDocxSegmentText(segment) || segment.original;
+            const placeholders = docxPlaceholderStore.current.get(segment.id);
             const sanitizedResult =
               typeof translatedRecord.content === 'string'
                 ? translatedRecord.content
                 : rawText;
-            const restored = restoreInlineTokens(sanitizedResult, placeholders);
-            const polished = polishTranslation(rawText || '', restored);
-            node.node.textContent = polished;
-            node.original = polished;
+            const restored = restoreTranslationTokens(sanitizedResult, placeholders);
+            const polished = dedupeLeadingRepeat(
+              rawText || '',
+              polishTranslation(rawText || '', restored, targetLang)
+            );
+            setDocxSegmentText(segment, polished);
           });
 
           completed += chunk.length;
           setDocxStats(prev => ({
-            total: prev.total || context.textNodes.length,
-            translated: Math.min((prev.translated || 0) + chunk.length, prev.total || context.textNodes.length)
+            total: prev.total || context.segments.length,
+            translated: Math.min((prev.translated || 0) + chunk.length, prev.total || context.segments.length)
           }));
           const progress = Math.round((completed / targets.length) * 100);
           setProcessingState(prev => ({
@@ -788,6 +1059,18 @@ const App: React.FC = () => {
             progress,
             currentBatch: batchNum
           }));
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`Docx retry paused after batch ${batchNum}.`);
+            break;
+          }
+        }
+
+        if (paused) {
+          setProcessingState(prev => ({ ...prev, status: 'idle' }));
+          setTranslationStatus('paused');
+          return 'paused';
         }
 
         setProcessingState(prev => ({
@@ -795,10 +1078,12 @@ const App: React.FC = () => {
           status: 'completed',
           progress: 100
         }));
-        addLog(`Docx 重译完成：${completed}/${targets.length} 段。`);
+        addLog(`Docx 重译完成：${completed}/${targets.length} 个语义段。`);
         return 'completed';
       });
-      setTranslationStatus('completed');
+      if (result !== 'paused') {
+        setTranslationStatus('completed');
+      }
       auditDocxTranslation();
     } catch (error) {
       setTranslationStatus('idle');
@@ -875,7 +1160,7 @@ const App: React.FC = () => {
         const placeholders = placeholderStore.get(index);
         const restored = restoreStringResourceTokens(candidate, placeholders);
         const fixed = stringAutoFix ? applyStringAutoFix(restored) : restored;
-        const polished = polishTranslation(entry.content || '', fixed);
+        const polished = polishTranslation(entry.content || '', fixed, lang);
         const normalized = normalizeTerminology({ content: polished }, lang);
         const normalizedContent =
           typeof normalized.content === 'string' ? normalized.content : polished;
@@ -1019,7 +1304,7 @@ const App: React.FC = () => {
 
   const runTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
     if (documentKind === 'docx') {
-      await runDocxTranslation();
+      await runDocxTranslation(mode);
       return;
     }
     if (data.length === 0) return;
@@ -1176,7 +1461,8 @@ const App: React.FC = () => {
                 typeof candidate === 'string'
                   ? polishTranslation(
                       typeof originalValue === 'string' ? (originalValue as string) : '',
-                      candidate
+                      candidate,
+                      targetLang
                     )
                   : candidate;
               if (typeof merged[key] === 'string' && placeholdersForRow[key]) {
@@ -1516,7 +1802,8 @@ const App: React.FC = () => {
                     : typeof originalValue === 'string'
                       ? originalValue
                       : '',
-                  candidate
+                  candidate,
+                  targetLang
                 )
               : candidate;
           if (typeof merged[key] === 'string' && placeholdersForRow[key]) {
@@ -1688,7 +1975,8 @@ const App: React.FC = () => {
             typeof candidate === 'string'
               ? polishTranslation(
                   typeof originalValue === 'string' ? (originalValue as string) : '',
-                  candidate
+                  candidate,
+                  targetLang
                 )
               : candidate;
           if (typeof merged[key] === 'string' && placeholdersForRow[key]) {
@@ -1779,10 +2067,23 @@ const App: React.FC = () => {
     }
 
     if (documentKind === 'docx') {
-      if (!docxContextRef.current) return;
+      const context = docxContextRef.current;
+      if (!context) return;
+      const { pending, details } = buildDocxIssueDetails(context);
+      setDocxIssueIndices(pending);
+      setDocxIssueDetails(details);
+      const blockingCount = details.filter((item) => isSevereDocxIssue(item)).length;
+      const highPriorityCount = details.filter((item) => !item.lowPriority).length;
+      if (details.length > 0) {
+        addLog(
+          `Docx download warning: 仍有 ${details.length} 段待优化问题（高优先级 ${highPriorityCount} 段，严重问题 ${blockingCount} 段），建议先 Retry Missing Segments 再导出。`
+        );
+      } else {
+        addLog('Docx download gate: 审计通过，可导出。');
+      }
       const filename = `Translated_${targetLang}_${file?.name || 'Result.docx'}`;
       addLog(`Generating file: ${filename}`);
-      exportDocxFile(docxContextRef.current, filename);
+      exportDocxFile(context, filename);
       return;
     }
 
@@ -1838,14 +2139,29 @@ const App: React.FC = () => {
 
   const isTranslating = translationStatus === 'running';
   const canResume =
-    documentKind === 'excel' && translationStatus === 'paused' && activeStage === null;
+    (documentKind === 'excel' || documentKind === 'docx') &&
+    translationStatus === 'paused' &&
+    activeStage === null;
   const showPauseResume = isTranslating || canResume;
   const pauseResumeLabel = isTranslating ? 'Pause' : 'Resume';
   const pauseResumeDisabled = isTranslating ? activeStage !== 'translate' : !canResume;
   const pauseResumeHandler = isTranslating ? handlePause : () => runTranslation('resume');
+  const docxLowPriorityCount = useMemo(
+    () => docxIssueDetails.filter((item) => item.lowPriority).length,
+    [docxIssueDetails]
+  );
+  const docxHighPriorityCount = useMemo(
+    () => docxIssueDetails.filter((item) => !item.lowPriority).length,
+    [docxIssueDetails]
+  );
+  const docxBlockingIssueCount = useMemo(
+    () => docxIssueDetails.filter((item) => isSevereDocxIssue(item)).length,
+    [docxIssueDetails]
+  );
   const canDownload =
     documentKind === 'docx'
-      ? docxContextRef.current !== null && translationStatus !== 'running'
+      ? docxContextRef.current !== null &&
+        translationStatus !== 'running'
       : processedData.length > 0 && translationStatus !== 'running';
   const canRunTranslation =
     documentKind === 'docx' ? docxContextRef.current !== null : data.length > 0;
@@ -1904,9 +2220,22 @@ const App: React.FC = () => {
     () => formatIssueLocationPreview(currentIssueSummary.details, 6),
     [currentIssueSummary.details, excelContext]
   );
+  const docxIssuePreview = useMemo(
+    () =>
+      docxIssueDetails
+        .slice(0, 5)
+        .map((item) => `#${item.index + 1}: ${item.snippet}`)
+        .join(' | '),
+    [docxIssueDetails]
+  );
+  const runtimeProtectedTermsCount = useMemo(
+    () => parseRuntimeProtectedTerms(runtimeProtectedTermsRaw).length,
+    [runtimeProtectedTermsRaw]
+  );
+  const docxRetryableCount = docxHighPriorityCount;
   const retryCandidates = [...retryableRowsFromDetails];
   const hasTranslationAlerts = (currentIssueSummary.rows > 0 || writeFailedRowIndices.length > 0) && documentKind === 'excel';
-  const hasDocxIssues = documentKind === 'docx' && docxIssueIndices.length > 0;
+  const hasDocxIssues = documentKind === 'docx' && docxIssueDetails.length > 0;
   const writeFailedRowPreview = formatRowRanges(writeFailedRowIndices);
   const isStringTranslating = stringStatus === 'running';
   const hasStringOutputs = Object.keys(stringOutputs).length > 0;
@@ -2005,13 +2334,14 @@ const App: React.FC = () => {
                   <option>French</option>
                   <option>German</option>
                   <option>Italian</option>
+                  <option>Turkish</option>
                   <option>Russian</option>
                   <option>Portuguese</option>
                 </select>
               </div>
               {documentKind === 'docx' && docxContextRef.current && (
                 <p className="text-xs text-slate-500 text-center">
-                  DOCX 文本节点：{docxStats.total}，本次已翻译 {docxStats.translated}
+                  DOCX 语义段：{docxStats.total}，本次已翻译 {docxStats.translated}
                 </p>
               )}
 
@@ -2044,7 +2374,7 @@ const App: React.FC = () => {
                   </button>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  全量翻译会重写所有行；智能补译仅对检测到中文的行调用模型。
+                  全量翻译会重写所有行；智能补译仅对检测到非目标语言内容的行调用模型。
                 </p>
               </div>
 
@@ -2064,6 +2394,22 @@ const App: React.FC = () => {
                     Deepseek {capabilities.deepseek ? '' : '(未配置)'}
                   </option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  Protected Terms (Do Not Translate)
+                </label>
+                <textarea
+                  className="w-full min-h-[86px] bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  value={runtimeProtectedTermsRaw}
+                  onChange={(e) => setRuntimeProtectedTermsRaw(e.target.value)}
+                  disabled={isTranslating}
+                  placeholder={'One term per line. e.g.\nEhome Health Technology Co., Ltd.\nEHVT-75'}
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  本次生效 {runtimeProtectedTermsCount} 个自定义保护词；会自动保存到本地，下次继续使用。
+                </p>
               </div>
               </div>
 
@@ -2121,17 +2467,24 @@ const App: React.FC = () => {
                 )}
 
                 {(documentKind === 'docx' ? docxContextRef.current !== null : processedData.length > 0) && (
-                  <button 
-                    onClick={handleDownload}
-                    disabled={!canDownload}
-                    className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-semibold transition-all shadow-lg ${
-                      !canDownload
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
-                    }`}
-                  >
-                    {translationStatus === 'running' ? 'Wait for Translation...' : 'Download Translated Document'}
-                  </button>
+                  <>
+                    <button
+                      onClick={handleDownload}
+                      disabled={!canDownload}
+                      className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-semibold transition-all shadow-lg ${
+                        !canDownload
+                          ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
+                      }`}
+                    >
+                      {translationStatus === 'running' ? 'Wait for Translation...' : 'Download Translated Document'}
+                    </button>
+                    {documentKind === 'docx' && docxBlockingIssueCount > 0 && translationStatus !== 'running' && (
+                      <p className="text-[11px] text-rose-300 text-center">
+                        检测到 {docxBlockingIssueCount} 段严重问题（源语言残留/占位符），建议先重译后再下载。
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -2167,7 +2520,15 @@ const App: React.FC = () => {
               )}
               {hasDocxIssues && (
                 <div className="text-xs text-amber-300 text-center space-y-1">
-                  <p>DOCX 审计：仍有 {docxIssueIndices.length} 段文本包含中文。</p>
+                  <p>DOCX 审计：仍有 {docxIssueDetails.length} 个语义段存在异常。</p>
+                  <p className="text-[11px] text-slate-400">
+                    建议重译 {docxRetryableCount} 段；低优先级短文本 {docxLowPriorityCount} 段。
+                  </p>
+                  {docxIssuePreview && (
+                    <p className="text-[11px] text-slate-400">
+                      示例：{docxIssuePreview}
+                    </p>
+                  )}
                   <button
                     onClick={retryDocxSegments}
                     className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold transition-all shadow-amber-500/20"
@@ -2175,11 +2536,23 @@ const App: React.FC = () => {
                   >
                     Retry Missing Segments
                   </button>
+                  <button
+                    onClick={exportDocxIssueReport}
+                    className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg font-semibold transition-all"
+                    disabled={translationStatus === 'running' || docxIssueDetails.length === 0}
+                  >
+                    Export Issue Report
+                  </button>
                 </div>
               )}
 
               <div className="space-y-2 pt-3 border-t border-slate-800">
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quality Check</h3>
+                {documentKind === 'docx' && (
+                  <p className="text-[11px] text-slate-500">
+                    DOCX 已内置自动审计与 Retry Missing Segments；本区按钮仅用于 Excel。
+                  </p>
+                )}
                 <button
                   onClick={runQualityCheck}
                   disabled={documentKind !== 'excel' || data.length === 0}

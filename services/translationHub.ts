@@ -25,8 +25,14 @@ const getEnvValue = (key: string): string | undefined => {
   return undefined;
 };
 
-const isProxyMode = () =>
-  (getEnvValue("VITE_TRANSLATION_MODE") || "").toLowerCase() === "proxy";
+const isProxyMode = () => {
+  const explicitMode = (getEnvValue("VITE_TRANSLATION_MODE") || "").toLowerCase().trim();
+  if (explicitMode === "proxy") return true;
+  if (explicitMode === "direct") return false;
+
+  const isDev = (getEnvValue("DEV") || "").toLowerCase() === "true";
+  return !isDev;
+};
 
 const parseProxyCapabilities = () => {
   const raw = (getEnvValue("VITE_PROXY_ENGINES") || "").toLowerCase();
@@ -121,7 +127,11 @@ export class TranslationHub {
       message.includes("expected ':' after property name") ||
       message.includes("invalid json") ||
       message.includes("did not return a json array") ||
-      message.includes("returned invalid json")
+      message.includes("returned invalid json") ||
+      message.includes("translation returned") ||
+      message.includes("length mismatch") ||
+      message.includes("invalid payload") ||
+      message.includes("invalid record data")
     );
   }
 

@@ -1,3 +1,5 @@
+import type { TargetLanguage } from "../types";
+
 export interface GlossaryEntry {
   /**
    * Terms that appear in the source (mostly Chinese) and should trigger enforcing the preferred wording.
@@ -15,6 +17,15 @@ export interface GlossaryEntry {
 }
 
 export const GLOSSARY: GlossaryEntry[] = [
+  {
+    keywords: ["湖南伊鸿健康科技有限公司", "湖南伊宏健康科技有限公司", "湖南亿鸿健康科技有限公司"],
+    preferred: "Hunan Ehome Health Technology Co., Ltd.",
+    variants: [
+      "Hunan Ehung Health Technology Co., Ltd.",
+      "Hunan Ehong Health Technology Co., Ltd.",
+      "Hunan Yihong Health Technology Co., Ltd."
+    ]
+  },
   {
     keywords: ["全自动血液分析仪", "自动血液分析仪"],
     preferred: "Automated Hematology Analyzer"
@@ -375,8 +386,18 @@ const shouldEnforce = (original: string, keywords: string[]) => {
   return keywords.some((keyword) => keyword && original.includes(keyword));
 };
 
-export const enforceGlossary = (original: string, translated: string) => {
+export const shouldUseEnglishGlossary = (targetLang?: TargetLanguage) =>
+  String(targetLang || "").toLowerCase().includes("english");
+
+export const enforceGlossary = (
+  original: string,
+  translated: string,
+  targetLang?: TargetLanguage
+) => {
   if (!original || !translated) return translated;
+  if (!shouldUseEnglishGlossary(targetLang)) {
+    return translated;
+  }
   const variantMap = new Map<string, { preferred: string; variant: string }>();
 
   GLOSSARY.forEach((entry) => {

@@ -117,7 +117,7 @@ export class MultiAIJudge {
         Authorization: `Bearer ${this.openRouterKey}`
       },
       body: JSON.stringify({
-        model: "google/gemini-3.0-flash-preview",
+        model: "google/gemini-3-flash-preview",
         reasoning: { enabled: false },
         messages: [
           {

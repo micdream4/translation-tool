@@ -76,8 +76,12 @@
 
    # 可选：本地调试（线上不要开）
    ALLOW_LOCAL_WITHOUT_ACCESS=false
+
+   # 可选：当你已配置 Cloudflare Access 时再开启
+   REQUIRE_CF_ACCESS_EMAIL=true
    ```
-   代码会读取 `CF-Access-Authenticated-User-Email`，未在白名单内直接拒绝。
+   当配置了 `ALLOWED_USER_EMAILS` 或开启 `REQUIRE_CF_ACCESS_EMAIL=true` 时，代码会读取
+   `CF-Access-Authenticated-User-Email` 并执行访问控制。
 
 4. 在 OpenRouter 给每把 Key 设置额度  
    给每个人那把 Key 设置 `limit` + `limit_reset=monthly`，即可限制每人每月花费。

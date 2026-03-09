@@ -100,17 +100,34 @@ export const onRequestPost = async (context: any) => {
     const allowLocalWithoutAccess = TRUTHY.has(
       String(env.ALLOW_LOCAL_WITHOUT_ACCESS || "").trim().toLowerCase()
     );
+    const requireAccessEmail = TRUTHY.has(
+      String(env.REQUIRE_CF_ACCESS_EMAIL || "").trim().toLowerCase()
+    );
     const accessEmail = getAccessEmail(context.request);
-    const userEmail = accessEmail || (allowLocalWithoutAccess ? getLocalBypassEmail(context.request, env) : "");
+    const localBypassEmail = allowLocalWithoutAccess ? getLocalBypassEmail(context.request, env) : "";
+    const userEmail = accessEmail || localBypassEmail;
 
-    if (!userEmail) {
+    const allowedEmails = parseAllowedEmails(env.ALLOWED_USER_EMAILS || env.ALLOWED_EMAILS);
+
+    if (allowedEmails.size > 0 && !userEmail) {
+      const hint = allowLocalWithoutAccess
+        ? " Set LOCAL_DEV_EMAIL or send x-user-email for local testing."
+        : "";
+      return json(
+        {
+          error: `Unauthorized: missing user email for whitelist check.${hint}`
+        },
+        401
+      );
+    }
+
+    if (!userEmail && requireAccessEmail) {
       const hint = allowLocalWithoutAccess
         ? " Set LOCAL_DEV_EMAIL or send x-user-email for local testing."
         : "";
       return json({ error: `Unauthorized: missing Cloudflare Access user email.${hint}` }, 401);
     }
 
-    const allowedEmails = parseAllowedEmails(env.ALLOWED_USER_EMAILS || env.ALLOWED_EMAILS);
     if (allowedEmails.size > 0 && !allowedEmails.has(userEmail)) {
       return json({ error: "Forbidden: user not in whitelist." }, 403);
     }
@@ -131,7 +148,7 @@ export const onRequestPost = async (context: any) => {
 
     if (chosen === "openrouter") {
       if (!hasOpenRouter) return json({ error: "OpenRouter key missing." }, 400);
-      const model = (env.OPENROUTER_MODEL || env.VITE_OPENROUTER_MODEL || "google/gemini-3.0-flash-preview").trim();
+      const model = (env.OPENROUTER_MODEL || env.VITE_OPENROUTER_MODEL || "google/gemini-3-flash-preview").trim();
       const referer =
         env.OPENROUTER_SITE ||
         context.request.headers.get("Origin") ||

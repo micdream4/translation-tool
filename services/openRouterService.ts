@@ -3,7 +3,7 @@ import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "../utils/glossary";
 import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "google/gemini-3.0-flash-preview";
+const DEFAULT_MODEL = "google/gemini-3-flash-preview";
 
 const getEnvModel = (): string | undefined => {
   if (typeof import.meta !== "undefined") {

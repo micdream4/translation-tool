@@ -28,6 +28,11 @@ Recommended for controlled sharing:
 - `OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}`
 - `OPENROUTER_MODEL=google/gemini-3-flash-preview`
 - `ALLOW_LOCAL_WITHOUT_ACCESS=false`
+- `REQUIRE_CF_ACCESS_EMAIL=true`（仅当你已配置 Cloudflare Access 并希望强制登录邮箱身份时开启）
+
+Public sharing (no Access) notes:
+- 不配置 `ALLOWED_USER_EMAILS` 且保持 `REQUIRE_CF_ACCESS_EMAIL` 为空或 `false`。
+- 这样前端可直接调用 `/api/translate`，仅使用 `OPENROUTER_API_KEY`。
 
 ## 4. Protect Access (Recommended)
 Use Cloudflare Zero Trust Access policy:

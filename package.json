@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "deepseek:test": "node scripts/deepseekTest.mjs",
     "docx:translate": "python3 scripts/translate_docx_openrouter.py",
-    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name poct-medical-translator"
+    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name translation-tool"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",

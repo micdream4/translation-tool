@@ -20,12 +20,34 @@ const ID_TOKEN_REGEX = /^(id|uuid)$/i;
 
 const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[]> = {
   en: [
+    "a",
+    "an",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "if",
+    "is",
+    "of",
+    "on",
+    "or",
+    "that",
+    "this",
     "the",
     "and",
-    "of",
     "to",
     "in",
     "with",
+    "results",
+    "patient",
+    "blood",
+    "cell",
+    "cells",
+    "normal",
+    "test",
     "possible",
     "suggests",
     "increase",
@@ -39,6 +61,9 @@ const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[
     "severe"
   ],
   es: [
+    "al",
+    "como",
+    "del",
     "el",
     "la",
     "los",
@@ -46,7 +71,23 @@ const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[
     "de",
     "y",
     "en",
+    "es",
+    "para",
+    "por",
+    "que",
+    "se",
+    "sin",
+    "son",
+    "un",
+    "una",
     "con",
+    "resultado",
+    "resultados",
+    "paciente",
+    "sangre",
+    "celula",
+    "celulas",
+    "normal",
     "posible",
     "sugiere",
     "aumento",
@@ -148,7 +189,9 @@ const LANGUAGE_DIACRITICS: Record<
   Exclude<LangCode, "zh" | "ru" | "unknown">,
   RegExp
 > = {
-  en: /[A-Za-z]/,
+  // English has no distinctive diacritics; using a generic Latin regex here
+  // biases nearly all Spanish/French/etc. text toward English.
+  en: /$^/,
   es: /[ñáéíóúü¡¿]/i,
   fr: /[éèêëàâçîïôûùüÿœ]/i,
   de: /[äöüß]/i,
@@ -257,7 +300,9 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
 
   if (best.lang === targetCode) return true;
 
-  const strongSignal = best.score >= 2 && best.score >= second.score + 1;
+  // Only flag clear non-target prose. Short or medically abbreviated Latin
+  // strings are too ambiguous and should not trigger endless retry loops.
+  const strongSignal = best.score >= 3 && best.score >= second.score + 2;
   if (strongSignal) return false;
 
   return true;

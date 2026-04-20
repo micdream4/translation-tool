@@ -122,12 +122,12 @@ export const CLINICAL_COMBO_LIBRARY: CombinationTemplate[] = [
     id: "combo-mono-high",
     title: "单核细胞升高（慢性感染或恢复期）",
     summary:
-      "MONO 升高可提示慢性炎性疾病或骨髓恢复期，应提示结合 ESR、CRP。",
+      "MON 升高可提示慢性炎性疾病或骨髓恢复期，应提示结合 ESR、CRP。",
     severity: "warning",
     indicators: [
       {
-        indicator: "MONO",
-        aliases: ["MONO", "单核"],
+        indicator: "MON",
+        aliases: ["MON", "单核"],
         operator: ">"
       }
     ],

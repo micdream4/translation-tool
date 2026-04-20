@@ -1,4 +1,5 @@
 import { enforceGlossary } from "./glossary";
+import { enforceSeedTerminology } from "./seedTerminology";
 import type { TargetLanguage } from "../types";
 
 const LATIN_CHAR_REGEX = /[A-Za-z]/;
@@ -315,6 +316,7 @@ export const polishTranslation = (
   refined = fixBracketArtifacts(refined);
   refined = fixEnglishGlueArtifacts(original || "", refined, targetLang);
   refined = enforceGlossary(original || "", refined, targetLang);
+  refined = enforceSeedTerminology(original || "", refined, targetLang);
   refined = adjustLongFormStatus(refined);
   return refined;
 };

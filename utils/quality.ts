@@ -178,3 +178,8 @@ export const runQualityChecks = (
     issues
   };
 };
+
+export const collectPlaceholderIssues = (
+  original: POCTRecord[],
+  translated: POCTRecord[]
+) => runQualityChecks(original, translated).issues.placeholders;

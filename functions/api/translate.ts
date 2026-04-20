@@ -1,6 +1,7 @@
 import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "../../utils/glossary";
 import type { POCTRecord, TargetLanguage } from "../../types";
 import { parseModelJsonArray, sanitizeModelJson } from "../../utils/jsonRepair";
+import { getSeedGlossaryPrompt } from "../../utils/seedTerminology";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -45,13 +46,29 @@ const getAccessEmail = (request: Request) =>
 const getLocalBypassEmail = (request: Request, env: Record<string, unknown>) =>
   normalizeEmail(request.headers.get("x-user-email") || env.LOCAL_DEV_EMAIL);
 
+const joinGlossaryBlocks = (...blocks: Array<string | undefined>) =>
+  Array.from(
+    new Set(
+      blocks
+        .flatMap((block) => String(block || "").split("\n"))
+        .map((line) => line.trim())
+        .filter(Boolean)
+    )
+  ).join("\n");
+
 const buildOpenRouterPrompt = (records: POCTRecord[], targetLang: TargetLanguage) => {
   const useEnglishGlossary = shouldUseEnglishGlossary(targetLang);
-  const glossarySection = useEnglishGlossary
-    ? `\nGlossary (Chinese => preferred term):\n${GLOSSARY_PROMPT}\n`
+  const sourceText = JSON.stringify(records);
+  const seedGlossaryPrompt = getSeedGlossaryPrompt(targetLang, sourceText);
+  const combinedGlossaryPrompt = joinGlossaryBlocks(
+    useEnglishGlossary ? GLOSSARY_PROMPT : "",
+    seedGlossaryPrompt
+  );
+  const glossarySection = combinedGlossaryPrompt
+    ? `\nTerminology (Chinese => preferred target wording):\n${combinedGlossaryPrompt}\n`
     : "";
-  const glossaryRule = useEnglishGlossary
-    ? "- Always use the preferred glossary wording verbatim when the source contains those concepts."
+  const glossaryRule = combinedGlossaryPrompt
+    ? "- Follow the terminology list exactly when the source contains those concepts."
     : `- Translate medical terminology fully into ${targetLang}. Keep only true codes, model numbers, and standard abbreviations (e.g., WBC, RBC, QC) unchanged.`;
 
   return `
@@ -79,6 +96,27 @@ ${JSON.stringify(records)}
 const sanitizeResponse = (text: string) =>
   sanitizeModelJson(text.replace(/```json|```/gi, ""));
 
+const parseOpenRouterModels = (env: Record<string, unknown>) => {
+  const rawList = String(
+    env.OPENROUTER_MODELS ||
+      env.VITE_OPENROUTER_MODELS ||
+      env.OPENROUTER_MODEL ||
+      env.VITE_OPENROUTER_MODEL ||
+      "google/gemini-3-flash-preview"
+  );
+
+  return Array.from(
+    new Set(
+      rawList
+        .split(/[,\n;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const parseRequestedModel = (value: unknown) => String(value || "").trim();
+
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
@@ -91,6 +129,7 @@ export const onRequestPost = async (context: any) => {
     const records = payload?.records as POCTRecord[] | undefined;
     const targetLang = payload?.targetLang as TargetLanguage | undefined;
     const engine = String(payload?.engine || "auto").toLowerCase();
+    const requestedModel = parseRequestedModel(payload?.model);
 
     if (!Array.isArray(records) || !targetLang) {
       return json({ error: "Invalid payload." }, 400);
@@ -148,50 +187,70 @@ export const onRequestPost = async (context: any) => {
 
     if (chosen === "openrouter") {
       if (!hasOpenRouter) return json({ error: "OpenRouter key missing." }, 400);
-      const model = (env.OPENROUTER_MODEL || env.VITE_OPENROUTER_MODEL || "google/gemini-3-flash-preview").trim();
+      const models = requestedModel ? [requestedModel] : parseOpenRouterModels(env);
       const referer =
         env.OPENROUTER_SITE ||
         context.request.headers.get("Origin") ||
         "https://poct-translator.local";
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openRouterKey}`,
-          "HTTP-Referer": referer,
-          "X-Title": env.OPENROUTER_APP_TITLE || "POCT Medical Translator"
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0,
-          response_format: {
-            type: "json_object"
-          },
-          messages: [
-            {
-              role: "system",
-              content:
-                "You translate medical POCT spreadsheets to the requested language while keeping structure unchanged."
+      const prompt = buildOpenRouterPrompt(records, targetLang);
+      const errors: string[] = [];
+
+      for (const model of models) {
+        try {
+          const response = await fetch(OPENROUTER_API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${openRouterKey}`,
+              "HTTP-Referer": referer,
+              "X-Title": env.OPENROUTER_APP_TITLE || "POCT Medical Translator"
             },
-            { role: "user", content: buildOpenRouterPrompt(records, targetLang) }
-          ]
-        })
-      });
+            body: JSON.stringify({
+              model,
+              temperature: 0,
+              response_format: {
+                type: "json_object"
+              },
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    "You translate medical POCT spreadsheets to the requested language while keeping structure unchanged."
+                },
+                { role: "user", content: prompt }
+              ]
+            })
+          });
 
-      if (!response.ok) {
-        const text = await response.text();
-        return json({ error: `OpenRouter error ${response.status}: ${text.slice(0, 200)}` }, 500);
+          if (!response.ok) {
+            const text = await response.text();
+            errors.push(`${model}: OpenRouter error ${response.status}: ${text.slice(0, 200)}`);
+            continue;
+          }
+
+          const result = await response.json();
+          let content = result.choices?.[0]?.message?.content;
+          if (Array.isArray(content)) {
+            content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
+          }
+          const text = typeof content === "string" ? sanitizeResponse(content) : "";
+          if (!text) {
+            errors.push(`${model}: OpenRouter returned empty content.`);
+            continue;
+          }
+          const parsed = parseModelJsonArray(text);
+          return json({ engine: "openrouter", model, records: parsed });
+        } catch (error) {
+          errors.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
 
-      const result = await response.json();
-      let content = result.choices?.[0]?.message?.content;
-      if (Array.isArray(content)) {
-        content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
-      }
-      const text = typeof content === "string" ? sanitizeResponse(content) : "";
-      if (!text) return json({ error: "OpenRouter returned empty content." }, 500);
-      const parsed = parseModelJsonArray(text);
-      return json({ engine: "openrouter", records: parsed });
+      return json(
+        {
+          error: `All OpenRouter models failed. ${errors.join(" | ").slice(0, 1500)}`
+        },
+        500
+      );
     }
 
     return json({ error: "No available translation engine." }, 400);

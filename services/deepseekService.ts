@@ -1,9 +1,20 @@
 import { POCTRecord, TargetLanguage } from "../types";
 import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "../utils/glossary";
 import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
+import { getSeedGlossaryPrompt } from "../utils/seedTerminology";
 
 const API_URL = "https://api.deepseek.com/v1/chat/completions";
 const DEFAULT_MODEL = "deepseek-chat";
+
+const joinGlossaryBlocks = (...blocks: Array<string | undefined>) =>
+  Array.from(
+    new Set(
+      blocks
+        .flatMap((block) => String(block || "").split("\n"))
+        .map((line) => line.trim())
+        .filter(Boolean)
+    )
+  ).join("\n");
 
 const getEnvKey = (): string => {
   const viteKey =
@@ -36,11 +47,17 @@ export class DeepseekService {
     }
 
     const useEnglishGlossary = shouldUseEnglishGlossary(targetLang);
-    const glossarySection = useEnglishGlossary
-      ? `\nGlossary (Chinese => preferred term):\n${GLOSSARY_PROMPT}\n`
+    const sourceText = JSON.stringify(records);
+    const seedGlossaryPrompt = getSeedGlossaryPrompt(targetLang, sourceText);
+    const combinedGlossaryPrompt = joinGlossaryBlocks(
+      useEnglishGlossary ? GLOSSARY_PROMPT : "",
+      seedGlossaryPrompt
+    );
+    const glossarySection = combinedGlossaryPrompt
+      ? `\nTerminology (Chinese => preferred target wording):\n${combinedGlossaryPrompt}\n`
       : "";
-    const glossaryRule = useEnglishGlossary
-      ? "- Always map glossary terms to the preferred wording exactly."
+    const glossaryRule = combinedGlossaryPrompt
+      ? "- Follow the terminology list exactly when the source contains those concepts."
       : `- Translate medical terminology fully into ${targetLang}. Keep only true codes, model numbers, and standard abbreviations (e.g., WBC, RBC, QC) unchanged.`;
 
     const prompt = `

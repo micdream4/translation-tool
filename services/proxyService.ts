@@ -27,12 +27,13 @@ export class ProxyTranslationService {
   async translateBatch(
     records: POCTRecord[],
     targetLang: TargetLanguage,
-    engine: ProxyEngine = "auto"
+    engine: ProxyEngine = "auto",
+    model?: string
   ): Promise<POCTRecord[]> {
     const response = await fetch(this.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ records, targetLang, engine })
+      body: JSON.stringify({ records, targetLang, engine, model })
     });
 
     if (!response.ok) {

@@ -1,4 +1,5 @@
 import { PlaceholderMap, guardInlineTokens, restoreInlineTokens } from "./docx";
+import { getSeedProtectedTerms } from "./seedTerminology";
 
 const UUID_REGEX =
   /\b[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b/g;
@@ -14,7 +15,8 @@ const DEFAULT_PROTECTED_TERMS = [
   "Ehome Health Technology Co",
   "Ehome Health Technology",
   "Ehome Health Technology Co., Ltd.",
-  "Ehome Health Technology Co. , Ltd."
+  "Ehome Health Technology Co. , Ltd.",
+  ...getSeedProtectedTerms()
 ];
 
 const normalizeProtectedText = (value: string) =>

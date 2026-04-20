@@ -9,6 +9,7 @@ export interface TranslationRequest {
   targetLang: TargetLanguage;
   options?: {
     model?: "deepseek" | "gemini" | "openrouter";
+    openRouterModel?: string;
   };
 }
 
@@ -165,7 +166,8 @@ export class TranslationHub {
       const translated = await this.proxy.translateBatch(
         req.records,
         req.targetLang,
-        engine
+        engine,
+        req.options?.openRouterModel
       );
       this.lastEngine = this.proxy.getLastEngine();
       return translated;

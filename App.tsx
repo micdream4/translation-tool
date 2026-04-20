@@ -35,7 +35,7 @@ import {
 } from './utils/translationTokens';
 import { guardStringResourceTokens, parseStringResourceLine, restoreStringResourceTokens } from './utils/stringResources';
 import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
-import { hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX } from './utils/quality';
+import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX } from './utils/quality';
 import {
   ClinicalRule,
   CrossCheckResult,
@@ -63,6 +63,26 @@ const STRING_TARGET_LANGS: TargetLanguage[] = [
   'Portuguese'
 ];
 const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
+const DEFAULT_OPENROUTER_MODELS = [
+  'google/gemini-3-flash-preview',
+  'qwen/qwen3.6-plus',
+  'deepseek/deepseek-v3.2'
+] as const;
+const AUTO_OPENROUTER_MODEL = '__AUTO_OPENROUTER__';
+const OPENROUTER_MODEL_LABELS: Record<string, string> = {
+  'google/gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+  'qwen/qwen3.6-plus': 'Qwen 3.6 Plus',
+  'deepseek/deepseek-v3.2': 'DeepSeek V3.2'
+};
+
+const parseOpenRouterModelOptions = () => {
+  const raw =
+    String((import.meta as any)?.env?.VITE_OPENROUTER_MODELS || '').trim();
+  const values = raw
+    ? raw.split(/[,\n;]+/).map((item: string) => item.trim()).filter(Boolean)
+    : [...DEFAULT_OPENROUTER_MODELS];
+  return Array.from(new Set(values));
+};
 
 const parseRuntimeProtectedTerms = (raw: string) =>
   Array.from(
@@ -232,7 +252,7 @@ const applyPostprocessRow = (
     const sourceText = typeof originalValue === 'string' ? originalValue : '';
     output[key] = polishTranslation(sourceText, value, lang);
   });
-  return normalizeTerminology(output, lang);
+  return normalizeTerminology(output, lang, original);
 };
 
 const createInitialStages = (): WorkflowStageState[] => ([
@@ -291,8 +311,9 @@ const App: React.FC = () => {
 
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
-  const [enginePreference, setEnginePreference] = useState<'auto' | 'openrouter' | 'deepseek'>(
-    capabilities.openrouter ? 'openrouter' : 'deepseek'
+  const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
+  const [translationModelPreference, setTranslationModelPreference] = useState<string>(
+    AUTO_OPENROUTER_MODEL
   );
   const ruleEngine = useMemo(() => new RuleEngine(), []);
   const multiAIJudge = useMemo(() => new MultiAIJudge(), []);
@@ -309,12 +330,21 @@ const App: React.FC = () => {
     if (capabilities.deepseek) engines.push('deepseek');
     if (capabilities.gemini) engines.push('gemini');
 
-    if (respectSelectedEngine && enginePreference !== 'auto') {
-      if (enginePreference === 'openrouter' && capabilities.openrouter) return ['openrouter'];
-      if (enginePreference === 'deepseek' && capabilities.deepseek) return ['deepseek'];
+    if (respectSelectedEngine && translationModelPreference !== AUTO_OPENROUTER_MODEL) {
+      if (capabilities.openrouter) return ['openrouter'];
     }
 
     return engines.length > 0 ? engines : ['openrouter'];
+  };
+
+  const getTranslationOptions = () => {
+    if (translationModelPreference === AUTO_OPENROUTER_MODEL) {
+      return undefined;
+    }
+    return {
+      model: 'openrouter' as const,
+      openRouterModel: translationModelPreference
+    };
   };
 
   const shouldTranslateValue = (value: unknown) => {
@@ -844,7 +874,7 @@ const App: React.FC = () => {
             translatedBatch = await translationHub.translateBatch({
               records: payload,
               targetLang,
-              options: enginePreference === 'auto' ? undefined : { model: enginePreference }
+              options: getTranslationOptions()
             });
             addLog(`Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
           } catch (err) {
@@ -1024,7 +1054,7 @@ const App: React.FC = () => {
             translatedBatch = await translationHub.translateBatch({
               records: payload,
               targetLang,
-              options: enginePreference === 'auto' ? undefined : { model: enginePreference }
+              options: getTranslationOptions()
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -1161,7 +1191,11 @@ const App: React.FC = () => {
         const restored = restoreStringResourceTokens(candidate, placeholders);
         const fixed = stringAutoFix ? applyStringAutoFix(restored) : restored;
         const polished = polishTranslation(entry.content || '', fixed, lang);
-        const normalized = normalizeTerminology({ content: polished }, lang);
+        const normalized = normalizeTerminology(
+          { content: polished },
+          lang,
+          { content: entry.content }
+        );
         const normalizedContent =
           typeof normalized.content === 'string' ? normalized.content : polished;
         return `${entry.prefix}${normalizedContent}${entry.suffix}`;
@@ -1179,7 +1213,7 @@ const App: React.FC = () => {
         const translatedBatch = await translationHub.translateBatch({
           records: payload,
           targetLang: lang,
-          options: enginePreference === 'auto' ? undefined : { model: enginePreference }
+          options: getTranslationOptions()
         });
         return buildOutput(translatedBatch, lang);
       })
@@ -1427,7 +1461,7 @@ const App: React.FC = () => {
             translatedBatch = await translationHub.translateBatch({
               records: sanitizedRecords,
               targetLang,
-              options: enginePreference === 'auto' ? undefined : { model: enginePreference }
+              options: getTranslationOptions()
             });
             addLog(`Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
           } catch (error) {
@@ -1473,7 +1507,7 @@ const App: React.FC = () => {
               }
             });
 
-            finalResults[rowIdx] = normalizeTerminology(merged, targetLang);
+            finalResults[rowIdx] = normalizeTerminology(merged, targetLang, data[rowIdx]);
             const stillUntranslated =
               detectUntranslatedCells([finalResults[rowIdx]], targetLang).length > 0;
             if (stillUntranslated) {
@@ -1645,7 +1679,9 @@ const App: React.FC = () => {
     }
     addLog(`Retry Missing Cells: 针对 ${uniqueIndices.length} 行重新翻译...`);
 
-    const fallbackPriority = getFallbackPriority(enginePreference !== 'auto');
+    const fallbackPriority = getFallbackPriority(
+      translationModelPreference !== AUTO_OPENROUTER_MODEL
+    );
 
     const sourceRecords =
       baseSnapshot && baseSnapshot.length === data.length
@@ -1757,7 +1793,13 @@ const App: React.FC = () => {
           translatedBatch = await translationHub.translateBatch({
             records: chunk.map(item => item.sanitizedRow),
             targetLang,
-            options: { model }
+            options: {
+              model,
+              openRouterModel:
+                model === 'openrouter' && translationModelPreference !== AUTO_OPENROUTER_MODEL
+                  ? translationModelPreference
+                  : undefined
+            }
           });
           addLog(`Retry Missing Cells: Batch ${batchNum} 使用 ${model} 成功。`);
           break;
@@ -1814,7 +1856,7 @@ const App: React.FC = () => {
           }
         });
 
-        baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang);
+        baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang, data[rowIdx]);
         const stillUntranslated =
           detectUntranslatedCells([baseProcessed[rowIdx]], targetLang).length > 0;
         const isComplete = !stillUntranslated;
@@ -1874,7 +1916,8 @@ const App: React.FC = () => {
 
   const retryCellsByKeys = async (
     items: Array<{ rowIdx: number; keys: Set<string> }>,
-    label: string
+    label: string,
+    options?: { forceTranslate?: boolean }
   ) => {
     const retryItems: Array<{
       rowIdx: number;
@@ -1894,7 +1937,11 @@ const App: React.FC = () => {
           sanitizedRow[key] = value;
           return;
         }
-        if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value)) {
+        if (
+          !value.trim() ||
+          shouldLockCell(key, value) ||
+          (!options?.forceTranslate && !shouldTranslateValue(value))
+        ) {
           return;
         }
         const { sanitized, placeholders } = guardTranslationTokens(value);
@@ -1919,7 +1966,9 @@ const App: React.FC = () => {
 
     addLog(`${label}: 针对 ${retryItems.length} 行重新翻译...`);
 
-    const fallbackPriority = getFallbackPriority(enginePreference !== 'auto');
+    const fallbackPriority = getFallbackPriority(
+      translationModelPreference !== AUTO_OPENROUTER_MODEL
+    );
 
     const baseProcessed =
       processedData.length === data.length
@@ -1942,7 +1991,13 @@ const App: React.FC = () => {
           translatedBatch = await translationHub.translateBatch({
             records: chunk.map(item => item.sanitizedRow),
             targetLang,
-            options: { model }
+            options: {
+              model,
+              openRouterModel:
+                model === 'openrouter' && translationModelPreference !== AUTO_OPENROUTER_MODEL
+                  ? translationModelPreference
+                  : undefined
+            }
           });
           addLog(`${label}: Batch ${batchNum} 使用 ${model} 成功。`);
           break;
@@ -1966,7 +2021,10 @@ const App: React.FC = () => {
 
         item.keys.forEach((key) => {
           const originalValue = original[key];
-          if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue)) {
+          if (
+            shouldLockCell(key, originalValue) ||
+            (!options?.forceTranslate && !shouldTranslateValue(originalValue))
+          ) {
             return;
           }
           if (updated[key] === undefined) return;
@@ -1987,7 +2045,7 @@ const App: React.FC = () => {
           }
         });
 
-        baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang);
+        baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang, data[rowIdx]);
         updatedFlags[rowIdx] = true;
       });
 
@@ -2011,11 +2069,13 @@ const App: React.FC = () => {
   };
 
   const retryPlaceholderCells = async () => {
-    if (!qualityReport) {
-      addLog('Retry Placeholder Cells: 请先执行质量检查。');
+    const target =
+      documentKind === 'excel' && processedData.length > 0 ? processedData : data;
+    if (!target.length) {
+      addLog('Retry Placeholder Cells: 当前没有可扫描的数据。');
       return;
     }
-    const issues = qualityReport.issues.placeholders;
+    const issues = collectPlaceholderIssues(data, target);
     if (!issues.length) {
       addLog('Retry Placeholder Cells: 未检测到占位符残留。');
       return;
@@ -2031,7 +2091,8 @@ const App: React.FC = () => {
       rowIdx,
       keys
     }));
-    await retryCellsByKeys(items, 'Retry Placeholder Cells');
+    addLog(`Retry Placeholder Cells: 实时检测到 ${issues.length} 个占位符异常单元格。`);
+    await retryCellsByKeys(items, 'Retry Placeholder Cells', { forceTranslate: true });
   };
 
   const runStage = async (
@@ -2240,7 +2301,13 @@ const App: React.FC = () => {
   const isStringTranslating = stringStatus === 'running';
   const hasStringOutputs = Object.keys(stringOutputs).length > 0;
   const hasQualityReport = Boolean(qualityReport);
-  const placeholderIssueCount = qualityReport?.totals.placeholderCells ?? 0;
+  const livePlaceholderIssues = useMemo(() => {
+    if (documentKind !== 'excel') return [];
+    const target = processedData.length > 0 ? processedData : data;
+    if (!target.length) return [];
+    return collectPlaceholderIssues(data, target);
+  }, [documentKind, data, processedData]);
+  const placeholderIssueCount = livePlaceholderIssues.length;
   const formatSnapshot = excelContext
     ? {
         sheetName: excelContext.sheetName,
@@ -2379,21 +2446,23 @@ const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Translation Engine</label>
+                <label className="block text-sm font-medium text-slate-400 mb-2">Translation Model</label>
                 <select
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
-                  value={enginePreference}
-                  onChange={(e) => setEnginePreference(e.target.value as 'auto' | 'openrouter' | 'deepseek')}
+                  value={translationModelPreference}
+                  onChange={(e) => setTranslationModelPreference(e.target.value)}
                   disabled={isTranslating}
                 >
-                  <option value="auto">Auto (优先 OpenRouter)</option>
-                  <option value="openrouter" disabled={!capabilities.openrouter}>
-                    OpenRouter Gemini 3 Flash {capabilities.openrouter ? '' : '(未配置)'}
-                  </option>
-                  <option value="deepseek" disabled={!capabilities.deepseek}>
-                    Deepseek {capabilities.deepseek ? '' : '(未配置)'}
-                  </option>
+                  <option value={AUTO_OPENROUTER_MODEL}>Auto (Gemini → Qwen → DeepSeek)</option>
+                  {openRouterModels.map((model) => (
+                    <option key={model} value={model} disabled={!capabilities.openrouter}>
+                      {OPENROUTER_MODEL_LABELS[model] || model}
+                    </option>
+                  ))}
                 </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Auto 会按 Gemini → Qwen → DeepSeek 顺序自动切换；手工选择时只使用当前模型。
+                </p>
               </div>
 
               <div>
@@ -2587,6 +2656,11 @@ const App: React.FC = () => {
                   >
                     Retry Placeholder Cells
                   </button>
+                  {documentKind === 'excel' && placeholderIssueCount > 0 && (
+                    <p className="text-[11px] text-amber-300 text-center">
+                      当前结果中实时检测到 {placeholderIssueCount} 个占位符异常单元格，可直接重译，无需先运行 Quality Check。
+                    </p>
+                  )}
                 </div>
               </div>
 

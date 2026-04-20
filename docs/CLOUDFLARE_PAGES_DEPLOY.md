@@ -27,8 +27,14 @@ Recommended for controlled sharing:
 - `ALLOWED_USER_EMAILS=user1@company.com,user2@company.com`
 - `OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}`
 - `OPENROUTER_MODEL=google/gemini-3-flash-preview`
+- `OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v3.2`
 - `ALLOW_LOCAL_WITHOUT_ACCESS=false`
 - `REQUIRE_CF_ACCESS_EMAIL=true`（仅当你已配置 Cloudflare Access 并希望强制登录邮箱身份时开启）
+
+说明：
+- 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。
+- `OPENROUTER_MODEL` 仍可保留给单模型场景；多模型时优先使用 `OPENROUTER_MODELS`。
+- 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。
 
 Public sharing (no Access) notes:
 - 不配置 `ALLOWED_USER_EMAILS` 且保持 `REQUIRE_CF_ACCESS_EMAIL` 为空或 `false`。

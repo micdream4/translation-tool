@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "prepare:terminology": "node scripts/generateTerminologyAssets.mjs",
+    "dev": "npm run prepare:terminology && vite",
+    "build": "npm run prepare:terminology && vite build",
     "preview": "vite preview",
     "deepseek:test": "node scripts/deepseekTest.mjs",
     "docx:translate": "python3 scripts/translate_docx_openrouter.py",

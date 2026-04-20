@@ -27,6 +27,7 @@
    VITE_DEEPSEEK_API_KEY=your_key
    GEMINI_API_KEY=your_key
    OPENROUTER_API_KEY=your_key
+   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v3.2
    ```
 3. 启动开发环境
    ```bash
@@ -74,6 +75,9 @@
    # 可选：未命中邮箱映射时的兜底 Key
    OPENROUTER_API_KEY=sk-or-fallback
 
+   # 可选：OpenRouter 内部模型回退列表，按顺序尝试
+   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v3.2
+
    # 可选：本地调试（线上不要开）
    ALLOW_LOCAL_WITHOUT_ACCESS=false
 
@@ -88,6 +92,7 @@
 
 5. 安全建议  
    不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。
+   如果某个 OpenRouter 模型存在区域限制，优先改 `OPENROUTER_MODELS`，而不是改前端代码。
 
 ## 适用场景
 - 医疗设备说明书、质控手册、检验参考区间等多语种版本同步

@@ -143,6 +143,27 @@ type DocxIssueDetail = {
   issueType: 'source' | 'placeholder' | 'glue';
 };
 
+type QualityFinding = {
+  id: string;
+  category: 'nonTarget' | 'chinese' | 'emptyTranslation' | 'placeholder' | 'idMismatch' | 'spacing' | 'structureMismatch';
+  rowIndex: number;
+  columnKey: string;
+  locationLabel: string;
+  original: string;
+  translated: string;
+  description: string;
+};
+
+type SampleReviewItem = {
+  id: string;
+  rowIndex: number;
+  columnKey: string;
+  locationLabel: string;
+  original: string;
+  translated: string;
+  reason: string;
+};
+
 const isSevereDocxIssue = (issue: DocxIssueDetail) => {
   if (issue.issueType === 'placeholder') return true;
   if (issue.issueType === 'source' && issue.chineseChars >= 2) return true;
@@ -277,6 +298,9 @@ const App: React.FC = () => {
   const [aiFindings, setAiFindings] = useState<CrossCheckResult[]>([]);
   const [translationIssues, setTranslationIssues] = useState<IssueSummaryState>(createIssueSummary());
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
+  const [previewFocus, setPreviewFocus] = useState<{ rowIndex: number; columnKey: string } | null>(null);
+  const [sampleReviewCount, setSampleReviewCount] = useState<number>(20);
+  const [sampleReviewItems, setSampleReviewItems] = useState<SampleReviewItem[]>([]);
   const [activeStage, setActiveStage] = useState<WorkflowStageKey | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [translationStatus, setTranslationStatus] = useState<'idle' | 'running' | 'paused' | 'completed'>('idle');
@@ -303,6 +327,7 @@ const App: React.FC = () => {
   });
   const docxContextRef = useRef<DocxContext | null>(null);
   const docxPlaceholderStore = useRef<Map<string, Record<string, string>>>(new Map());
+  const previewSectionRef = useRef<HTMLElement | null>(null);
   const [docxIssueIndices, setDocxIssueIndices] = useState<number[]>([]);
   const [docxIssueDetails, setDocxIssueDetails] = useState<DocxIssueDetail[]>([]);
   const [docxStats, setDocxStats] = useState<{ total: number; translated: number }>({ total: 0, translated: 0 });
@@ -372,6 +397,8 @@ const App: React.FC = () => {
     setFile(uploadedFile);
     setSavedSnapshot(null);
     snapshotPromptKeyRef.current = '';
+    setPreviewFocus(null);
+    setSampleReviewItems([]);
     const identifier = `${uploadedFile.name}-${uploadedFile.size}-${uploadedFile.lastModified || Date.now()}`;
     setFileId(identifier);
     setQualityReport(null);
@@ -613,6 +640,175 @@ const App: React.FC = () => {
     return displayed.join(', ') + (picked.length > limit ? ', ...' : '');
   };
 
+  const formatLocationLabel = (rowIndex: number, columnKey: string) => {
+    const rowNo = formatExcelRowNumber(rowIndex);
+    return columnKey === '__ROW__' ? `R${rowNo}` : `R${rowNo}/${columnKey}`;
+  };
+
+  const exportQualityReport = () => {
+    if (!qualityReport) {
+      addLog('Quality Report: 当前没有可导出的检查结果。');
+      return;
+    }
+    const findings = [
+      ...currentIssueSummary.details.map((item) => ({
+        type: 'Non-target language',
+        location: formatLocationLabel(item.rowIndex, item.columnKey),
+        original: typeof data[item.rowIndex]?.[item.columnKey] === 'string' ? data[item.rowIndex][item.columnKey] : '',
+        translated: typeof currentRowsForRetry[item.rowIndex]?.[item.columnKey] === 'string'
+          ? currentRowsForRetry[item.rowIndex][item.columnKey]
+          : ''
+      })),
+      ...qualityReport.issues.emptyTranslations.map((item) => ({
+        type: 'Empty translation',
+        location: formatLocationLabel(item.rowIndex, item.columnKey),
+        original: item.original || '',
+        translated: item.value || ''
+      })),
+      ...qualityReport.issues.structureMismatches.map((item) => ({
+        type: 'Structure mismatch',
+        location: formatLocationLabel(item.rowIndex, item.columnKey),
+        original: item.original || '',
+        translated: item.value || ''
+      })),
+      ...qualityReport.issues.placeholders.map((item) => ({
+        type: 'Placeholder',
+        location: formatLocationLabel(item.rowIndex, item.columnKey),
+        original: item.original || '',
+        translated: item.value || ''
+      })),
+      ...qualityReport.issues.idMismatch.map((item) => ({
+        type: 'ID mismatch',
+        location: formatLocationLabel(item.rowIndex, item.columnKey),
+        original: item.original || '',
+        translated: item.value || ''
+      })),
+      ...qualityReport.issues.spacing.map((item) => ({
+        type: 'Spacing issue',
+        location: formatLocationLabel(item.rowIndex, item.columnKey),
+        original: item.original || '',
+        translated: item.value || ''
+      }))
+    ];
+
+    const lines = [
+      'POCT Translation Quality Report',
+      `Generated: ${new Date().toLocaleString()}`,
+      `Target language: ${targetLang}`,
+      '',
+      'Overview',
+      `- Rows scanned: ${qualityReport.totals.rowsScanned}`,
+      `- Cells scanned: ${qualityReport.totals.cellsScanned}`,
+      `- Non-target residual: ${currentIssueSummary.cells} cells / ${currentIssueSummary.rows} rows`,
+      `- Chinese residue: ${qualityReport.totals.chineseCells} cells / ${qualityReport.totals.chineseRows} rows`,
+      `- Empty translations: ${qualityReport.totals.emptyTranslations} cells / ${qualityReport.totals.emptyTranslationRows} rows`,
+      `- Placeholders: ${qualityReport.totals.placeholderCells} cells / ${qualityReport.totals.placeholderRows} rows`,
+      `- ID mismatch: ${qualityReport.totals.idMismatches} cells / ${qualityReport.totals.idMismatchRows} rows`,
+      `- Spacing issues: ${qualityReport.totals.spacingIssues} cells / ${qualityReport.totals.spacingRows} rows`,
+      `- Structure mismatch: ${qualityReport.totals.structureMismatches} cells / ${qualityReport.totals.structureMismatchRows} rows`,
+      '',
+      'Findings'
+    ];
+
+    findings.slice(0, 200).forEach((item, index) => {
+      lines.push(
+        `${index + 1}. [${item.type}] ${item.location}`,
+        `   Source: ${String(item.original || '').replace(/\s+/g, ' ').trim() || '(empty)'}`,
+        `   Target: ${String(item.translated || '').replace(/\s+/g, ' ').trim() || '(empty)'}`
+      );
+    });
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(`Quality_Report_${targetLang}_${stamp}.txt`, lines.join('\n'));
+    addLog('Quality Report: 已导出当前检查报告。');
+  };
+
+  const jumpToPreviewCell = (rowIndex: number, columnKey: string) => {
+    setPreviewFocus({ rowIndex, columnKey });
+    window.requestAnimationFrame(() => {
+      previewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const generateSampleReview = () => {
+    if (documentKind !== 'excel') {
+      addLog('Sample Review: 当前仅支持 Excel 文档。');
+      return;
+    }
+    if (!processedData.length) {
+      addLog('Sample Review: 请先完成翻译，再生成抽样检查。');
+      return;
+    }
+
+    const issueMap = new Map<number, QualityFinding[]>();
+    qualityFindings.forEach((item) => {
+      if (!issueMap.has(item.rowIndex)) issueMap.set(item.rowIndex, []);
+      issueMap.get(item.rowIndex)!.push(item);
+    });
+
+    const scoredRows = processedData
+      .map((row, rowIndex) => {
+        const issues = issueMap.get(rowIndex) || [];
+        const originalRow = data[rowIndex] || {};
+        const keys = Object.keys({ ...originalRow, ...row });
+        const textCandidates = keys
+          .map((key) => {
+            const source = typeof originalRow[key] === 'string' ? originalRow[key].trim() : '';
+            const translated = typeof row[key] === 'string' ? row[key].trim() : '';
+            return { key, source, translated };
+          })
+          .filter((item) => item.source || item.translated);
+
+        if (!textCandidates.length) return null;
+
+        const preferredIssue = issues.find((item) => item.columnKey !== '__ROW__');
+        const longest = [...textCandidates].sort((a, b) => b.source.length - a.source.length)[0];
+        const chosen = preferredIssue
+          ? textCandidates.find((item) => item.key === preferredIssue.columnKey) || longest
+          : longest;
+
+        if (!chosen) return null;
+
+        const maxLength = chosen.source.length;
+        const reason =
+          issues.length > 0
+            ? 'Issue-hit'
+            : maxLength >= 36
+              ? 'Long sentence'
+              : maxLength <= 12
+                ? 'Short label'
+                : 'General row';
+
+        const priority = issues.length > 0 ? 3 : maxLength >= 36 ? 2 : maxLength <= 12 ? 1 : 0;
+        return {
+          rowIndex,
+          columnKey: chosen.key,
+          original: chosen.source,
+          translated: chosen.translated,
+          reason,
+          priority
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        return b.original.length - a.original.length;
+      });
+
+    const picked = scoredRows.slice(0, sampleReviewCount).map((item) => ({
+      id: `${item.rowIndex}-${item.columnKey}`,
+      rowIndex: item.rowIndex,
+      columnKey: item.columnKey,
+      locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
+      original: item.original,
+      translated: item.translated,
+      reason: item.reason
+    }));
+
+    setSampleReviewItems(picked);
+    addLog(`Sample Review: 已生成 ${picked.length} 条抽样检查样本。`);
+  };
+
   const runQualityCheck = () => {
     if (documentKind !== 'excel') {
       addLog('Quality Check: 当前仅支持 Excel 文档。');
@@ -625,6 +821,7 @@ const App: React.FC = () => {
     }
     const report = runQualityChecks(data, target);
     setQualityReport(report);
+    setSampleReviewItems([]);
     // Keep top warning banners in sync with the latest dataset snapshot.
     const { summary, refreshedMissing, refreshedWriteFailed } = refreshTranslationIssues(target);
     persistProgress(
@@ -635,9 +832,11 @@ const App: React.FC = () => {
     );
     addLog(
       `Quality Check: 非目标语言残留 ${summary.cells} 个（${summary.rows} 行），中文残留 ${report.totals.chineseCells} 个，` +
+      `空白漏翻 ${report.totals.emptyTranslations} 个，` +
       `占位符 ${report.totals.placeholderCells} 个，` +
       `ID 异常 ${report.totals.idMismatches} 个，` +
-      `格式问题 ${report.totals.spacingIssues} 个。`
+      `格式问题 ${report.totals.spacingIssues} 个，` +
+      `结构异常 ${report.totals.structureMismatches} 个。`
     );
     if (summary.details.length > 0) {
       const preview = formatIssueLocationPreview(summary.details, 6);
@@ -699,6 +898,7 @@ const App: React.FC = () => {
     setTranslatedFlags(flags);
     persistProgress(fixed, flags, refreshedMissing, refreshedWriteFailed);
     setQualityReport(runQualityChecks(data, fixed));
+    setSampleReviewItems([]);
     addLog('Quality Fix: 已应用常见格式与 ID 修复。');
   };
 
@@ -2061,6 +2261,7 @@ const App: React.FC = () => {
     const { refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(synced);
     persistProgress(synced, [...updatedFlags], refreshedMissing, refreshedWriteFailed);
     setQualityReport(runQualityChecks(data, synced));
+    setSampleReviewItems([]);
     if (mergedRowIndices.length === 0) {
       addLog(`${label}: 完成重译，当前无待补译内容。`);
     } else {
@@ -2316,6 +2517,94 @@ const App: React.FC = () => {
         merges: (excelContext.worksheet['!merges'] || []).length
       }
     : null;
+  const qualityFindings = useMemo<QualityFinding[]>(() => {
+    if (!qualityReport) return [];
+
+    const findingMap = new Map<string, QualityFinding>();
+    const pushFinding = (finding: QualityFinding) => {
+      if (!findingMap.has(finding.id)) {
+        findingMap.set(finding.id, finding);
+      }
+    };
+
+    currentIssueSummary.details.forEach((item) => {
+      const translated =
+        typeof currentRowsForRetry[item.rowIndex]?.[item.columnKey] === 'string'
+          ? currentRowsForRetry[item.rowIndex][item.columnKey]
+          : '';
+      pushFinding({
+        id: `nonTarget-${item.rowIndex}-${item.columnKey}`,
+        category: 'nonTarget',
+        rowIndex: item.rowIndex,
+        columnKey: item.columnKey,
+        locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
+        original: typeof data[item.rowIndex]?.[item.columnKey] === 'string' ? data[item.rowIndex][item.columnKey] : '',
+        translated,
+        description: '检测到非目标语言残留'
+      });
+    });
+
+    const appendQualityIssues = (
+      category: QualityFinding['category'],
+      list: Array<{ rowIndex: number; columnKey: string; original?: string; value: string }>,
+      description: string
+    ) => {
+      list.forEach((item) => {
+        pushFinding({
+          id: `${category}-${item.rowIndex}-${item.columnKey}`,
+          category,
+          rowIndex: item.rowIndex,
+          columnKey: item.columnKey,
+          locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
+          original: item.original || '',
+          translated: item.value || '',
+          description
+        });
+      });
+    };
+
+    appendQualityIssues('chinese', qualityReport.issues.chinese, '仍有中文残留');
+    appendQualityIssues('emptyTranslation', qualityReport.issues.emptyTranslations, '原文可译，但目标单元格为空');
+    appendQualityIssues('placeholder', qualityReport.issues.placeholders, '占位符泄漏');
+    appendQualityIssues('idMismatch', qualityReport.issues.idMismatch, '锁定字段与原文不一致');
+    appendQualityIssues('spacing', qualityReport.issues.spacing, '格式或空格异常');
+    appendQualityIssues('structureMismatch', qualityReport.issues.structureMismatches, '表结构与原文不一致');
+
+    const order: Record<QualityFinding['category'], number> = {
+      nonTarget: 0,
+      emptyTranslation: 1,
+      structureMismatch: 2,
+      placeholder: 3,
+      idMismatch: 4,
+      chinese: 5,
+      spacing: 6
+    };
+
+    return [...findingMap.values()].sort((a, b) => {
+      if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+      if (order[a.category] !== order[b.category]) return order[a.category] - order[b.category];
+      return a.columnKey.localeCompare(b.columnKey);
+    });
+  }, [qualityReport, currentIssueSummary.details, currentRowsForRetry, data, excelContext]);
+  const previewData = processedData.length > 0 ? processedData : data;
+  const previewRowIndices = useMemo(() => {
+    if (!previewData.length) return [];
+    if (previewFocus) {
+      const start = Math.max(0, previewFocus.rowIndex - 2);
+      const end = Math.min(previewData.length - 1, previewFocus.rowIndex + 2);
+      return Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
+    }
+    const count = Math.min(10, previewData.length);
+    return Array.from({ length: count }, (_, idx) => previewData.length - 1 - idx);
+  }, [previewData, previewFocus]);
+  const previewColumnKeys = useMemo(() => {
+    if (!previewData.length) return [];
+    const rowIndex = previewFocus?.rowIndex ?? previewRowIndices[0] ?? 0;
+    const mergedKeys = Object.keys({ ...(data[rowIndex] || {}), ...(previewData[rowIndex] || {}) });
+    if (!previewFocus) return mergedKeys.slice(0, 6);
+    const base = mergedKeys.slice(0, 5);
+    return Array.from(new Set([...base, previewFocus.columnKey])).slice(0, 6);
+  }, [previewData, previewFocus, previewRowIndices, data]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200">
@@ -2344,7 +2633,7 @@ const App: React.FC = () => {
                 <li>全量翻译：重写所有行，适合首次翻译。</li>
                 <li>智能补译：仅补中文单元格，适合修补或续翻。</li>
                 <li>Retry Missing Cells：只重译缺失单元格，避免重复消耗。</li>
-                <li>Quality Check：扫描中文残留、占位符、ID 异常与格式问题。</li>
+                <li>Quality Check：扫描非目标语言、空白漏翻、占位符、ID 异常、结构与格式问题。</li>
                 <li>Apply Cleanup：自动修复常见空格与术语格式问题。</li>
                 <li>Retry Placeholder Cells：仅重译占位符异常单元格。</li>
                 <li>组合校验 / 多 AI 核验：可选进一步核查。</li>
@@ -2774,83 +3063,6 @@ const App: React.FC = () => {
             </div>
           </section>
 
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Quality Report</h3>
-
-            {!hasQualityReport && (
-              <p className="text-xs text-slate-500 mt-4">
-                运行检查后会显示格式、ID、占位符与残留中文等统计。
-              </p>
-            )}
-
-            {hasQualityReport && qualityReport && (
-              <div className="mt-4 space-y-3 text-xs text-slate-400">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Scanned</p>
-                    <p className="text-sm text-slate-200">
-                      {qualityReport.totals.rowsScanned} rows / {qualityReport.totals.cellsScanned} cells
-                    </p>
-                  </div>
-                  {formatSnapshot && (
-                    <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                      <p className="text-[11px] text-slate-500">Format</p>
-                      <p className="text-sm text-slate-200">
-                        {formatSnapshot.sheetName} · {formatSnapshot.rows}x{formatSnapshot.cols} · merges {formatSnapshot.merges}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Chinese Residue</p>
-                    <p className="text-sm text-slate-200">
-                      {qualityReport.totals.chineseCells} cells / {qualityReport.totals.chineseRows} rows
-                    </p>
-                  </div>
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Placeholders</p>
-                    <p className="text-sm text-slate-200">
-                      {qualityReport.totals.placeholderCells} cells / {qualityReport.totals.placeholderRows} rows
-                    </p>
-                  </div>
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">ID Mismatch</p>
-                    <p className="text-sm text-slate-200">
-                      {qualityReport.totals.idMismatches} cells / {qualityReport.totals.idMismatchRows} rows
-                    </p>
-                  </div>
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Spacing Issues</p>
-                    <p className="text-sm text-slate-200">
-                      {qualityReport.totals.spacingIssues} cells / {qualityReport.totals.spacingRows} rows
-                    </p>
-                  </div>
-                </div>
-
-                {qualityReport.issues.placeholders.length > 0 && (
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-amber-300 mb-1">Placeholder Samples</p>
-                    {qualityReport.issues.placeholders.slice(0, 3).map((issue, idx) => (
-                      <p key={`${issue.rowIndex}-${issue.columnKey}-${idx}`} className="text-[11px] text-slate-400">
-                        行 {formatExcelRowNumber(issue.rowIndex)} · {issue.columnKey}
-                      </p>
-                    ))}
-                  </div>
-                )}
-                {qualityReport.issues.idMismatch.length > 0 && (
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-rose-300 mb-1">ID Mismatch Samples</p>
-                    {qualityReport.issues.idMismatch.slice(0, 3).map((issue, idx) => (
-                      <p key={`${issue.rowIndex}-${issue.columnKey}-${idx}`} className="text-[11px] text-slate-400">
-                        行 {formatExcelRowNumber(issue.rowIndex)} · {issue.columnKey}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
         </div>
 
         <div className="lg:col-span-7 2xl:col-span-8 space-y-6">
@@ -2863,6 +3075,187 @@ const App: React.FC = () => {
               <button onClick={() => setLogs([])} className="text-xs text-slate-500 hover:text-slate-300">Clear</button>
              </div>
              <LogConsole logs={logs} />
+          </section>
+
+          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quality Report</h3>
+                <p className="text-xs text-slate-500 mt-2">
+                  这里汇总同一套 Quality Check 结果，并提供问题定位、导出和抽样检查。
+                </p>
+              </div>
+              <button
+                onClick={exportQualityReport}
+                disabled={!hasQualityReport}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  !hasQualityReport
+                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                }`}
+              >
+                Export Report
+              </button>
+            </div>
+
+            {!hasQualityReport && (
+              <p className="text-xs text-slate-500">
+                运行 `Run Quality Check` 后，这里会显示概览、问题列表和抽样审查入口。
+              </p>
+            )}
+
+            {hasQualityReport && qualityReport && (
+              <>
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
+                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
+                    <p className="text-[11px] text-slate-500">Scanned</p>
+                    <p className="text-sm text-slate-200 mt-1">
+                      {qualityReport.totals.rowsScanned} rows / {qualityReport.totals.cellsScanned} cells
+                    </p>
+                    {formatSnapshot && (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        {formatSnapshot.sheetName} · {formatSnapshot.rows}x{formatSnapshot.cols}
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
+                    <p className="text-[11px] text-slate-500">Residual</p>
+                    <p className="text-sm text-slate-200 mt-1">
+                      非目标语言 {currentIssueSummary.cells} / 中文 {qualityReport.totals.chineseCells}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {currentIssueSummary.rows} rows / {qualityReport.totals.chineseRows} rows
+                    </p>
+                  </div>
+                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
+                    <p className="text-[11px] text-slate-500">Repair Targets</p>
+                    <p className="text-sm text-slate-200 mt-1">
+                      空白漏翻 {qualityReport.totals.emptyTranslations}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      占位符 {qualityReport.totals.placeholderCells} · ID {qualityReport.totals.idMismatches}
+                    </p>
+                  </div>
+                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
+                    <p className="text-[11px] text-slate-500">Format & Structure</p>
+                    <p className="text-sm text-slate-200 mt-1">
+                      格式 {qualityReport.totals.spacingIssues}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      结构 {qualityReport.totals.structureMismatches}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Findings</h4>
+                    <span className="text-[11px] text-slate-500">
+                      {qualityFindings.length} items
+                    </span>
+                  </div>
+                  {qualityFindings.length === 0 ? (
+                    <p className="text-xs text-slate-500">当前未发现需要定位的问题。</p>
+                  ) : (
+                    <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
+                      {qualityFindings.slice(0, 40).map((finding) => (
+                        <div
+                          key={finding.id}
+                          className="rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+                        >
+                          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="space-y-1">
+                              <p className="text-xs text-slate-200 font-medium">
+                                {finding.description}
+                              </p>
+                              <p className="text-[11px] text-slate-500">{finding.locationLabel}</p>
+                              {finding.original && (
+                                <p className="text-[11px] text-slate-400">
+                                  原文：{finding.original.replace(/\s+/g, ' ').slice(0, 120)}
+                                </p>
+                              )}
+                              <p className="text-[11px] text-slate-500">
+                                译文：{(finding.translated || '(empty)').replace(/\s+/g, ' ').slice(0, 120)}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}
+                              className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all"
+                            >
+                              Jump
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3 border-t border-slate-800 pt-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sample Review</h4>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        第一版只做抽样检查，不调用模型，不改写译文。
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                        value={sampleReviewCount}
+                        onChange={(e) => setSampleReviewCount(Number(e.target.value))}
+                      >
+                        {[10, 20, 30, 50].map((value) => (
+                          <option key={value} value={value}>{value} samples</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={generateSampleReview}
+                        disabled={!hasQualityReport || processedData.length === 0}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                          !hasQualityReport || processedData.length === 0
+                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        }`}
+                      >
+                        Start Sample Review
+                      </button>
+                    </div>
+                  </div>
+
+                  {sampleReviewItems.length > 0 && (
+                    <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
+                      {sampleReviewItems.map((item) => (
+                        <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2">
+                          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                              <p className="text-xs text-slate-200 font-medium">{item.locationLabel}</p>
+                              <p className="text-[11px] text-slate-500 mt-1">抽样理由：{item.reason}</p>
+                            </div>
+                            <button
+                              onClick={() => jumpToPreviewCell(item.rowIndex, item.columnKey)}
+                              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all"
+                            >
+                              View In Table
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
+                            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                              <p className="text-slate-500 uppercase tracking-wider mb-2">Source</p>
+                              <p className="text-slate-300 whitespace-pre-wrap break-words">{item.original || '(empty)'}</p>
+                            </div>
+                            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                              <p className="text-slate-500 uppercase tracking-wider mb-2">Target</p>
+                              <p className="text-slate-300 whitespace-pre-wrap break-words">{item.translated || '(empty)'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </section>
 
           <details className="bg-slate-900 border border-slate-800 rounded-xl shadow-xl">
@@ -2986,11 +3379,14 @@ const App: React.FC = () => {
             </div>
           </details>
 
-          <section className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl flex-1 max-h-[400px]">
+          <section
+            ref={previewSectionRef}
+            className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl flex-1 max-h-[460px]"
+          >
             <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
               <div className="flex items-center gap-4">
                 <h2 className="text-sm font-semibold text-slate-300 uppercase">Live Data Preview</h2>
-                {processedData.length > 0 && (
+                {previewData.length > 0 && (
                   <div className="flex items-center gap-2">
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input 
@@ -3005,15 +3401,30 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-              <div className="text-[10px] text-slate-500">
-                {processedData.length > 0 
-                  ? `Showing last ${Math.min(5, processedData.length)} of ${processedData.length} rows` 
-                  : "No data"}
+              <div className="flex items-center gap-3">
+                {previewFocus && (
+                  <div className="flex items-center gap-2 text-[10px] text-indigo-300">
+                    <span>Focused: {formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey)}</span>
+                    <button
+                      onClick={() => setPreviewFocus(null)}
+                      className="text-slate-500 hover:text-slate-300"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+                <div className="text-[10px] text-slate-500">
+                  {previewData.length > 0
+                    ? previewFocus
+                      ? `Showing ${previewRowIndices.length} focused rows`
+                      : `Showing last ${Math.min(10, previewData.length)} of ${previewData.length} rows`
+                    : 'No data'}
+                </div>
               </div>
             </div>
             
-            <div className="overflow-auto h-[350px] scrollbar-thin scrollbar-thumb-slate-800">
-              {processedData.length === 0 ? (
+            <div className="overflow-auto h-[410px] scrollbar-thin scrollbar-thumb-slate-800">
+              {previewData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-slate-600 text-sm italic">
                   Waiting for data...
                 </div>
@@ -3021,27 +3432,38 @@ const App: React.FC = () => {
                 <table className="w-full text-left border-collapse min-w-full table-fixed">
                   <thead className="sticky top-0 bg-slate-800 text-[10px] font-semibold text-slate-400 uppercase z-10 shadow-sm">
                     <tr>
-                      {Object.keys(processedData[0]).slice(0, 6).map(key => (
+                      <th className="px-4 py-3 border-b border-slate-700 w-20">Row</th>
+                      {previewColumnKeys.map(key => (
                         <th key={key} className="px-4 py-3 border-b border-slate-700 truncate w-40">{key}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {/* Reverse slice to show latest first or keep standard order, utilizing slice(-5) for tailing logs style */}
-                    {processedData.slice(-10).reverse().map((record, reverseIndex) => {
-                      // Calculate actual index to retrieve original data
-                      const actualIndex = processedData.length - 1 - reverseIndex;
-                      const originalRecord = data[actualIndex];
+                    {previewRowIndices.map((actualIndex) => {
+                      const record = previewData[actualIndex] || {};
+                      const originalRecord = data[actualIndex] || {};
+                      const isFocusedRow = previewFocus?.rowIndex === actualIndex;
 
                       return (
-                        <tr key={actualIndex} className="hover:bg-slate-800/30 transition-colors">
-                          {Object.keys(record).slice(0, 6).map((key, j) => {
+                        <tr
+                          key={actualIndex}
+                          className={`hover:bg-slate-800/30 transition-colors ${isFocusedRow ? 'bg-indigo-500/10' : ''}`}
+                        >
+                          <td className="px-4 py-3 border-b border-slate-800/50 text-[11px] text-slate-500 font-mono">
+                            R{formatExcelRowNumber(actualIndex)}
+                          </td>
+                          {previewColumnKeys.map((key, j) => {
                             const val = record[key];
                             const origVal = originalRecord ? originalRecord[key] : '';
                             const isDiff = hasChanged(origVal, val);
+                            const isFocusedCell =
+                              previewFocus?.rowIndex === actualIndex && previewFocus.columnKey === key;
                             
                             return (
-                              <td key={j} className="px-4 py-3 border-b border-slate-800/50">
+                              <td
+                                key={j}
+                                className={`px-4 py-3 border-b border-slate-800/50 ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
+                              >
                                 <div className="flex flex-col gap-0.5">
                                   <span className={`text-xs truncate whitespace-nowrap ${isDiff ? 'text-indigo-300 font-medium' : 'text-slate-300'}`}>
                                     {String(val)}

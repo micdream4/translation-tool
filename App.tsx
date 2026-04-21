@@ -236,13 +236,21 @@ const formatRowRanges = (indices: number[], limit: number = 3) => {
   return displayed.join(', ') + (segments.length > limit ? '...' : '');
 };
 
+const cellNeedsTranslation = (
+  key: string,
+  value: unknown,
+  targetLang: TargetLanguage
+) => {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (isNeutralToken(trimmed) || isLikelyIdentifier(trimmed)) return false;
+  if (shouldLockCell(key, value)) return false;
+  return !isLikelyTargetLanguage(trimmed, targetLang);
+};
+
 const rowNeedsTranslation = (row: POCTRecord, targetLang: TargetLanguage) => {
-  return Object.values(row).some(value => {
-    if (typeof value !== 'string') return false;
-    const trimmed = value.trim();
-    if (!trimmed) return false;
-    return !isLikelyTargetLanguage(trimmed, targetLang);
-  });
+  return Object.entries(row).some(([key, value]) => cellNeedsTranslation(key, value, targetLang));
 };
 
 const valueNeedsTranslation = (value: unknown, target: TargetLanguage) => {
@@ -386,12 +394,15 @@ const App: React.FC = () => {
     };
   };
 
-  const shouldTranslateValue = (value: unknown) => {
+  const shouldTranslateValue = (value: unknown, key?: string) => {
     if (typeof value !== 'string') return false;
     const trimmed = value.trim();
     if (!trimmed) return false;
     if (isNeutralToken(trimmed)) return false;
     if (translationMode === 'full') return true;
+    if (key) {
+      return cellNeedsTranslation(key, value, targetLang);
+    }
     return valueNeedsTranslation(value, targetLang);
   };
 
@@ -1864,7 +1875,7 @@ const App: React.FC = () => {
                   sanitizedRow[key] = value;
                   return;
                 }
-                if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value)) {
+                if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value, key)) {
                   sanitizedRow[key] = value;
                   return;
                 }
@@ -1906,7 +1917,7 @@ const App: React.FC = () => {
             Object.keys(original).forEach(key => {
               if (!translated || translated[key] === undefined) return;
               const originalValue = original[key];
-              if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue)) {
+              if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue, key)) {
                 merged[key] = originalValue;
                 return;
               }
@@ -2368,7 +2379,7 @@ const App: React.FC = () => {
         if (
           !value.trim() ||
           shouldLockCell(key, value) ||
-          (!options?.forceTranslate && !shouldTranslateValue(value))
+          (!options?.forceTranslate && !shouldTranslateValue(value, key))
         ) {
           return;
         }
@@ -2451,7 +2462,7 @@ const App: React.FC = () => {
           const originalValue = original[key];
           if (
             shouldLockCell(key, originalValue) ||
-            (!options?.forceTranslate && !shouldTranslateValue(originalValue))
+            (!options?.forceTranslate && !shouldTranslateValue(originalValue, key))
           ) {
             return;
           }

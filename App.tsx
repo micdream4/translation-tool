@@ -2881,6 +2881,21 @@ const App: React.FC = () => {
     const base = mergedKeys.slice(0, 5);
     return Array.from(new Set([...base, previewFocus.columnKey])).slice(0, 6);
   }, [previewData, previewFocus, previewRowIndices, data]);
+  const focusedPreviewCell = useMemo(() => {
+    if (!previewFocus) return null;
+    const translatedRecord = previewData[previewFocus.rowIndex] || {};
+    const originalRecord = data[previewFocus.rowIndex] || {};
+    const translatedValue = translatedRecord?.[previewFocus.columnKey];
+    const originalValue = originalRecord?.[previewFocus.columnKey];
+    return {
+      locationLabel: formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey),
+      translated:
+        translatedValue === undefined || translatedValue === null ? '' : String(translatedValue),
+      original:
+        originalValue === undefined || originalValue === null ? '' : String(originalValue),
+      changed: hasChanged(originalValue, translatedValue)
+    };
+  }, [previewFocus, previewData, data]);
   const severityBadgeClass = (severity?: QualitySeverity) => {
     switch (severity) {
       case 'high':
@@ -3819,6 +3834,38 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {focusedPreviewCell && (
+              <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/40">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider">
+                      Focused Cell
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">{focusedPreviewCell.locationLabel}</p>
+                  </div>
+                  <span className="text-[10px] text-slate-500">
+                    {focusedPreviewCell.changed ? 'Showing translated value' : 'Original and translated are identical'}
+                  </span>
+                </div>
+                <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
+                  <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Target</p>
+                    <p className="text-sm text-slate-200 whitespace-pre-wrap break-words">
+                      {focusedPreviewCell.translated || '(empty)'}
+                    </p>
+                  </div>
+                  {showComparison && (
+                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Source</p>
+                      <p className="text-sm text-slate-300 whitespace-pre-wrap break-words">
+                        {focusedPreviewCell.original || '(empty)'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             
             <div className="overflow-auto h-[410px] scrollbar-thin scrollbar-thumb-slate-800">
               {previewData.length === 0 ? (
@@ -3862,12 +3909,18 @@ const App: React.FC = () => {
                                 className={`px-4 py-3 border-b border-slate-800/50 ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
                               >
                                 <div className="flex flex-col gap-0.5">
-                                  <span className={`text-xs truncate whitespace-nowrap ${isDiff ? 'text-indigo-300 font-medium' : 'text-slate-300'}`}>
+                                  <span
+                                    title={String(val)}
+                                    className={`text-xs truncate whitespace-nowrap ${isDiff ? 'text-indigo-300 font-medium' : 'text-slate-300'}`}
+                                  >
                                     {String(val)}
                                   </span>
                                   
                                   {showComparison && isDiff && (
-                                    <span className="text-[10px] text-slate-500 truncate whitespace-nowrap bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50 w-fit max-w-full">
+                                    <span
+                                      title={String(origVal)}
+                                      className="text-[10px] text-slate-500 truncate whitespace-nowrap bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50 w-fit max-w-full"
+                                    >
                                       {String(origVal)}
                                     </span>
                                   )}

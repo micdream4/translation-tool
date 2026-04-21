@@ -625,13 +625,69 @@ const App: React.FC = () => {
     return startRow + rowIndex + 1;
   };
 
+  const encodeExcelColumn = (index: number) => {
+    let value = index + 1;
+    let output = '';
+    while (value > 0) {
+      const remainder = (value - 1) % 26;
+      output = String.fromCharCode(65 + remainder) + output;
+      value = Math.floor((value - 1) / 26);
+    }
+    return output;
+  };
+
+  const getColumnLocationMeta = (columnKey: string) => {
+    if (!excelContext || columnKey === '__ROW__') {
+      return {
+        columnKey,
+        columnLetter: '',
+        headerName: columnKey,
+        occurrence: null as number | null
+      };
+    }
+
+    const columnIndex = excelContext.headerKeys.indexOf(columnKey);
+    if (columnIndex === -1) {
+      return {
+        columnKey,
+        columnLetter: '',
+        headerName: columnKey,
+        occurrence: null as number | null
+      };
+    }
+
+    const sheetColumn = excelContext.range.s.c + columnIndex;
+    const headerAddress = `${encodeExcelColumn(sheetColumn)}${excelContext.headerRow + 1}`;
+    const rawHeader = excelContext.worksheet[headerAddress]?.v ?? columnKey;
+    const headerName = String(rawHeader || columnKey);
+    const sameHeaderCount = excelContext.headerKeys.reduce((count, key, idx) => {
+      const addr = `${encodeExcelColumn(excelContext.range.s.c + idx)}${excelContext.headerRow + 1}`;
+      const value = String(excelContext.worksheet[addr]?.v ?? key);
+      return value === headerName ? count + 1 : count;
+    }, 0);
+    const occurrence =
+      sameHeaderCount > 1
+        ? excelContext.headerKeys.slice(0, columnIndex + 1).reduce((count, key, idx) => {
+            const addr = `${encodeExcelColumn(excelContext.range.s.c + idx)}${excelContext.headerRow + 1}`;
+            const value = String(excelContext.worksheet[addr]?.v ?? key);
+            return value === headerName ? count + 1 : count;
+          }, 0)
+        : null;
+
+    return {
+      columnKey,
+      columnLetter: encodeExcelColumn(sheetColumn),
+      headerName,
+      occurrence
+    };
+  };
+
   const formatIssueLocationPreview = (details: UntranslatedCell[], limit: number = 5) => {
     if (!details.length) return '';
     const seen = new Set<string>();
     const picked: string[] = [];
     details.forEach((issue) => {
-      const rowNo = formatExcelRowNumber(issue.rowIndex);
-      const location = `R${rowNo}/${issue.columnKey}`;
+      const location = formatLocationLabel(issue.rowIndex, issue.columnKey);
       if (seen.has(location)) return;
       seen.add(location);
       picked.push(location);
@@ -643,7 +699,11 @@ const App: React.FC = () => {
 
   const formatLocationLabel = (rowIndex: number, columnKey: string) => {
     const rowNo = formatExcelRowNumber(rowIndex);
-    return columnKey === '__ROW__' ? `R${rowNo}` : `R${rowNo}/${columnKey}`;
+    if (columnKey === '__ROW__') return `R${rowNo}`;
+    const meta = getColumnLocationMeta(columnKey);
+    if (!meta.columnLetter) return `R${rowNo}/${columnKey}`;
+    const duplicateLabel = meta.occurrence ? `（第${meta.occurrence}列）` : '';
+    return `R${rowNo} / ${meta.columnLetter}列 / ${meta.headerName}${duplicateLabel}`;
   };
 
   const autoRepairExcelPlaceholders = (

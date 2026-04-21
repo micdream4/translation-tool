@@ -2,6 +2,8 @@
 import * as XLSX from 'xlsx';
 import { POCTRecord } from '../types';
 
+const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
+
 export interface ExcelContext {
   workbook: XLSX.WorkBook;
   worksheet: XLSX.WorkSheet;
@@ -91,6 +93,9 @@ export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
 const setCellValue = (cell: XLSX.CellObject, value: unknown) => {
   if (value === undefined) return;
   const normalized = value === null ? '' : value;
+  delete (cell as any).w;
+  delete (cell as any).h;
+  delete (cell as any).r;
   cell.v = normalized as any;
   if (typeof normalized === 'number') {
     cell.t = 'n';
@@ -98,6 +103,12 @@ const setCellValue = (cell: XLSX.CellObject, value: unknown) => {
     cell.t = 'b';
   } else {
     cell.t = 's';
+    if (CYRILLIC_REGEX.test(String(normalized))) {
+      // Some source templates carry corrupted or non-Unicode-friendly font
+      // metadata. For Cyrillic output, reset the cell style to a neutral base
+      // so Excel falls back to a safe default font instead of preserving a bad one.
+      (cell as any).s = { patternType: 'none' };
+    }
   }
 };
 

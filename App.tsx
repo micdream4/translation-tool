@@ -872,6 +872,13 @@ const App: React.FC = () => {
     addLog('Quality Report: 已导出当前检查报告。');
   };
 
+  const clearQualityReport = () => {
+    setQualityReport(null);
+    resetSampleReviewState();
+    setPreviewFocus(null);
+    addLog('Quality Report: 已清除当前检查结果。');
+  };
+
   const jumpToPreviewCell = (rowIndex: number, columnKey: string) => {
     setPreviewFocus({ rowIndex, columnKey });
     window.requestAnimationFrame(() => {
@@ -3412,17 +3419,30 @@ const App: React.FC = () => {
                   这里汇总同一套 Quality Check 结果，并提供问题定位、导出和抽样检查。
                 </p>
               </div>
-              <button
-                onClick={exportQualityReport}
-                disabled={!hasQualityReport}
-                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  !hasQualityReport
-                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                }`}
-              >
-                Export Report
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={clearQualityReport}
+                  disabled={!hasQualityReport}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    !hasQualityReport
+                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                  }`}
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={exportQualityReport}
+                  disabled={!hasQualityReport}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    !hasQualityReport
+                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                  }`}
+                >
+                  Export Report
+                </button>
+              </div>
             </div>
 
             {!hasQualityReport && (

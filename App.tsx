@@ -35,7 +35,7 @@ import {
 } from './utils/translationTokens';
 import { guardStringResourceTokens, parseStringResourceLine, restoreStringResourceTokens } from './utils/stringResources';
 import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
-import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX } from './utils/quality';
+import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
 import {
   ClinicalRule,
   CrossCheckResult,
@@ -152,6 +152,7 @@ type QualityFinding = {
   original: string;
   translated: string;
   description: string;
+  severity?: QualitySeverity;
 };
 
 type SampleReviewItem = {
@@ -645,6 +646,66 @@ const App: React.FC = () => {
     return columnKey === '__ROW__' ? `R${rowNo}` : `R${rowNo}/${columnKey}`;
   };
 
+  const autoRepairExcelPlaceholders = (
+    records: POCTRecord[],
+    options?: { mutateState?: boolean; logLabel?: string }
+  ) => {
+    if (documentKind !== 'excel' || !records.length) {
+      return { records, fixedCells: 0, remainingCells: 0, changed: false };
+    }
+
+    let fixedCells = 0;
+    let remainingCells = 0;
+    let changed = false;
+
+    const repaired = records.map((row, rowIndex) => {
+      const originalRow = data[rowIndex] || {};
+      let rowChanged = false;
+      const nextRow: POCTRecord = { ...row };
+
+      Object.entries(nextRow).forEach(([key, value]) => {
+        if (typeof value !== 'string' || !PLACEHOLDER_REGEX.test(value)) return;
+        const originalValue = originalRow[key];
+        if (typeof originalValue !== 'string' || !originalValue.trim()) {
+          remainingCells += 1;
+          return;
+        }
+
+        const { placeholders } = guardTranslationTokens(originalValue);
+        if (!placeholders) {
+          remainingCells += 1;
+          return;
+        }
+
+        const restored = restoreTranslationTokens(value, placeholders);
+        if (restored !== value) {
+          nextRow[key] = polishTranslation(originalValue, restored, targetLang);
+          fixedCells += 1;
+          rowChanged = true;
+          changed = true;
+        }
+
+        if (typeof nextRow[key] === 'string' && PLACEHOLDER_REGEX.test(nextRow[key] as string)) {
+          remainingCells += 1;
+        }
+      });
+
+      return rowChanged ? normalizeTerminology(nextRow, targetLang, originalRow) : nextRow;
+    });
+
+    if (changed && options?.mutateState) {
+      setProcessedData(repaired);
+      if (translatedFlags.length === repaired.length) {
+        persistProgress(repaired, [...translatedFlags], missingRowIndices, writeFailedRowIndices);
+      }
+      if (options.logLabel) {
+        addLog(`${options.logLabel}: 已自动修复 ${fixedCells} 个占位符单元格。`);
+      }
+    }
+
+    return { records: repaired, fixedCells, remainingCells, changed };
+  };
+
   const exportQualityReport = () => {
     if (!qualityReport) {
       addLog('Quality Report: 当前没有可导出的检查结果。');
@@ -685,6 +746,7 @@ const App: React.FC = () => {
       })),
       ...qualityReport.issues.spacing.map((item) => ({
         type: 'Spacing issue',
+        severity: item.severity || 'medium',
         location: formatLocationLabel(item.rowIndex, item.columnKey),
         original: item.original || '',
         translated: item.value || ''
@@ -705,6 +767,9 @@ const App: React.FC = () => {
       `- Placeholders: ${qualityReport.totals.placeholderCells} cells / ${qualityReport.totals.placeholderRows} rows`,
       `- ID mismatch: ${qualityReport.totals.idMismatches} cells / ${qualityReport.totals.idMismatchRows} rows`,
       `- Spacing issues: ${qualityReport.totals.spacingIssues} cells / ${qualityReport.totals.spacingRows} rows`,
+      `  - High: ${qualityReport.totals.spacingHigh}`,
+      `  - Medium: ${qualityReport.totals.spacingMedium}`,
+      `  - Low: ${qualityReport.totals.spacingLow}`,
       `- Structure mismatch: ${qualityReport.totals.structureMismatches} cells / ${qualityReport.totals.structureMismatchRows} rows`,
       '',
       'Findings'
@@ -712,7 +777,7 @@ const App: React.FC = () => {
 
     findings.slice(0, 200).forEach((item, index) => {
       lines.push(
-        `${index + 1}. [${item.type}] ${item.location}`,
+        `${index + 1}. [${item.type}${item.severity ? ` / ${String(item.severity).toUpperCase()}` : ''}] ${item.location}`,
         `   Source: ${String(item.original || '').replace(/\s+/g, ' ').trim() || '(empty)'}`,
         `   Target: ${String(item.translated || '').replace(/\s+/g, ' ').trim() || '(empty)'}`
       );
@@ -814,7 +879,11 @@ const App: React.FC = () => {
       addLog('Quality Check: 当前仅支持 Excel 文档。');
       return;
     }
-    const target = processedData.length > 0 ? processedData : data;
+    const rawTarget = processedData.length > 0 ? processedData : data;
+    const { records: target, fixedCells } = autoRepairExcelPlaceholders(rawTarget, {
+      mutateState: processedData.length > 0,
+      logLabel: 'Quality Check'
+    });
     if (!target.length) {
       addLog('Quality Check: 没有可检查的数据。');
       return;
@@ -838,6 +907,9 @@ const App: React.FC = () => {
       `格式问题 ${report.totals.spacingIssues} 个，` +
       `结构异常 ${report.totals.structureMismatches} 个。`
     );
+    if (fixedCells > 0) {
+      addLog(`Quality Check: 已在检查前自动恢复 ${fixedCells} 个坏 token。`);
+    }
     if (summary.details.length > 0) {
       const preview = formatIssueLocationPreview(summary.details, 6);
       if (preview) {
@@ -1761,7 +1833,11 @@ const App: React.FC = () => {
         setMissingRowIndices(missingSnapshot);
         setWriteFailedRowIndices(writeFailedSnapshot);
         setTranslatedFlags([...flags]);
-        const snapshot = finalResults.map(row => ({ ...row }));
+        const rawSnapshot = finalResults.map(row => ({ ...row }));
+        const { records: snapshot, fixedCells: autoFixedCells } = autoRepairExcelPlaceholders(rawSnapshot);
+        if (autoFixedCells > 0) {
+          addLog(`Translation auto-repair: 已自动恢复 ${autoFixedCells} 个坏 token。`);
+        }
         setProcessedData(snapshot);
         persistProgress(snapshot, [...flags], missingSnapshot, writeFailedSnapshot);
         latestResults = snapshot;
@@ -2081,7 +2157,8 @@ const App: React.FC = () => {
       persistProgress(synced, flagsSnapshot, missingSnapshot, writeFailedSnapshot);
     }
 
-    const synced = baseProcessed.map(row => ({ ...row }));
+    const rawSynced = baseProcessed.map(row => ({ ...row }));
+    const { records: synced, fixedCells: retryAutoFixed } = autoRepairExcelPlaceholders(rawSynced);
     const flagsSnapshot = [...updatedFlags];
     const summary = summarizeUntranslated(synced, targetLang);
     const missingSnapshot = summary.rowIndices;
@@ -2091,6 +2168,9 @@ const App: React.FC = () => {
     setMissingRowIndices(missingSnapshot);
     setWriteFailedRowIndices(writeFailedSnapshot);
     persistProgress(synced, flagsSnapshot, missingSnapshot, writeFailedSnapshot);
+    if (retryAutoFixed > 0) {
+      addLog(`Retry Missing Cells: 已自动恢复 ${retryAutoFixed} 个坏 token。`);
+    }
 
     const mergedRowIndices = Array.from(
       new Set([...summary.rowIndices, ...missingSnapshot])
@@ -2255,13 +2335,17 @@ const App: React.FC = () => {
       persistProgress(synced, [...updatedFlags], missingRowIndices, writeFailedRowIndices);
     }
 
-    const synced = baseProcessed.map(row => ({ ...row }));
+    const rawSynced = baseProcessed.map(row => ({ ...row }));
+    const { records: synced, fixedCells: keyedRetryAutoFixed } = autoRepairExcelPlaceholders(rawSynced);
     setProcessedData(synced);
     setTranslatedFlags([...updatedFlags]);
     const { refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(synced);
     persistProgress(synced, [...updatedFlags], refreshedMissing, refreshedWriteFailed);
     setQualityReport(runQualityChecks(data, synced));
     setSampleReviewItems([]);
+    if (keyedRetryAutoFixed > 0) {
+      addLog(`${label}: 已自动恢复 ${keyedRetryAutoFixed} 个坏 token。`);
+    }
     if (mergedRowIndices.length === 0) {
       addLog(`${label}: 完成重译，当前无待补译内容。`);
     } else {
@@ -2270,13 +2354,21 @@ const App: React.FC = () => {
   };
 
   const retryPlaceholderCells = async () => {
-    const target =
+    const rawTarget =
       documentKind === 'excel' && processedData.length > 0 ? processedData : data;
+    const { records: target, fixedCells, remainingCells } = autoRepairExcelPlaceholders(rawTarget, {
+      mutateState: processedData.length > 0,
+      logLabel: 'Retry Placeholder Cells'
+    });
     if (!target.length) {
       addLog('Retry Placeholder Cells: 当前没有可扫描的数据。');
       return;
     }
     const issues = collectPlaceholderIssues(data, target);
+    if (fixedCells > 0 && issues.length === 0) {
+      addLog('Retry Placeholder Cells: 坏 token 已自动恢复，无需重翻。');
+      return;
+    }
     if (!issues.length) {
       addLog('Retry Placeholder Cells: 未检测到占位符残留。');
       return;
@@ -2293,6 +2385,9 @@ const App: React.FC = () => {
       keys
     }));
     addLog(`Retry Placeholder Cells: 实时检测到 ${issues.length} 个占位符异常单元格。`);
+    if (fixedCells > 0) {
+      addLog(`Retry Placeholder Cells: 已先自动修复 ${fixedCells} 个，仅对剩余 ${remainingCells} 个执行重翻。`);
+    }
     await retryCellsByKeys(items, 'Retry Placeholder Cells', { forceTranslate: true });
   };
 
@@ -2546,7 +2641,7 @@ const App: React.FC = () => {
 
     const appendQualityIssues = (
       category: QualityFinding['category'],
-      list: Array<{ rowIndex: number; columnKey: string; original?: string; value: string }>,
+      list: Array<{ rowIndex: number; columnKey: string; original?: string; value: string; severity?: QualitySeverity }>,
       description: string
     ) => {
       list.forEach((item) => {
@@ -2558,7 +2653,8 @@ const App: React.FC = () => {
           locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
           original: item.original || '',
           translated: item.value || '',
-          description
+          description,
+          severity: item.severity
         });
       });
     };
@@ -2605,6 +2701,18 @@ const App: React.FC = () => {
     const base = mergedKeys.slice(0, 5);
     return Array.from(new Set([...base, previewFocus.columnKey])).slice(0, 6);
   }, [previewData, previewFocus, previewRowIndices, data]);
+  const severityBadgeClass = (severity?: QualitySeverity) => {
+    switch (severity) {
+      case 'high':
+        return 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+      case 'medium':
+        return 'text-amber-300 border border-amber-500/30 bg-amber-500/10';
+      case 'low':
+        return 'text-sky-300 border border-sky-500/30 bg-sky-500/10';
+      default:
+        return 'text-slate-400 border border-slate-700 bg-slate-900/40';
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200">
@@ -3142,6 +3250,9 @@ const App: React.FC = () => {
                       格式 {qualityReport.totals.spacingIssues}
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1">
+                      H {qualityReport.totals.spacingHigh} · M {qualityReport.totals.spacingMedium} · L {qualityReport.totals.spacingLow}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
                       结构 {qualityReport.totals.structureMismatches}
                     </p>
                   </div>
@@ -3165,9 +3276,16 @@ const App: React.FC = () => {
                         >
                           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                             <div className="space-y-1">
-                              <p className="text-xs text-slate-200 font-medium">
-                                {finding.description}
-                              </p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-xs text-slate-200 font-medium">
+                                  {finding.description}
+                                </p>
+                                {finding.severity && (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${severityBadgeClass(finding.severity)}`}>
+                                    {finding.severity}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[11px] text-slate-500">{finding.locationLabel}</p>
                               {finding.original && (
                                 <p className="text-[11px] text-slate-400">

@@ -99,6 +99,12 @@ const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[
     "grave"
   ],
   fr: [
+    "un",
+    "une",
+    "du",
+    "des",
+    "dans",
+    "est",
     "le",
     "la",
     "les",
@@ -107,9 +113,41 @@ const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[
     "en",
     "avec",
     "possible",
-    "suggere",
+    "mais",
+    "vers",
+    "sur",
+    "pour",
+    "sans",
+    "nombre",
+    "total",
+    "globules",
+    "rouges",
+    "hemoglobine",
+    "anemie",
+    "hemolytique",
+    "hemolyse",
+    "reticulocytes",
+    "spherocytes",
+    "defaut",
+    "dommage",
+    "structure",
+    "membrane",
+    "medicaments",
+    "historique",
+    "declencher",
+    "presence",
+    "reaction",
+    "principale",
+    "principalement",
+    "orientant",
+    "pointant",
+    "elevee",
     "augmentation",
     "diminution",
+    "synthese",
+    "reserves",
+    "insuffisantes",
+    "suggere",
     "eleve",
     "indique",
     "leger",
@@ -239,6 +277,16 @@ const getLanguageScores = (
     .sort((a, b) => b.score - a.score);
 };
 
+const LATIN_TARGET_CODES: Array<Exclude<LangCode, "zh" | "ru" | "unknown">> = [
+  "en",
+  "es",
+  "fr",
+  "de",
+  "it",
+  "pt",
+  "tr"
+];
+
 const detectLanguage = (text: string): LangCode => {
   if (CJK_REGEX.test(text)) return "zh";
   if (CYRILLIC_REGEX.test(text)) return "ru";
@@ -290,6 +338,15 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   const scores = getLanguageScores(trimmed);
   const best = scores[0] || { lang: "en", score: 0 };
   const second = scores[1] || { lang: "en", score: 0 };
+  const targetScore =
+    targetCode !== "unknown" && LATIN_TARGET_CODES.includes(targetCode as any)
+      ? scores.find((item) => item.lang === targetCode)?.score || 0
+      : 0;
+  const targetHasDistinctiveDiacritics =
+    targetCode !== "unknown" &&
+    targetCode !== "zh" &&
+    targetCode !== "ru" &&
+    LANGUAGE_DIACRITICS[targetCode as Exclude<LangCode, "zh" | "ru" | "unknown">].test(trimmed);
 
   if (best.score === 0) {
     if (targetCode === "en") {
@@ -300,9 +357,17 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
 
   if (best.lang === targetCode) return true;
 
+  // For Latin-script target languages, prefer a conservative acceptance policy.
+  // Medical prose in French/Spanish/Portuguese/Italian/German/Turkish shares too
+  // much vocabulary to treat a small scoring edge as a real language mismatch.
+  if (targetCode !== "unknown" && targetCode !== "zh" && targetCode !== "ru") {
+    if (targetHasDistinctiveDiacritics && targetScore >= 2) return true;
+    if (targetScore >= Math.max(3, best.score - 2)) return true;
+  }
+
   // Only flag clear non-target prose. Short or medically abbreviated Latin
   // strings are too ambiguous and should not trigger endless retry loops.
-  const strongSignal = best.score >= 3 && best.score >= second.score + 2;
+  const strongSignal = best.score >= 4 && best.score >= second.score + 2 && best.score >= targetScore + 3;
   if (strongSignal) return false;
 
   return true;

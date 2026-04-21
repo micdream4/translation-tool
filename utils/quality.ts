@@ -9,12 +9,15 @@ export type QualityIssueType =
   | 'emptyTranslation'
   | 'structureMismatch';
 
+export type QualitySeverity = 'high' | 'medium' | 'low';
+
 export interface QualityIssue {
   rowIndex: number;
   columnKey: string;
   value: string;
   original?: string;
   type: QualityIssueType;
+  severity?: QualitySeverity;
 }
 
 export interface QualityReport {
@@ -29,6 +32,9 @@ export interface QualityReport {
     idMismatchRows: number;
     spacingIssues: number;
     spacingRows: number;
+    spacingHigh: number;
+    spacingMedium: number;
+    spacingLow: number;
     emptyTranslations: number;
     emptyTranslationRows: number;
     structureMismatches: number;
@@ -45,11 +51,13 @@ export interface QualityReport {
 }
 
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
-export const PLACEHOLDER_REGEX = /_+(?:TKN|ID|FMT)_\d+_+/i;
+export const PLACEHOLDER_REGEX =
+  /(?:_+\s*(?:TKN|ID|FMT)(?:\s*[_ ]\s*\d+)?\s*_+|(?:TKN|ID|FMT)\s*[_ ]\s*\d+\s*_*)/i;
 const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
 const LETTER_DIGIT_SPACE_REGEX = /\b[A-Za-z]\s+\d{1,3}\b|\b\d{1,3}\s+[A-Za-z]\b/;
+const SAFE_MEDICAL_SPACING_REGEX = /\b(?:B\s*12|B\s*6|G\s*6|P\s*50)\b/i;
 const GLUED_PUNCT_REGEX = /\b[A-Za-z]+[,.:][A-Za-z]+\b/;
 const CAMEL_GLUE_REGEX = /\b[a-z]{2,}[A-Z][a-z]+\b/;
 const UPPER_ABBR_GLUE_REGEX = /\b(?:[A-Z]{2,}\d*(?:\/[A-Z]+)?)(?:[A-Z][a-z]+|[a-z]{2,})\b/;
@@ -76,12 +84,31 @@ const isTranslatableSourceCell = (value: unknown) => {
 };
 
 export const hasSpacingIssue = (value: string) => {
+  if (SAFE_MEDICAL_SPACING_REGEX.test(value)) {
+    return (
+      EG_REGEX.test(value) ||
+      EXTRA_SPACE_REGEX.test(value) ||
+      SPACE_BEFORE_PUNCT_REGEX.test(value)
+    );
+  }
   return (
     EG_REGEX.test(value) ||
     EXTRA_SPACE_REGEX.test(value) ||
     SPACE_BEFORE_PUNCT_REGEX.test(value) ||
     LETTER_DIGIT_SPACE_REGEX.test(value)
   );
+};
+
+export const getSpacingSeverity = (value: string): QualitySeverity | null => {
+  if (hasGlueIssue(value)) return 'high';
+  if (EXTRA_SPACE_REGEX.test(value) || SPACE_BEFORE_PUNCT_REGEX.test(value) || EG_REGEX.test(value)) {
+    return 'medium';
+  }
+  if (LETTER_DIGIT_SPACE_REGEX.test(value)) {
+    if (SAFE_MEDICAL_SPACING_REGEX.test(value)) return 'low';
+    return 'medium';
+  }
+  return null;
 };
 
 export const hasGlueIssue = (value: string) => {
@@ -109,6 +136,9 @@ export const runQualityChecks = (
     idMismatchRows: 0,
     spacingIssues: 0,
     spacingRows: 0,
+    spacingHigh: 0,
+    spacingMedium: 0,
+    spacingLow: 0,
     emptyTranslations: 0,
     emptyTranslationRows: 0,
     structureMismatches: 0,
@@ -215,15 +245,20 @@ export const runQualityChecks = (
         });
       }
 
-      if (hasSpacingIssue(value)) {
+      const spacingSeverity = getSpacingSeverity(value);
+      if (spacingSeverity) {
         totals.spacingIssues += 1;
         spacingRows.add(rowIndex);
+        if (spacingSeverity === 'high') totals.spacingHigh += 1;
+        if (spacingSeverity === 'medium') totals.spacingMedium += 1;
+        if (spacingSeverity === 'low') totals.spacingLow += 1;
         issues.spacing.push({
           rowIndex,
           columnKey: key,
           value,
           original: typeof originalRow[key] === 'string' ? originalRow[key] : '',
-          type: 'spacing'
+          type: 'spacing',
+          severity: spacingSeverity
         });
       }
 

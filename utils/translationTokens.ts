@@ -38,6 +38,40 @@ const buildPlaceholderVariantPattern = (key: string) => {
   return new RegExp(`_*(?:TKN|ID|FMT)_${id}_*`, "gi");
 };
 
+const PLACEHOLDER_REMAINDER_REGEX =
+  /(?:_+\s*(TKN|ID|FMT)(?:\s*[_ ]\s*(\d+))?\s*_+|(?:TKN|ID|FMT)\s*[_ ]\s*(\d+)\s*_*)/gi;
+
+const normalizeBrokenPlaceholders = (
+  text: string,
+  placeholders: PlaceholderMap
+) => {
+  const byType: Record<string, string[]> = { TKN: [], ID: [], FMT: [] };
+  Object.keys(placeholders).forEach((key) => {
+    const match = key.match(/^__([A-Z]+)_\d+__$/i);
+    if (!match) return;
+    const type = match[1].toUpperCase();
+    if (!byType[type]) byType[type] = [];
+    byType[type].push(key);
+  });
+  const cursors: Record<string, number> = { TKN: 0, ID: 0, FMT: 0 };
+
+  return text.replace(PLACEHOLDER_REMAINDER_REGEX, (match, groupA, groupB, groupC) => {
+    const type = String(groupA || match.match(/TKN|ID|FMT/i)?.[0] || "").toUpperCase();
+    const explicitIndex = String(groupB || groupC || "").trim();
+    if (!type || !byType[type]?.length) return match;
+
+    if (explicitIndex) {
+      const exactKey = `__${type}_${explicitIndex}__`;
+      if (placeholders[exactKey]) {
+        return exactKey;
+      }
+    }
+
+    const fallbackKey = byType[type][cursors[type]++] || byType[type][0];
+    return fallbackKey || match;
+  });
+};
+
 const getProtectedTerms = () => {
   const envRaw =
     typeof import.meta !== "undefined"
@@ -137,6 +171,10 @@ export const restoreTranslationTokens = (
     const pattern = buildPlaceholderVariantPattern(key);
     normalized = normalized.replace(pattern, key);
   });
+  if (PLACEHOLDER_REMAINDER_REGEX.test(normalized)) {
+    PLACEHOLDER_REMAINDER_REGEX.lastIndex = 0;
+    normalized = normalizeBrokenPlaceholders(normalized, placeholders);
+  }
   return restoreInlineTokens(normalized, placeholders);
 };
 

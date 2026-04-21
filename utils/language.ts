@@ -327,8 +327,14 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   }
 
   const targetCode = targetLangToCode(targetLang);
-  if (targetCode === "zh") return CJK_REGEX.test(trimmed);
-  if (targetCode === "ru") return CYRILLIC_REGEX.test(trimmed);
+  if (targetCode === "zh") {
+    if (CYRILLIC_REGEX.test(trimmed)) return false;
+    return CJK_REGEX.test(trimmed);
+  }
+  if (targetCode === "ru") {
+    if (CJK_REGEX.test(trimmed)) return false;
+    return CYRILLIC_REGEX.test(trimmed);
+  }
 
   // For non-Chinese / non-Russian targets, any residual CJK/Cyrillic means not fully translated.
   if (CJK_REGEX.test(trimmed) || CYRILLIC_REGEX.test(trimmed)) {

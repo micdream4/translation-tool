@@ -94,6 +94,45 @@ const extractJsonArraySegment = (text: string) => {
   return text;
 };
 
+const extractJsonObjectSegment = (text: string) => {
+  const chars = Array.from(text);
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0 && start !== -1) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return text;
+};
+
 export const sanitizeModelJson = (text: string) => {
   const trimmed = text.trim();
   const normalized = normalizeStructuralChars(trimmed);
@@ -119,5 +158,21 @@ export const parseModelJsonArray = <T = any>(text: string): T[] => {
     const message =
       error instanceof Error ? error.message : `Unknown error: ${String(error)}`;
     throw new Error(`Failed to parse model JSON: ${message}`);
+  }
+};
+
+export const parseModelJsonObject = <T = any>(text: string): T => {
+  const sanitized = normalizeStructuralChars(text.trim());
+  const jsonSegment = extractJsonObjectSegment(sanitized);
+  try {
+    const parsed = JSON.parse(jsonSegment);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Model output is not a JSON object.");
+    }
+    return parsed as T;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : `Unknown error: ${String(error)}`;
+    throw new Error(`Failed to parse model JSON object: ${message}`);
   }
 };

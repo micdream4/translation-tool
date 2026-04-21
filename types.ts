@@ -112,3 +112,23 @@ export interface UntranslatedSummary {
   rowIndices: number[];
   details?: UntranslatedCell[];
 }
+
+export interface ReviewSample {
+  id: string;
+  location: string;
+  source: string;
+  target: string;
+}
+
+export type SampleReviewVerdict = 'pass' | 'warning' | 'fail';
+
+export type SampleReviewRisk = 'low' | 'medium' | 'high';
+
+export interface SampleReviewAIResult {
+  id: string;
+  verdict: SampleReviewVerdict;
+  risk: SampleReviewRisk;
+  issueTypes: string[];
+  comment: string;
+  suggestion?: string;
+}

@@ -14,6 +14,7 @@ import {
 import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
 import { MultiAIJudge } from './services/multiAIJudge';
+import { SampleReviewAuditService } from './services/sampleReviewAuditService';
 import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
 import type { UntranslatedCell } from './utils/language';
 import { summarizeUntranslated } from './utils/untranslated';
@@ -42,6 +43,8 @@ import {
   MissingCombination,
   POCTRecord,
   ProcessingState,
+  ReviewSample,
+  SampleReviewAIResult,
   TargetLanguage,
   WorkflowStageKey,
   WorkflowStageState
@@ -302,6 +305,9 @@ const App: React.FC = () => {
   const [previewFocus, setPreviewFocus] = useState<{ rowIndex: number; columnKey: string } | null>(null);
   const [sampleReviewCount, setSampleReviewCount] = useState<number>(20);
   const [sampleReviewItems, setSampleReviewItems] = useState<SampleReviewItem[]>([]);
+  const [sampleReviewAiResults, setSampleReviewAiResults] = useState<Record<string, SampleReviewAIResult>>({});
+  const [sampleReviewAiMeta, setSampleReviewAiMeta] = useState<{ model?: string; engine?: string } | null>(null);
+  const [isRunningSampleReviewAi, setIsRunningSampleReviewAi] = useState(false);
   const [activeStage, setActiveStage] = useState<WorkflowStageKey | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [translationStatus, setTranslationStatus] = useState<'idle' | 'running' | 'paused' | 'completed'>('idle');
@@ -343,9 +349,16 @@ const App: React.FC = () => {
   );
   const ruleEngine = useMemo(() => new RuleEngine(), []);
   const multiAIJudge = useMemo(() => new MultiAIJudge(), []);
+  const sampleReviewAuditService = useMemo(() => new SampleReviewAuditService(), []);
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, msg]);
+  };
+
+  const resetSampleReviewState = () => {
+    setSampleReviewItems([]);
+    setSampleReviewAiResults({});
+    setSampleReviewAiMeta(null);
   };
 
   const getFallbackPriority = (
@@ -399,7 +412,7 @@ const App: React.FC = () => {
     setSavedSnapshot(null);
     snapshotPromptKeyRef.current = '';
     setPreviewFocus(null);
-    setSampleReviewItems([]);
+    resetSampleReviewState();
     const identifier = `${uploadedFile.name}-${uploadedFile.size}-${uploadedFile.lastModified || Date.now()}`;
     setFileId(identifier);
     setQualityReport(null);
@@ -855,14 +868,12 @@ const App: React.FC = () => {
     });
   };
 
-  const generateSampleReview = () => {
+  const buildSampleReviewItems = (limit: number = sampleReviewCount): SampleReviewItem[] => {
     if (documentKind !== 'excel') {
-      addLog('Sample Review: 当前仅支持 Excel 文档。');
-      return;
+      return [];
     }
     if (!processedData.length) {
-      addLog('Sample Review: 请先完成翻译，再生成抽样检查。');
-      return;
+      return [];
     }
 
     const issueMap = new Map<number, QualityFinding[]>();
@@ -920,7 +931,7 @@ const App: React.FC = () => {
         return b.original.length - a.original.length;
       });
 
-    const picked = scoredRows.slice(0, sampleReviewCount).map((item) => ({
+    return scoredRows.slice(0, limit).map((item) => ({
       id: `${item.rowIndex}-${item.columnKey}`,
       rowIndex: item.rowIndex,
       columnKey: item.columnKey,
@@ -929,9 +940,86 @@ const App: React.FC = () => {
       translated: item.translated,
       reason: item.reason
     }));
+  };
+
+  const generateSampleReview = () => {
+    if (documentKind !== 'excel') {
+      addLog('Sample Review: 当前仅支持 Excel 文档。');
+      return;
+    }
+    if (!processedData.length) {
+      addLog('Sample Review: 请先完成翻译，再生成抽样检查。');
+      return;
+    }
+
+    const picked = buildSampleReviewItems(sampleReviewCount);
 
     setSampleReviewItems(picked);
+    setSampleReviewAiResults({});
+    setSampleReviewAiMeta(null);
     addLog(`Sample Review: 已生成 ${picked.length} 条抽样检查样本。`);
+  };
+
+  const runAiSampleReview = async () => {
+    if (documentKind !== 'excel') {
+      addLog('AI Sample Review: 当前仅支持 Excel 文档。');
+      return;
+    }
+    if (!processedData.length) {
+      addLog('AI Sample Review: 请先完成翻译，再发起 AI 审核。');
+      return;
+    }
+    if (isRunningSampleReviewAi) {
+      addLog('AI Sample Review: 正在审核中，请等待当前任务完成。');
+      return;
+    }
+
+    const currentItems =
+      sampleReviewItems.length > 0 ? sampleReviewItems : buildSampleReviewItems(sampleReviewCount);
+    if (!currentItems.length) {
+      addLog('AI Sample Review: 当前没有可审核的抽样条目。');
+      return;
+    }
+
+    if (sampleReviewItems.length === 0) {
+      setSampleReviewItems(currentItems);
+    }
+
+    setIsRunningSampleReviewAi(true);
+    try {
+      addLog(`AI Sample Review: 开始审核 ${currentItems.length} 条抽样样本。`);
+      const payload: ReviewSample[] = currentItems.map((item) => ({
+        id: item.id,
+        location: item.locationLabel,
+        source: item.original,
+        target: item.translated
+      }));
+      const reviewResponse = await sampleReviewAuditService.reviewSamples(
+        payload,
+        targetLang,
+        translationModelPreference === AUTO_OPENROUTER_MODEL ? undefined : translationModelPreference
+      );
+
+      const resultMap = reviewResponse.reviews.reduce<Record<string, SampleReviewAIResult>>((acc, item) => {
+        acc[item.id] = item;
+        return acc;
+      }, {});
+      const highRisk = reviewResponse.reviews.filter((item) => item.risk === 'high').length;
+      const failCount = reviewResponse.reviews.filter((item) => item.verdict === 'fail').length;
+
+      setSampleReviewAiResults(resultMap);
+      setSampleReviewAiMeta({
+        model: reviewResponse.model,
+        engine: reviewResponse.engine
+      });
+      addLog(
+        `AI Sample Review: 已完成 ${reviewResponse.reviews.length} 条审核；高风险 ${highRisk} 条，失败 ${failCount} 条。`
+      );
+    } catch (error) {
+      addLog(`AI Sample Review: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsRunningSampleReviewAi(false);
+    }
   };
 
   const runQualityCheck = () => {
@@ -950,7 +1038,7 @@ const App: React.FC = () => {
     }
     const report = runQualityChecks(data, target);
     setQualityReport(report);
-    setSampleReviewItems([]);
+    resetSampleReviewState();
     // Keep top warning banners in sync with the latest dataset snapshot.
     const { summary, refreshedMissing, refreshedWriteFailed } = refreshTranslationIssues(target);
     persistProgress(
@@ -1030,7 +1118,7 @@ const App: React.FC = () => {
     setTranslatedFlags(flags);
     persistProgress(fixed, flags, refreshedMissing, refreshedWriteFailed);
     setQualityReport(runQualityChecks(data, fixed));
-    setSampleReviewItems([]);
+    resetSampleReviewState();
     addLog('Quality Fix: 已应用常见格式与 ID 修复。');
   };
 
@@ -2402,7 +2490,7 @@ const App: React.FC = () => {
     const { refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(synced);
     persistProgress(synced, [...updatedFlags], refreshedMissing, refreshedWriteFailed);
     setQualityReport(runQualityChecks(data, synced));
-    setSampleReviewItems([]);
+    resetSampleReviewState();
     if (keyedRetryAutoFixed > 0) {
       addLog(`${label}: 已自动恢复 ${keyedRetryAutoFixed} 个坏 token。`);
     }
@@ -2742,6 +2830,27 @@ const App: React.FC = () => {
       return a.columnKey.localeCompare(b.columnKey);
     });
   }, [qualityReport, currentIssueSummary.details, currentRowsForRetry, data, excelContext]);
+  const sampleReviewAiSummary = useMemo(
+    () =>
+      Object.values(sampleReviewAiResults).reduce(
+        (acc, item) => {
+          acc.total += 1;
+          acc[item.risk] += 1;
+          acc[item.verdict] += 1;
+          return acc;
+        },
+        {
+          total: 0,
+          low: 0,
+          medium: 0,
+          high: 0,
+          pass: 0,
+          warning: 0,
+          fail: 0
+        }
+      ),
+    [sampleReviewAiResults]
+  );
   const previewData = processedData.length > 0 ? processedData : data;
   const previewRowIndices = useMemo(() => {
     if (!previewData.length) return [];
@@ -2769,6 +2878,30 @@ const App: React.FC = () => {
         return 'text-amber-300 border border-amber-500/30 bg-amber-500/10';
       case 'low':
         return 'text-sky-300 border border-sky-500/30 bg-sky-500/10';
+      default:
+        return 'text-slate-400 border border-slate-700 bg-slate-900/40';
+    }
+  };
+  const reviewRiskBadgeClass = (risk?: SampleReviewAIResult['risk']) => {
+    switch (risk) {
+      case 'high':
+        return 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+      case 'medium':
+        return 'text-amber-300 border border-amber-500/30 bg-amber-500/10';
+      case 'low':
+        return 'text-emerald-300 border border-emerald-500/30 bg-emerald-500/10';
+      default:
+        return 'text-slate-400 border border-slate-700 bg-slate-900/40';
+    }
+  };
+  const reviewVerdictBadgeClass = (verdict?: SampleReviewAIResult['verdict']) => {
+    switch (verdict) {
+      case 'fail':
+        return 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+      case 'warning':
+        return 'text-amber-300 border border-amber-500/30 bg-amber-500/10';
+      case 'pass':
+        return 'text-emerald-300 border border-emerald-500/30 bg-emerald-500/10';
       default:
         return 'text-slate-400 border border-slate-700 bg-slate-900/40';
     }
@@ -3374,10 +3507,10 @@ const App: React.FC = () => {
                     <div>
                       <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sample Review</h4>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        第一版只做抽样检查，不调用模型，不改写译文。
+                        先生成抽样池，再用 AI 做只读审核。不会自动改写译文。
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <select
                         className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
                         value={sampleReviewCount}
@@ -3398,37 +3531,112 @@ const App: React.FC = () => {
                       >
                         Start Sample Review
                       </button>
+                      <button
+                        onClick={runAiSampleReview}
+                        disabled={!hasQualityReport || processedData.length === 0 || isRunningSampleReviewAi}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                          !hasQualityReport || processedData.length === 0 || isRunningSampleReviewAi
+                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                        }`}
+                      >
+                        {isRunningSampleReviewAi ? 'AI Reviewing...' : 'Run AI Review'}
+                      </button>
                     </div>
                   </div>
 
+                  {sampleReviewAiSummary.total > 0 && (
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] text-slate-500">AI 审核结果</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('high')}`}>
+                          High {sampleReviewAiSummary.high}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('medium')}`}>
+                          Medium {sampleReviewAiSummary.medium}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('low')}`}>
+                          Low {sampleReviewAiSummary.low}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass('fail')}`}>
+                          Fail {sampleReviewAiSummary.fail}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass('warning')}`}>
+                          Warning {sampleReviewAiSummary.warning}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass('pass')}`}>
+                          Pass {sampleReviewAiSummary.pass}
+                        </span>
+                      </div>
+                      {(sampleReviewAiMeta?.model || sampleReviewAiMeta?.engine) && (
+                        <p className="text-[11px] text-slate-500 mt-2">
+                          审核模型：{sampleReviewAiMeta?.model || 'unknown'}
+                          {sampleReviewAiMeta?.engine ? ` · 引擎 ${sampleReviewAiMeta.engine}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {sampleReviewItems.length > 0 && (
                     <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
-                      {sampleReviewItems.map((item) => (
-                        <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2">
-                          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                            <div>
-                              <p className="text-xs text-slate-200 font-medium">{item.locationLabel}</p>
-                              <p className="text-[11px] text-slate-500 mt-1">抽样理由：{item.reason}</p>
+                      {sampleReviewItems.map((item) => {
+                        const review = sampleReviewAiResults[item.id];
+                        return (
+                          <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2">
+                            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-xs text-slate-200 font-medium">{item.locationLabel}</p>
+                                  {review && (
+                                    <>
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass(review.risk)}`}>
+                                        {review.risk}
+                                      </span>
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass(review.verdict)}`}>
+                                        {review.verdict}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1">抽样理由：{item.reason}</p>
+                                {review?.issueTypes?.length ? (
+                                  <p className="text-[11px] text-slate-500 mt-1">
+                                    问题类型：{review.issueTypes.join(' / ')}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <button
+                                onClick={() => jumpToPreviewCell(item.rowIndex, item.columnKey)}
+                                className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all"
+                              >
+                                View In Table
+                              </button>
                             </div>
-                            <button
-                              onClick={() => jumpToPreviewCell(item.rowIndex, item.columnKey)}
-                              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all"
-                            >
-                              View In Table
-                            </button>
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
+                              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                                <p className="text-slate-500 uppercase tracking-wider mb-2">Source</p>
+                                <p className="text-slate-300 whitespace-pre-wrap break-words">{item.original || '(empty)'}</p>
+                              </div>
+                              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                                <p className="text-slate-500 uppercase tracking-wider mb-2">Target</p>
+                                <p className="text-slate-300 whitespace-pre-wrap break-words">{item.translated || '(empty)'}</p>
+                              </div>
+                            </div>
+                            {review && (
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
+                                <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                                  <p className="text-slate-500 uppercase tracking-wider mb-2">AI Comment</p>
+                                  <p className="text-slate-300 whitespace-pre-wrap break-words">{review.comment || '未给出额外说明。'}</p>
+                                </div>
+                                <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                                  <p className="text-slate-500 uppercase tracking-wider mb-2">Suggested Fix</p>
+                                  <p className="text-slate-300 whitespace-pre-wrap break-words">{review.suggestion || '无需修改'}</p>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
-                            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                              <p className="text-slate-500 uppercase tracking-wider mb-2">Source</p>
-                              <p className="text-slate-300 whitespace-pre-wrap break-words">{item.original || '(empty)'}</p>
-                            </div>
-                            <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
-                              <p className="text-slate-500 uppercase tracking-wider mb-2">Target</p>
-                              <p className="text-slate-300 whitespace-pre-wrap break-words">{item.translated || '(empty)'}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -2957,7 +2957,9 @@ const App: React.FC = () => {
               <li>点击 Run Global Translation 开始。</li>
               <li>中途可 Pause 再导出检查进度。</li>
               <li>提示缺失时用 Retry Missing Cells 补译。</li>
-              <li>翻译后运行 Run Quality Check，必要时执行 Apply Cleanup 与 Retry Placeholder Cells。</li>
+              <li>翻译后运行 Run Quality Check，并在右侧 Quality Report 查看结果、定位问题。</li>
+              <li>必要时执行 Apply Cleanup、Retry Missing Cells 与 Retry Placeholder Cells。</li>
+              <li>确认无误后点击 Download 导出当前翻译文件。</li>
             </ol>
             <details className="mt-3 border border-slate-800 rounded-lg bg-slate-950/40 p-3">
               <summary className="cursor-pointer text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -2968,8 +2970,10 @@ const App: React.FC = () => {
                 <li>智能补译：仅补中文单元格，适合修补或续翻。</li>
                 <li>Retry Missing Cells：只重译缺失单元格，避免重复消耗。</li>
                 <li>Quality Check：扫描非目标语言、空白漏翻、占位符、ID 异常、结构与格式问题。</li>
+                <li>Quality Report：集中显示 Quality Check 结果，支持 Jump 定位、导出报告、抽样审查与清空当前结果。</li>
                 <li>Apply Cleanup：自动修复常见空格与术语格式问题。</li>
                 <li>Retry Placeholder Cells：仅重译占位符异常单元格。</li>
+                <li>Download：导出当前翻译结果，建议在 Quality Check 后执行。</li>
                 <li>组合校验 / 多 AI 核验：可选进一步核查。</li>
                 <li>进度保存在浏览器本地，重新上传同一文件可继续。</li>
               </ul>

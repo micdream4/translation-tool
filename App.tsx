@@ -3728,7 +3728,7 @@ const App: React.FC = () => {
             <div className="px-6 pb-6 pt-2 border-t border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-slate-500">
-                  仅替换中文，保留格式与符号（如 %s / {0}）。
+                  仅翻译中文说明，保留占位符、缩写、型号与符号（如 %s / LIS / EHBT-75 / {0}）；`translatable="false"` 会直接跳过。
                 </p>
                 <button
                   onClick={clearStringResources}

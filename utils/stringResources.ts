@@ -11,6 +11,7 @@ export interface StringResourceEntry {
 const STRING_RESOURCE_REGEX =
   /^(\s*<string\b[^>]*>)([\s\S]*?)(<\/string>\s*)$/;
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
+const NON_TRANSLATABLE_ATTR_REGEX = /\btranslatable\s*=\s*["']false["']/i;
 const FORMAT_TOKEN_REGEX =
   /%(?:\d+\$)?[-+#0\s]*(?:\d+)?(?:\.\d+)?[a-zA-Z%]|\{\d+\}/g;
 const DATE_PATTERN_TOKEN_CHARS = "GyYuUrQqMLlwWdDFgEecabBhHKkmsSzZOXVv";
@@ -18,6 +19,40 @@ const DATE_PATTERN_ALLOWED_REGEX = new RegExp(
   `^[${DATE_PATTERN_TOKEN_CHARS}'"\\s\\-/:.,年月日号星期周时分秒点()（）]+$`
 );
 const CHINESE_DATE_LITERAL_REGEX = /(星期|周|年|月|日|号|时|分|秒|点)/;
+const LOCKED_ACRONYM_MAP: Record<string, string> = {
+  cbc: "CBC",
+  lis: "LIS",
+  ping: "PING",
+  wbc: "WBC",
+  rbc: "RBC",
+  qc: "QC",
+  plt: "PLT",
+  hgb: "HGB",
+  hct: "HCT",
+  mcv: "MCV",
+  mch: "MCH",
+  mchc: "MCHC",
+  rdw: "RDW",
+  mpv: "MPV",
+  pct: "PCT",
+  pdw: "PDW",
+  neu: "NEU",
+  lym: "LYM",
+  mon: "MON",
+  eos: "EOS",
+  bas: "BAS",
+  baso: "BASO",
+  ret: "RET",
+  nrbc: "NRBC",
+  ig: "IG",
+  aly: "ALY",
+  lic: "LIC"
+};
+const LOCKED_ACRONYM_REGEX = new RegExp(
+  `\\b(?:${Object.keys(LOCKED_ACRONYM_MAP).join("|")})\\b`,
+  "gi"
+);
+const MODEL_TOKEN_REGEX = /\b[A-Z]{2,}(?:-[A-Z0-9]+)+\b/g;
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -34,12 +69,13 @@ export const parseStringResourceLine = (line: string): StringResourceEntry => {
     };
   }
   const [, prefix, content, suffix] = match;
+  const explicitlyNonTranslatable = NON_TRANSLATABLE_ATTR_REGEX.test(prefix);
   return {
     original: line,
     prefix,
     content,
     suffix,
-    needsTranslation: CHINESE_REGEX.test(content)
+    needsTranslation: !explicitlyNonTranslatable && CHINESE_REGEX.test(content)
   };
 };
 
@@ -65,16 +101,36 @@ export const guardFormatTokens = (
 export const guardStringResourceTokens = (
   text: string
 ): { sanitized: string; placeholders: PlaceholderMap | null } => {
+  const canonicalized = text.replace(LOCKED_ACRONYM_REGEX, (match) => {
+    return LOCKED_ACRONYM_MAP[match.toLowerCase()] || match;
+  });
   const { sanitized: formatSafe, placeholders: formatPlaceholders } =
-    guardFormatTokens(text);
+    guardFormatTokens(canonicalized);
+
+  let tokenCounter = 0;
+  const lockedTokenPlaceholders: PlaceholderMap = {};
+  const withLockedTokens = formatSafe.replace(MODEL_TOKEN_REGEX, (match) => {
+    const placeholder = `__ID_${tokenCounter++}__`;
+    lockedTokenPlaceholders[placeholder] = match;
+    return placeholder;
+  }).replace(LOCKED_ACRONYM_REGEX, (match) => {
+    const placeholder = `__ID_${tokenCounter++}__`;
+    lockedTokenPlaceholders[placeholder] = LOCKED_ACRONYM_MAP[match.toLowerCase()] || match;
+    return placeholder;
+  });
+
   const { sanitized, placeholders: inlinePlaceholders } =
-    guardInlineTokens(formatSafe);
-  if (!formatPlaceholders && !inlinePlaceholders) {
+    guardInlineTokens(withLockedTokens);
+  if (!formatPlaceholders && !inlinePlaceholders && tokenCounter === 0) {
     return { sanitized, placeholders: null };
   }
   return {
     sanitized,
-    placeholders: { ...(formatPlaceholders || {}), ...(inlinePlaceholders || {}) }
+    placeholders: {
+      ...(formatPlaceholders || {}),
+      ...lockedTokenPlaceholders,
+      ...(inlinePlaceholders || {})
+    }
   };
 };
 

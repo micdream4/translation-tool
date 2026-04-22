@@ -52,7 +52,7 @@ export interface QualityReport {
 
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 export const PLACEHOLDER_REGEX =
-  /(?:_+\s*(?:TKN|ID|FMT)(?:\s*[_ ]\s*\d+)?\s*_+|(?:TKN|ID|FMT)\s*[_ ]\s*\d+\s*_*)/i;
+  /(?:_+\s*(?:TKN|ID|FMT|TAG)(?:\s*[_ ]\s*\d+)?\s*_+|(?:TKN|ID|FMT|TAG)\s*[_ ]\s*\d+\s*_*)/i;
 const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;

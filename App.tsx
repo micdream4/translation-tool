@@ -35,10 +35,16 @@ import {
   stripProtectedTerms
 } from './utils/translationTokens';
 import {
+  extractStructuredStringContent,
+  guardMarkupTags,
   guardStringResourceTokens,
+  INTERNAL_STRING_PLACEHOLDER_REGEX,
   isLikelyDateFormatPattern,
+  isXmlCommentLine,
   localizeDateFormatPattern,
   parseStringResourceLine,
+  restoreMarkupTags,
+  validateStringResourceXml,
   restoreStringResourceTokens
 } from './utils/stringResources';
 import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
@@ -197,6 +203,15 @@ type SampleReviewItem = {
   original: string;
   translated: string;
   reason: string;
+};
+
+type StringOutputDiagnostic = {
+  lang: TargetLanguage;
+  untranslated: number;
+  placeholderLeaks: number;
+  spacingIssues: number;
+  invalidXml: boolean;
+  xmlError: string | null;
 };
 
 const isSevereDocxIssue = (issue: DocxIssueDetail) => {
@@ -431,6 +446,61 @@ const App: React.FC = () => {
       model: 'openrouter' as const,
       openRouterModel: translationModelPreference
     };
+  };
+
+  const applyStringAutoFix = (text: string) => {
+    const base = fixSpacingArtifacts(text);
+    return base.replace(/\b([A-Za-z])\s+(\d{1,3})\b/g, '$1$2');
+  };
+
+  const collectStringOutputDiagnostics = (
+    sourceEntries: ReturnType<typeof parseStringResourceLine>[],
+    output: string,
+    lang: TargetLanguage
+  ): StringOutputDiagnostic => {
+    const outputLines = output.split(/\r?\n/);
+    const outputEntries = outputLines.map(parseStringResourceLine);
+    const contents = sourceEntries
+      .map((sourceEntry, index) => {
+        if (isXmlCommentLine(sourceEntry.original)) return null;
+        const sourceStructured = extractStructuredStringContent(sourceEntry.content);
+        if (!sourceEntry.needsTranslation) return null;
+        if (isLikelyDateFormatPattern(sourceStructured.translatableContent)) return null;
+        const translatedEntry = outputEntries[index];
+        const translatedStructured = extractStructuredStringContent(
+          translatedEntry?.content || ''
+        );
+        return translatedStructured.translatableContent ?? '';
+      })
+      .filter((content): content is string => content !== null);
+
+    const untranslated = summarizeUntranslated(
+      contents.map((content) => ({ content })),
+      lang
+    ).cells;
+    const placeholderLeaks = contents.filter((content) =>
+      INTERNAL_STRING_PLACEHOLDER_REGEX.test(content) || PLACEHOLDER_REGEX.test(content)
+    ).length;
+    const spacingIssues = contents.filter((content) => hasSpacingIssue(content)).length;
+    const xmlValidation = validateStringResourceXml(output);
+
+    return {
+      lang,
+      untranslated,
+      placeholderLeaks,
+      spacingIssues,
+      invalidXml: !xmlValidation.valid,
+      xmlError: xmlValidation.error
+    };
+  };
+
+  const getCurrentStringOutputDiagnostics = (
+    outputs: Record<string, string>
+  ): StringOutputDiagnostic[] => {
+    const sourceEntries = stringInput.split(/\r?\n/).map(parseStringResourceLine);
+    return STRING_TARGET_LANGS
+      .filter((lang) => Boolean(outputs[lang] && outputs[lang].trim()))
+      .map((lang) => collectStringOutputDiagnostics(sourceEntries, outputs[lang] || '', lang));
   };
 
   const shouldTranslateValue = (value: unknown, key?: string) => {
@@ -1617,35 +1687,50 @@ const App: React.FC = () => {
     const hasTrailingNewline = input.endsWith('\n');
     const lines = input.split(/\r?\n/);
     const entries = lines.map(parseStringResourceLine);
-    const hasTranslatableEntries = entries.some((entry) => entry.needsTranslation);
+    const hasTranslatableEntries = entries.some(
+      (entry, index) => !isXmlCommentLine(lines[index] || '') && entry.needsTranslation
+    );
     const localPatternCount = entries.filter(
-      (entry) => entry.needsTranslation && isLikelyDateFormatPattern(entry.content)
+      (entry, index) =>
+        !isXmlCommentLine(lines[index] || '') &&
+        entry.needsTranslation &&
+        isLikelyDateFormatPattern(
+          extractStructuredStringContent(entry.content).translatableContent
+        )
     ).length;
     const placeholderStore = new Map<number, Record<string, string> | null>();
+    const markupStore = new Map<number, Record<string, string> | null>();
     const indexMap = new Map<number, number>();
     const payload: POCTRecord[] = [];
 
     entries.forEach((entry, index) => {
+      if (isXmlCommentLine(lines[index] || '')) return;
       if (!entry.needsTranslation) return;
-      if (isLikelyDateFormatPattern(entry.content)) return;
-      const { sanitized, placeholders } = guardStringResourceTokens(entry.content);
+      const structured = extractStructuredStringContent(entry.content);
+      if (isLikelyDateFormatPattern(structured.translatableContent)) return;
+      const { sanitized: markupSanitized, placeholders: markupPlaceholders } =
+        guardMarkupTags(structured.translatableContent);
+      const { sanitized, placeholders } = guardStringResourceTokens(markupSanitized);
       placeholderStore.set(index, placeholders || null);
+      markupStore.set(index, markupPlaceholders || null);
       indexMap.set(index, payload.length);
       payload.push({ content: sanitized });
     });
 
-    const applyStringAutoFix = (text: string) => {
-      const base = fixSpacingArtifacts(text);
-      return base.replace(/\b([A-Za-z])\s+(\d{1,3})\b/g, '$1$2');
-    };
-
     const buildOutput = (translatedBatch: POCTRecord[], lang: TargetLanguage) => {
       const mergedLines = entries.map((entry, index) => {
+        if (isXmlCommentLine(lines[index] || '')) {
+          return entry.original;
+        }
         if (!entry.needsTranslation) {
           return entry.original;
         }
-        if (isLikelyDateFormatPattern(entry.content)) {
-          return `${entry.prefix}${localizeDateFormatPattern(entry.content, lang)}${entry.suffix}`;
+        const structured = extractStructuredStringContent(entry.content);
+        if (isLikelyDateFormatPattern(structured.translatableContent)) {
+          return `${entry.prefix}${structured.outerPrefix}${localizeDateFormatPattern(
+            structured.translatableContent,
+            lang
+          )}${structured.outerSuffix}${entry.suffix}`;
         }
         const batchIndex = indexMap.get(index);
         const translatedRecord =
@@ -1653,19 +1738,24 @@ const App: React.FC = () => {
         const candidate =
           typeof translatedRecord.content === 'string'
             ? translatedRecord.content
-            : entry.content;
+            : structured.translatableContent;
         const placeholders = placeholderStore.get(index);
+        const markupPlaceholders = markupStore.get(index);
         const restored = restoreStringResourceTokens(candidate, placeholders);
-        const fixed = stringAutoFix ? applyStringAutoFix(restored) : restored;
-        const polished = polishTranslation(entry.content || '', fixed, lang);
+        const restoredMarkup = restoreMarkupTags(restored, markupPlaceholders);
+        const polished = polishTranslation(
+          structured.translatableContent || '',
+          stringAutoFix ? applyStringAutoFix(restoredMarkup) : restoredMarkup,
+          lang
+        );
         const normalized = normalizeTerminology(
           { content: polished },
           lang,
-          { content: entry.content }
+          { content: structured.translatableContent }
         );
         const normalizedContent =
           typeof normalized.content === 'string' ? normalized.content : polished;
-        return `${entry.prefix}${normalizedContent}${entry.suffix}`;
+        return `${entry.prefix}${structured.outerPrefix}${normalizedContent}${structured.outerSuffix}${entry.suffix}`;
       });
       return mergedLines.join(lineBreak) + (hasTrailingNewline ? lineBreak : '');
     };
@@ -1780,50 +1870,24 @@ const App: React.FC = () => {
     });
 
     setStringOutputs(outputs);
-    const hasContent = Object.values(outputs).some((value) => value && value.trim());
-    if (hasContent) {
-      const entry = {
-        id: `str-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        createdAt: Date.now(),
-        source: input,
-        outputs
-      };
-      const updated = appendStringHistory(entry);
-      setStringHistoryCount(updated.length);
-    }
+    const diagnostics = targetLangs
+      .map((lang) => {
+        const output = outputs[lang] || '';
+        if (!output.trim()) return null;
+        return collectStringOutputDiagnostics(entries, output, lang);
+      })
+      .filter((item): item is StringOutputDiagnostic => Boolean(item));
     const qualityIssues: string[] = [];
-    const analyzeStringOutput = (output: string, lang: TargetLanguage) => {
-      const lines = output.split(/\r?\n/);
-      const outputEntries = lines.map(parseStringResourceLine);
-      const contents = entries
-        .map((sourceEntry, index) => {
-          if (!sourceEntry.needsTranslation) return null;
-          if (isLikelyDateFormatPattern(sourceEntry.content)) return null;
-          const translatedEntry = outputEntries[index];
-          return translatedEntry?.content ?? "";
-        })
-        .filter((content): content is string => content !== null);
-      const untranslated = summarizeUntranslated(
-        contents.map((content) => ({ content })),
-        lang
-      ).cells;
-      const placeholderLeaks = contents.filter((content) =>
-        PLACEHOLDER_REGEX.test(content)
-      ).length;
-      const spacingIssues = contents.filter((content) =>
-        hasSpacingIssue(content)
-      ).length;
-      return { untranslated, placeholderLeaks, spacingIssues };
-    };
+    const blockingDiagnostics = diagnostics.filter(
+      (item) => item.placeholderLeaks > 0 || item.invalidXml
+    );
 
-    targetLangs.forEach((lang) => {
-      const output = outputs[lang] || '';
-      if (!output.trim()) return;
-      const { untranslated, placeholderLeaks, spacingIssues } = analyzeStringOutput(output, lang);
+    diagnostics.forEach(({ lang, untranslated, placeholderLeaks, spacingIssues, invalidXml }) => {
       const parts: string[] = [];
       if (untranslated > 0) parts.push(`未翻译 ${untranslated}`);
       if (placeholderLeaks > 0) parts.push(`占位符 ${placeholderLeaks}`);
       if (spacingIssues > 0) parts.push(`空格异常 ${spacingIssues}`);
+      if (invalidXml) parts.push('XML 非法');
       if (parts.length > 0) {
         qualityIssues.push(`${lang}: ${parts.join('，')}`);
       }
@@ -1834,6 +1898,18 @@ const App: React.FC = () => {
       addLog(summaryText);
     }
 
+    const hasContent = Object.values(outputs).some((value) => value && value.trim());
+    if (hasContent && blockingDiagnostics.length === 0 && failed.length === 0) {
+      const entry = {
+        id: `str-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: Date.now(),
+        source: input,
+        outputs
+      };
+      const updated = appendStringHistory(entry);
+      setStringHistoryCount(updated.length);
+    }
+
     if (failed.length > 0) {
       setStringStatus('error');
       setStringError(`翻译失败：${failed.join(', ')}`);
@@ -1841,9 +1917,30 @@ const App: React.FC = () => {
         setStringErrorDetails(failureDetails.slice(0, 4).join(' | '));
       }
       addLog(`String Resource: 处理结束，失败语言 ${failed.join(', ')}。`);
+    } else if (blockingDiagnostics.length > 0) {
+      setStringStatus('error');
+      setStringError('字符串结果存在结构风险，已禁止导出。');
+      setStringErrorDetails(
+        blockingDiagnostics
+          .slice(0, 3)
+          .map((item) =>
+            item.invalidXml
+              ? `${item.lang}: XML 校验失败`
+              : `${item.lang}: 内部占位符未恢复`
+          )
+          .join(' | ')
+      );
+      blockingDiagnostics.forEach((item) => {
+        if (item.invalidXml && item.xmlError) {
+          addLog(`String Resource: ${item.lang} XML 校验失败 - ${item.xmlError}`);
+        } else if (item.placeholderLeaks > 0) {
+          addLog(`String Resource: ${item.lang} 检测到 ${item.placeholderLeaks} 个内部占位符残留。`);
+        }
+      });
     } else {
       setStringStatus('completed');
       setStringError(null);
+      setStringErrorDetails(null);
       addLog(`String Resource: 全部 ${targetLangs.length} 个目标语言处理完成。`);
     }
   };
@@ -1886,6 +1983,32 @@ const App: React.FC = () => {
     );
     if (!Object.keys(availableOutputs).length) {
       addLog('当前没有字符串翻译结果可导出。');
+      return;
+    }
+    const diagnostics = getCurrentStringOutputDiagnostics(availableOutputs);
+    const blockingDiagnostics = diagnostics.filter(
+      (item) => item.placeholderLeaks > 0 || item.invalidXml
+    );
+    if (blockingDiagnostics.length > 0) {
+      setStringStatus('error');
+      setStringError('当前字符串结果未通过结构校验，已禁止导出。');
+      setStringErrorDetails(
+        blockingDiagnostics
+          .slice(0, 3)
+          .map((item) =>
+            item.invalidXml
+              ? `${item.lang}: XML 校验失败`
+              : `${item.lang}: 内部占位符未恢复`
+          )
+          .join(' | ')
+      );
+      blockingDiagnostics.forEach((item) => {
+        if (item.invalidXml && item.xmlError) {
+          addLog(`String Resource: ${item.lang} 导出前 XML 校验失败 - ${item.xmlError}`);
+        } else if (item.placeholderLeaks > 0) {
+          addLog(`String Resource: ${item.lang} 导出前检测到 ${item.placeholderLeaks} 个内部占位符残留。`);
+        }
+      });
       return;
     }
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -3828,7 +3951,7 @@ const App: React.FC = () => {
             <div className="px-6 pb-6 pt-2 border-t border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-slate-500 pr-3">
-                  仅翻译中文说明，保留占位符、缩写、型号与符号（如 %s / LIS / EHBT-75 / {0}）；`translatable="false"` 会直接跳过。
+                  仅翻译中文说明，保留占位符、缩写、型号与符号（如 %s / LIS / EHBT-75 / {0}）；`translatable="false"` 属性会保留，但中文内容仍会翻译。
                 </p>
               </div>
               <textarea

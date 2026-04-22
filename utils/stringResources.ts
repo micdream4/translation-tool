@@ -6,12 +6,16 @@ export interface StringResourceEntry {
   content: string;
   suffix: string;
   needsTranslation: boolean;
+  explicitlyNonTranslatable?: boolean;
 }
 
 const STRING_RESOURCE_REGEX =
   /^(\s*<string\b[^>]*>)([\s\S]*?)(<\/string>\s*)$/;
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 const NON_TRANSLATABLE_ATTR_REGEX = /\btranslatable\s*=\s*["']false["']/i;
+const XML_COMMENT_LINE_REGEX = /^\s*<!\s*--[\s\S]*?-->\s*$/;
+const CDATA_WRAP_REGEX = /^(\s*<!\[CDATA\[)([\s\S]*?)(\]\]>\s*)$/;
+const HTML_TAG_REGEX = /<\/?[^>]+>/g;
 const FORMAT_TOKEN_REGEX =
   /%(?:\d+\$)?[-+#0\s]*(?:\d+)?(?:\.\d+)?[a-zA-Z%]|\{\d+\}/g;
 const DATE_PATTERN_TOKEN_CHARS = "GyYuUrQqMLlwWdDFgEecabBhHKkmsSzZOXVv";
@@ -53,9 +57,39 @@ const LOCKED_ACRONYM_REGEX = new RegExp(
   "gi"
 );
 const MODEL_TOKEN_REGEX = /\b[A-Z]{2,}(?:-[A-Z0-9]+)+\b/g;
+export const INTERNAL_STRING_PLACEHOLDER_REGEX =
+  /(?:_+\s*(?:TKN|ID|FMT|TAG)(?:\s*[_ ]\s*\d+)?\s*_+|(?:TKN|ID|FMT|TAG)\s*[_ ]\s*\d+\s*_*)/i;
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export interface StructuredStringContent {
+  outerPrefix: string;
+  translatableContent: string;
+  outerSuffix: string;
+}
+
+export const isXmlCommentLine = (line: string) =>
+  XML_COMMENT_LINE_REGEX.test(String(line || ""));
+
+export const extractStructuredStringContent = (
+  content: string
+): StructuredStringContent => {
+  const value = String(content || "");
+  const match = value.match(CDATA_WRAP_REGEX);
+  if (match) {
+    return {
+      outerPrefix: match[1],
+      translatableContent: match[2],
+      outerSuffix: match[3]
+    };
+  }
+  return {
+    outerPrefix: "",
+    translatableContent: value,
+    outerSuffix: ""
+  };
+};
 
 export const parseStringResourceLine = (line: string): StringResourceEntry => {
   const match = line.match(STRING_RESOURCE_REGEX);
@@ -70,12 +104,14 @@ export const parseStringResourceLine = (line: string): StringResourceEntry => {
   }
   const [, prefix, content, suffix] = match;
   const explicitlyNonTranslatable = NON_TRANSLATABLE_ATTR_REGEX.test(prefix);
+  const structured = extractStructuredStringContent(content);
   return {
     original: line,
     prefix,
     content,
     suffix,
-    needsTranslation: !explicitlyNonTranslatable && CHINESE_REGEX.test(content)
+    needsTranslation: CHINESE_REGEX.test(structured.translatableContent),
+    explicitlyNonTranslatable
   };
 };
 
@@ -134,6 +170,25 @@ export const guardStringResourceTokens = (
   };
 };
 
+export const guardMarkupTags = (
+  text: string
+): { sanitized: string; placeholders: PlaceholderMap | null } => {
+  if (!text) {
+    return { sanitized: "", placeholders: null };
+  }
+  let counter = 0;
+  const placeholders: PlaceholderMap = {};
+  const sanitized = text.replace(HTML_TAG_REGEX, (match) => {
+    const placeholder = `__TAG_${counter++}__`;
+    placeholders[placeholder] = match;
+    return placeholder;
+  });
+  if (counter === 0) {
+    return { sanitized: text, placeholders: null };
+  }
+  return { sanitized, placeholders };
+};
+
 export const restoreStringResourceTokens = (
   text: string,
   placeholders?: PlaceholderMap | null
@@ -147,6 +202,22 @@ export const restoreStringResourceTokens = (
     normalized = normalized.replace(pattern, key);
   });
   return restoreInlineTokens(normalized, placeholders);
+};
+
+export const restoreMarkupTags = (
+  text: string,
+  placeholders?: PlaceholderMap | null
+) => {
+  if (!text || !placeholders) return text;
+  let normalized = text;
+  Object.entries(placeholders).forEach(([key, value]) => {
+    const core = key.replace(/^_+|_+$/g, "");
+    if (!core) return;
+    const pattern = new RegExp(`_{0,2}${core}_{0,2}`, "g");
+    normalized = normalized.replace(pattern, key);
+    normalized = normalized.replace(new RegExp(key, "g"), value);
+  });
+  return normalized;
 };
 
 export const isLikelyDateFormatPattern = (text: string) => {
@@ -185,4 +256,29 @@ export const localizeDateFormatPattern = (text: string, targetLang: string) => {
   output = output.replace(/([/:.-])(?=\s|$)/g, "");
   output = output.replace(/\s+/g, " ").trim();
   return output;
+};
+
+const getParserError = (doc: Document) => {
+  const parserError = doc.getElementsByTagName("parsererror")[0];
+  if (!parserError) return null;
+  const text = String(parserError.textContent || "").replace(/\s+/g, " ").trim();
+  return text || "XML parse error.";
+};
+
+export const validateStringResourceXml = (text: string) => {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    return { valid: false, error: "输出为空，无法校验 XML。" };
+  }
+  const source =
+    /^\s*<\?xml/.test(trimmed) || /^\s*<resources\b/.test(trimmed)
+      ? trimmed
+      : `<resources>\n${trimmed}\n</resources>`;
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(source, "application/xml");
+  const parserError = getParserError(xmlDoc);
+  if (parserError) {
+    return { valid: false, error: parserError };
+  }
+  return { valid: true, error: null as string | null };
 };

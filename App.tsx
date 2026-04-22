@@ -34,7 +34,13 @@ import {
   setRuntimeProtectedTerms,
   stripProtectedTerms
 } from './utils/translationTokens';
-import { guardStringResourceTokens, parseStringResourceLine, restoreStringResourceTokens } from './utils/stringResources';
+import {
+  guardStringResourceTokens,
+  isLikelyDateFormatPattern,
+  localizeDateFormatPattern,
+  parseStringResourceLine,
+  restoreStringResourceTokens
+} from './utils/stringResources';
 import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
 import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
 import {
@@ -65,6 +71,7 @@ const STRING_TARGET_LANGS: TargetLanguage[] = [
   'Russian',
   'Portuguese'
 ];
+const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
 const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
 const DEFAULT_OPENROUTER_MODELS = [
   'google/gemini-3-flash-preview',
@@ -113,6 +120,10 @@ const formatStringHistoryText = (history: StringTranslationHistoryEntry[]) => {
   const separator = '\n' + '='.repeat(80) + '\n';
   return history
     .map((entry, index) => {
+      const availableLangs = STRING_TARGET_LANGS.filter((lang) =>
+        Object.prototype.hasOwnProperty.call(entry.outputs || {}, lang)
+      );
+      const langs = availableLangs.length > 0 ? availableLangs : STRING_TARGET_LANGS;
       const lines: string[] = [
         `Record ${index + 1}`,
         `Timestamp: ${new Date(entry.createdAt).toLocaleString()}`,
@@ -120,7 +131,7 @@ const formatStringHistoryText = (history: StringTranslationHistoryEntry[]) => {
         '[Original]',
         entry.source || ''
       ];
-      STRING_TARGET_LANGS.forEach((lang) => {
+      langs.forEach((lang) => {
         lines.push('', `[${lang}]`, entry.outputs[lang] || '');
       });
       return lines.join('\n');
@@ -327,6 +338,7 @@ const App: React.FC = () => {
   const [savedSnapshot, setSavedSnapshot] = useState<TranslationProgressSnapshot | null>(null);
   const [stringInput, setStringInput] = useState<string>('');
   const [stringOutputs, setStringOutputs] = useState<Record<string, string>>({});
+  const [stringOutputTarget, setStringOutputTarget] = useState<string>(ALL_STRING_TARGETS);
   const [stringStatus, setStringStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
   const [stringError, setStringError] = useState<string | null>(null);
   const [stringQualitySummary, setStringQualitySummary] = useState<string | null>(null);
@@ -358,6 +370,13 @@ const App: React.FC = () => {
   const ruleEngine = useMemo(() => new RuleEngine(), []);
   const multiAIJudge = useMemo(() => new MultiAIJudge(), []);
   const sampleReviewAuditService = useMemo(() => new SampleReviewAuditService(), []);
+  const selectedStringTargetLangs = useMemo<TargetLanguage[]>(
+    () =>
+      stringOutputTarget === ALL_STRING_TARGETS
+        ? STRING_TARGET_LANGS
+        : [stringOutputTarget],
+    [stringOutputTarget]
+  );
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, msg]);
@@ -1564,6 +1583,7 @@ const App: React.FC = () => {
 
   const translateStringResources = async () => {
     const input = stringInput;
+    const targetLangs = selectedStringTargetLangs;
     if (!input.trim()) {
       setStringOutputs({});
       setStringStatus('idle');
@@ -1577,36 +1597,19 @@ const App: React.FC = () => {
     const hasTrailingNewline = input.endsWith('\n');
     const lines = input.split(/\r?\n/);
     const entries = lines.map(parseStringResourceLine);
+    const hasTranslatableEntries = entries.some((entry) => entry.needsTranslation);
     const placeholderStore = new Map<number, Record<string, string> | null>();
     const indexMap = new Map<number, number>();
     const payload: POCTRecord[] = [];
 
     entries.forEach((entry, index) => {
       if (!entry.needsTranslation) return;
+      if (isLikelyDateFormatPattern(entry.content)) return;
       const { sanitized, placeholders } = guardStringResourceTokens(entry.content);
       placeholderStore.set(index, placeholders || null);
       indexMap.set(index, payload.length);
       payload.push({ content: sanitized });
     });
-
-    if (payload.length === 0) {
-      const outputs: Record<string, string> = {};
-      STRING_TARGET_LANGS.forEach((lang) => {
-        outputs[lang] = input;
-      });
-      setStringOutputs(outputs);
-      const entry = {
-        id: `str-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        createdAt: Date.now(),
-        source: input,
-        outputs
-      };
-      const updated = appendStringHistory(entry);
-      setStringHistoryCount(updated.length);
-      setStringStatus('completed');
-      setStringError(null);
-      return;
-    }
 
     const applyStringAutoFix = (text: string) => {
       const base = fixSpacingArtifacts(text);
@@ -1617,6 +1620,9 @@ const App: React.FC = () => {
       const mergedLines = entries.map((entry, index) => {
         if (!entry.needsTranslation) {
           return entry.original;
+        }
+        if (isLikelyDateFormatPattern(entry.content)) {
+          return `${entry.prefix}${localizeDateFormatPattern(entry.content, lang)}${entry.suffix}`;
         }
         const batchIndex = indexMap.get(index);
         const translatedRecord =
@@ -1641,27 +1647,47 @@ const App: React.FC = () => {
       return mergedLines.join(lineBreak) + (hasTrailingNewline ? lineBreak : '');
     };
 
+    if (!hasTranslatableEntries) {
+      const outputs: Record<string, string> = {};
+      targetLangs.forEach((lang) => {
+        outputs[lang] = input;
+      });
+      setStringOutputs(outputs);
+      const entry = {
+        id: `str-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: Date.now(),
+        source: input,
+        outputs
+      };
+      const updated = appendStringHistory(entry);
+      setStringHistoryCount(updated.length);
+      setStringStatus('completed');
+      setStringError(null);
+      return;
+    }
+
     setStringStatus('running');
     setStringError(null);
     setStringQualitySummary(null);
     setStringErrorDetails(null);
 
-    const results = await Promise.allSettled(
-      STRING_TARGET_LANGS.map(async (lang) => {
-        const translatedBatch = await translationHub.translateBatch({
-          records: payload,
-          targetLang: lang,
-          options: getTranslationOptions()
-        });
-        return buildOutput(translatedBatch, lang);
-      })
-    );
+    const results = await Promise.allSettled(targetLangs.map(async (lang) => {
+      if (payload.length === 0) {
+        return buildOutput([], lang);
+      }
+      const translatedBatch = await translationHub.translateBatch({
+        records: payload,
+        targetLang: lang,
+        options: getTranslationOptions()
+      });
+      return buildOutput(translatedBatch, lang);
+    }));
 
     const outputs: Record<string, string> = {};
     const failed: string[] = [];
     const failureDetails: string[] = [];
     results.forEach((result, index) => {
-      const lang = STRING_TARGET_LANGS[index];
+      const lang = targetLangs[index];
       if (result.status === 'fulfilled') {
         outputs[lang] = result.value;
       } else {
@@ -1670,7 +1696,7 @@ const App: React.FC = () => {
         failureDetails.push(`${lang}: ${reason}`);
       }
     });
-    STRING_TARGET_LANGS.forEach((lang) => {
+    targetLangs.forEach((lang) => {
       if (outputs[lang] === undefined) {
         outputs[lang] = '';
       }
@@ -1706,7 +1732,7 @@ const App: React.FC = () => {
       return { untranslated, placeholderLeaks, spacingIssues };
     };
 
-    STRING_TARGET_LANGS.forEach((lang) => {
+    targetLangs.forEach((lang) => {
       const output = outputs[lang] || '';
       if (!output.trim()) return;
       const { untranslated, placeholderLeaks, spacingIssues } = analyzeStringOutput(output, lang);
@@ -3714,11 +3740,30 @@ const App: React.FC = () => {
               </div>
               <textarea
                 className="w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]"
-                placeholder="粘贴 <string name=...>中文</string> 文本，系统会按 7 种语言输出。"
+                placeholder="粘贴 <string name=...>中文</string> 文本；可输出全部语言，或只输出一个目标语言。"
                 value={stringInput}
                 onChange={(e) => setStringInput(e.target.value)}
                 disabled={isStringTranslating}
               />
+              <div className="flex flex-col gap-2">
+                <label className="text-xs text-slate-400">字符串输出语言</label>
+                <select
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200"
+                  value={stringOutputTarget}
+                  onChange={(e) => setStringOutputTarget(e.target.value)}
+                  disabled={isStringTranslating}
+                >
+                  <option value={ALL_STRING_TARGETS}>全部语言（{STRING_TARGET_LANGS.length} 种）</option>
+                  {STRING_TARGET_LANGS.map((lang) => (
+                    <option key={lang} value={lang}>
+                      仅输出 {lang}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-500">
+                  日期/时间格式模板（如 `M月d日E`、`yyyy年M月d日`）会按规则本地转换，不走模型。
+                </p>
+              </div>
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                 <button
                   onClick={translateStringResources}
@@ -3729,7 +3774,11 @@ const App: React.FC = () => {
                       : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
                   }`}
                 >
-                  {isStringTranslating ? 'Translating...' : 'Translate 7 Languages'}
+                  {isStringTranslating
+                    ? 'Translating...'
+                    : stringOutputTarget === ALL_STRING_TARGETS
+                      ? `输出全部语言（${STRING_TARGET_LANGS.length} 种）`
+                      : `输出 ${stringOutputTarget}`}
                 </button>
                 <label className="flex items-center gap-2 text-xs text-slate-400">
                   <input
@@ -3786,7 +3835,7 @@ const App: React.FC = () => {
               )}
               {hasStringOutputs && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
-                  {STRING_TARGET_LANGS.map((lang) => (
+                  {selectedStringTargetLangs.map((lang) => (
                     <div
                       key={lang}
                       className="bg-slate-950/50 border border-slate-800 rounded-lg p-3"

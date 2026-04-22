@@ -13,6 +13,14 @@ const STRING_RESOURCE_REGEX =
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 const FORMAT_TOKEN_REGEX =
   /%(?:\d+\$)?[-+#0\s]*(?:\d+)?(?:\.\d+)?[a-zA-Z%]|\{\d+\}/g;
+const DATE_PATTERN_TOKEN_CHARS = "GyYuUrQqMLlwWdDFgEecabBhHKkmsSzZOXVv";
+const DATE_PATTERN_ALLOWED_REGEX = new RegExp(
+  `^[${DATE_PATTERN_TOKEN_CHARS}'"\\s\\-/:.,年月日号星期周时分秒点()（）]+$`
+);
+const CHINESE_DATE_LITERAL_REGEX = /(星期|周|年|月|日|号|时|分|秒|点)/;
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const parseStringResourceLine = (line: string): StringResourceEntry => {
   const match = line.match(STRING_RESOURCE_REGEX);
@@ -83,4 +91,42 @@ export const restoreStringResourceTokens = (
     normalized = normalized.replace(pattern, key);
   });
   return restoreInlineTokens(normalized, placeholders);
+};
+
+export const isLikelyDateFormatPattern = (text: string) => {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return false;
+  if (!CHINESE_DATE_LITERAL_REGEX.test(trimmed)) return false;
+  if (!new RegExp(`[${DATE_PATTERN_TOKEN_CHARS}]`).test(trimmed)) return false;
+  return DATE_PATTERN_ALLOWED_REGEX.test(trimmed);
+};
+
+export const localizeDateFormatPattern = (text: string, targetLang: string) => {
+  const original = String(text || "");
+  if (!original.trim()) return original;
+
+  const dateSeparator =
+    targetLang === "German" || targetLang === "Russian" ? "." : "/";
+  const timeSeparator = ":";
+
+  let output = original;
+  output = output.replace(/星期|周/g, " ");
+  output = output.replace(/年/g, dateSeparator);
+  output = output.replace(/月/g, dateSeparator);
+  output = output.replace(/[日号]/g, "");
+  output = output.replace(/[时点]/g, timeSeparator);
+  output = output.replace(/[分秒]/g, "");
+  output = output.replace(/\s+/g, " ");
+  output = output.replace(
+    new RegExp(`${escapeRegExp(dateSeparator)}{2,}`, "g"),
+    dateSeparator
+  );
+  output = output.replace(
+    new RegExp(`${escapeRegExp(timeSeparator)}{2,}`, "g"),
+    timeSeparator
+  );
+  output = output.replace(/\s*([/:.-])\s*/g, "$1");
+  output = output.replace(/([/:.-])(?=\s|$)/g, "");
+  output = output.replace(/\s+/g, " ").trim();
+  return output;
 };

@@ -60,6 +60,7 @@ import {
 const BATCH_SIZE = 5;
 const DOCX_BATCH_SIZE = 20;
 const RETRY_BATCH_SIZE = 5;
+const STRING_BATCH_SIZE = 40;
 const SOURCE_LANG_REGEX = /[\u4e00-\u9fff]/;
 const STRING_TARGET_LANGS: TargetLanguage[] = [
   'English',
@@ -137,6 +138,25 @@ const formatStringHistoryText = (history: StringTranslationHistoryEntry[]) => {
       return lines.join('\n');
     })
     .join(separator);
+};
+
+const formatCurrentStringOutputText = (
+  source: string,
+  outputs: Record<string, string>
+) => {
+  const langs = STRING_TARGET_LANGS.filter((lang) =>
+    Boolean(outputs[lang] && outputs[lang].trim())
+  );
+  const lines: string[] = [
+    `Timestamp: ${new Date().toLocaleString()}`,
+    '',
+    '[Original]',
+    source || ''
+  ];
+  langs.forEach((lang) => {
+    lines.push('', `[${lang}]`, outputs[lang] || '');
+  });
+  return lines.join('\n');
 };
 
 type IssueSummaryState = {
@@ -1673,6 +1693,7 @@ const App: React.FC = () => {
     }
 
     setStringStatus('running');
+    setStringOutputs({});
     setStringError(null);
     setStringQualitySummary(null);
     setStringErrorDetails(null);
@@ -1680,7 +1701,11 @@ const App: React.FC = () => {
       `String Resource: 开始处理 ${entries.length} 行，输出 ${targetLangs.length} 个目标语言（${targetLangs.join(', ')}）。`
     );
     if (payload.length > 0) {
-      addLog(`String Resource: ${payload.length} 行送模型翻译。`);
+      addLog(
+        `String Resource: ${payload.length} 行送模型翻译，按 ${Math.ceil(
+          payload.length / STRING_BATCH_SIZE
+        )} 批执行。`
+      );
     }
     if (localPatternCount > 0) {
       addLog(`String Resource: ${localPatternCount} 行日期/时间格式模板走本地转换。`);
@@ -1693,15 +1718,36 @@ const App: React.FC = () => {
       try {
         if (payload.length === 0) {
           const output = buildOutput([], lang);
+          setStringOutputs((prev) => ({ ...prev, [lang]: output }));
           completedLangCount += 1;
           addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
           return output;
         }
-        const translatedBatch = await translationHub.translateBatch({
-          records: payload,
-          targetLang: lang,
-          options: getTranslationOptions()
-        });
+        const translatedBatch = Array.from({ length: payload.length }, () => ({ content: '' }));
+        const totalBatches = Math.ceil(payload.length / STRING_BATCH_SIZE);
+
+        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+          const start = batchIndex * STRING_BATCH_SIZE;
+          const end = Math.min(payload.length, start + STRING_BATCH_SIZE);
+          addLog(
+            `String Resource: ${lang} Batch ${batchIndex + 1}/${totalBatches}（第 ${start + 1}-${end} 行）...`
+          );
+          const batchRecords = payload.slice(start, end);
+          const batchResult = await translationHub.translateBatch({
+            records: batchRecords,
+            targetLang: lang,
+            options: getTranslationOptions()
+          });
+          batchResult.forEach((record, offset) => {
+            translatedBatch[start + offset] = record;
+          });
+          const partialOutput = buildOutput(translatedBatch, lang);
+          setStringOutputs((prev) => ({ ...prev, [lang]: partialOutput }));
+          addLog(
+            `String Resource: ${lang} Batch ${batchIndex + 1}/${totalBatches} 已完成（${end}/${payload.length} 行）。`
+          );
+        }
+
         const output = buildOutput(translatedBatch, lang);
         completedLangCount += 1;
         addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
@@ -1748,8 +1794,15 @@ const App: React.FC = () => {
     const qualityIssues: string[] = [];
     const analyzeStringOutput = (output: string, lang: TargetLanguage) => {
       const lines = output.split(/\r?\n/);
-      const entries = lines.map(parseStringResourceLine);
-      const contents = entries.map((entry) => entry.content);
+      const outputEntries = lines.map(parseStringResourceLine);
+      const contents = entries
+        .map((sourceEntry, index) => {
+          if (!sourceEntry.needsTranslation) return null;
+          if (isLikelyDateFormatPattern(sourceEntry.content)) return null;
+          const translatedEntry = outputEntries[index];
+          return translatedEntry?.content ?? "";
+        })
+        .filter((content): content is string => content !== null);
       const untranslated = summarizeUntranslated(
         contents.map((content) => ({ content })),
         lang
@@ -1825,6 +1878,20 @@ const App: React.FC = () => {
     const content = formatStringHistoryText(history);
     downloadTextFile(`String_Translation_History_${stamp}.txt`, content);
     addLog(`已导出字符串翻译记录（TXT）：${history.length} 条。`);
+  };
+
+  const exportCurrentStringOutput = () => {
+    const availableOutputs = Object.fromEntries(
+      Object.entries(stringOutputs).filter(([, value]) => String(value || '').trim())
+    );
+    if (!Object.keys(availableOutputs).length) {
+      addLog('当前没有字符串翻译结果可导出。');
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const content = formatCurrentStringOutputText(stringInput, availableOutputs);
+    downloadTextFile(`String_Translation_Current_${stamp}.txt`, content);
+    addLog(`已导出当前字符串翻译结果（TXT）：${Object.keys(availableOutputs).join(', ')}。`);
   };
 
   const clearStringHistoryData = () => {
@@ -3760,16 +3827,9 @@ const App: React.FC = () => {
             </summary>
             <div className="px-6 pb-6 pt-2 border-t border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 pr-3">
                   仅翻译中文说明，保留占位符、缩写、型号与符号（如 %s / LIS / EHBT-75 / {0}）；`translatable="false"` 会直接跳过。
                 </p>
-                <button
-                  onClick={clearStringResources}
-                  className="text-xs text-slate-500 hover:text-slate-300"
-                  disabled={isStringTranslating}
-                >
-                  Clear
-                </button>
               </div>
               <textarea
                 className="w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]"
@@ -3798,21 +3858,34 @@ const App: React.FC = () => {
                 </p>
               </div>
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                <button
-                  onClick={translateStringResources}
-                  disabled={!stringInput.trim() || isStringTranslating}
-                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
-                    !stringInput.trim() || isStringTranslating
-                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
-                  }`}
-                >
-                  {isStringTranslating
-                    ? 'Translating...'
-                    : stringOutputTarget === ALL_STRING_TARGETS
-                      ? `输出全部语言（${STRING_TARGET_LANGS.length} 种）`
-                      : `输出 ${stringOutputTarget}`}
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={translateStringResources}
+                    disabled={!stringInput.trim() || isStringTranslating}
+                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
+                      !stringInput.trim() || isStringTranslating
+                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
+                    }`}
+                  >
+                    {isStringTranslating
+                      ? 'Translating...'
+                      : stringOutputTarget === ALL_STRING_TARGETS
+                        ? `输出全部语言（${STRING_TARGET_LANGS.length} 种）`
+                        : `输出 ${stringOutputTarget}`}
+                  </button>
+                  <button
+                    onClick={clearStringResources}
+                    disabled={isStringTranslating || (!stringInput.trim() && !hasStringOutputs)}
+                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                      isStringTranslating || (!stringInput.trim() && !hasStringOutputs)
+                        ? 'bg-slate-800 text-slate-600 border border-slate-700 cursor-not-allowed'
+                        : 'bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/20'
+                    }`}
+                  >
+                    清空输入与结果
+                  </button>
+                </div>
                 <label className="flex items-center gap-2 text-xs text-slate-400">
                   <input
                     type="checkbox"
@@ -3826,9 +3899,20 @@ const App: React.FC = () => {
               </div>
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
                 <span className="text-xs text-slate-500">
-                  History: {stringHistoryCount} records
+                  本地历史：{stringHistoryCount} 条
                 </span>
                 <div className="flex gap-2">
+                  <button
+                    onClick={exportCurrentStringOutput}
+                    disabled={!hasStringOutputs || isStringTranslating}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                      !hasStringOutputs || isStringTranslating
+                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                    }`}
+                  >
+                    导出当前结果
+                  </button>
                   <button
                     onClick={exportStringHistory}
                     disabled={stringHistoryCount === 0 || isStringTranslating}
@@ -3838,7 +3922,7 @@ const App: React.FC = () => {
                         : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                     }`}
                   >
-                    Export TXT
+                    导出历史记录
                   </button>
                   <button
                     onClick={clearStringHistoryData}
@@ -3849,7 +3933,7 @@ const App: React.FC = () => {
                         : 'bg-rose-600/80 hover:bg-rose-500 text-white'
                     }`}
                   >
-                    Clear History
+                    清空历史
                   </button>
                 </div>
               </div>

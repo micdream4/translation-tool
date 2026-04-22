@@ -1598,6 +1598,9 @@ const App: React.FC = () => {
     const lines = input.split(/\r?\n/);
     const entries = lines.map(parseStringResourceLine);
     const hasTranslatableEntries = entries.some((entry) => entry.needsTranslation);
+    const localPatternCount = entries.filter(
+      (entry) => entry.needsTranslation && isLikelyDateFormatPattern(entry.content)
+    ).length;
     const placeholderStore = new Map<number, Record<string, string> | null>();
     const indexMap = new Map<number, number>();
     const payload: POCTRecord[] = [];
@@ -1648,6 +1651,9 @@ const App: React.FC = () => {
     };
 
     if (!hasTranslatableEntries) {
+      addLog(
+        `String Resource: 未检测到需要翻译的中文词条，直接输出 ${targetLangs.length} 个目标结果。`
+      );
       const outputs: Record<string, string> = {};
       targetLangs.forEach((lang) => {
         outputs[lang] = input;
@@ -1670,17 +1676,42 @@ const App: React.FC = () => {
     setStringError(null);
     setStringQualitySummary(null);
     setStringErrorDetails(null);
+    addLog(
+      `String Resource: 开始处理 ${entries.length} 行，输出 ${targetLangs.length} 个目标语言（${targetLangs.join(', ')}）。`
+    );
+    if (payload.length > 0) {
+      addLog(`String Resource: ${payload.length} 行送模型翻译。`);
+    }
+    if (localPatternCount > 0) {
+      addLog(`String Resource: ${localPatternCount} 行日期/时间格式模板走本地转换。`);
+    }
 
+    let completedLangCount = 0;
+    const totalLangCount = targetLangs.length;
     const results = await Promise.allSettled(targetLangs.map(async (lang) => {
-      if (payload.length === 0) {
-        return buildOutput([], lang);
+      addLog(`String Resource: ${lang} 开始处理...`);
+      try {
+        if (payload.length === 0) {
+          const output = buildOutput([], lang);
+          completedLangCount += 1;
+          addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
+          return output;
+        }
+        const translatedBatch = await translationHub.translateBatch({
+          records: payload,
+          targetLang: lang,
+          options: getTranslationOptions()
+        });
+        const output = buildOutput(translatedBatch, lang);
+        completedLangCount += 1;
+        addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
+        return output;
+      } catch (error) {
+        completedLangCount += 1;
+        const reason = error instanceof Error ? error.message : String(error);
+        addLog(`String Resource: ${lang} 失败（${completedLangCount}/${totalLangCount}）：${reason}`);
+        throw error;
       }
-      const translatedBatch = await translationHub.translateBatch({
-        records: payload,
-        targetLang: lang,
-        options: getTranslationOptions()
-      });
-      return buildOutput(translatedBatch, lang);
     }));
 
     const outputs: Record<string, string> = {};
@@ -1756,9 +1787,11 @@ const App: React.FC = () => {
       if (failureDetails.length > 0) {
         setStringErrorDetails(failureDetails.slice(0, 4).join(' | '));
       }
+      addLog(`String Resource: 处理结束，失败语言 ${failed.join(', ')}。`);
     } else {
       setStringStatus('completed');
       setStringError(null);
+      addLog(`String Resource: 全部 ${targetLangs.length} 个目标语言处理完成。`);
     }
   };
 

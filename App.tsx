@@ -80,6 +80,7 @@ const STRING_TARGET_LANGS: TargetLanguage[] = [
 ];
 const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
 const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
+const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
 const DEFAULT_OPENROUTER_MODELS = [
   'google/gemini-3-flash-preview',
   'qwen/qwen3.6-plus',
@@ -91,6 +92,7 @@ const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'qwen/qwen3.6-plus': 'Qwen 3.6 Plus',
   'deepseek/deepseek-v3.2': 'DeepSeek V3.2'
 };
+type ThemeMode = 'light' | 'dark';
 
 const parseOpenRouterModelOptions = () => {
   const raw =
@@ -348,6 +350,10 @@ const App: React.FC = () => {
   const [documentKind, setDocumentKind] = useState<'excel' | 'docx'>('excel');
   const [excelContext, setExcelContext] = useState<ExcelContext | null>(null);
   const [targetLang, setTargetLang] = useState<TargetLanguage>('English');
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'light';
+    return window.localStorage.getItem(UI_THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+  });
   const [logs, setLogs] = useState<string[]>([]);
   const [showComparison, setShowComparison] = useState<boolean>(false); // New State for Comparison View
   const [workflowStages, setWorkflowStages] = useState<WorkflowStageState[]>(createInitialStages);
@@ -389,6 +395,7 @@ const App: React.FC = () => {
   });
   const docxContextRef = useRef<DocxContext | null>(null);
   const docxPlaceholderStore = useRef<Map<string, Record<string, string>>>(new Map());
+  const previewDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const [docxIssueIndices, setDocxIssueIndices] = useState<number[]>([]);
   const [docxIssueDetails, setDocxIssueDetails] = useState<DocxIssueDetail[]>([]);
@@ -650,6 +657,11 @@ const App: React.FC = () => {
     setRuntimeProtectedTermsRaw(saved);
     setRuntimeProtectedTerms(parseRuntimeProtectedTerms(saved));
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(UI_THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     const parsed = parseRuntimeProtectedTerms(runtimeProtectedTermsRaw);
@@ -989,9 +1001,15 @@ const App: React.FC = () => {
   };
 
   const jumpToPreviewCell = (rowIndex: number, columnKey: string) => {
+    if (previewDetailsRef.current) {
+      previewDetailsRef.current.open = true;
+    }
     setPreviewFocus({ rowIndex, columnKey });
     window.requestAnimationFrame(() => {
-      previewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      previewDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.requestAnimationFrame(() => {
+        previewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
     });
   };
 
@@ -3188,48 +3206,65 @@ const App: React.FC = () => {
         return 'text-slate-400 border border-slate-700 bg-slate-900/40';
     }
   };
+  const runStatusLabel =
+    translationStatus === 'running'
+      ? 'Running'
+      : translationStatus === 'paused'
+        ? 'Paused'
+        : processingState.status === 'completed'
+          ? 'Completed'
+          : processingState.status === 'error'
+            ? 'Error'
+            : 'Idle';
+  const currentModelLabel =
+    translationModelPreference === AUTO_OPENROUTER_MODEL
+      ? 'Auto'
+      : OPENROUTER_MODEL_LABELS[translationModelPreference] || translationModelPreference;
+  const isLight = theme === 'light';
+  const pageClass = isLight
+    ? 'min-h-screen flex flex-col bg-[radial-gradient(circle_at_84%_4%,rgba(99,102,241,0.12)_0,rgba(99,102,241,0.04)_28%,transparent_58%),linear-gradient(180deg,#f8fafc_0%,#f5f7fb_46%,#eef2f7_100%)] text-slate-900'
+    : 'min-h-screen flex flex-col bg-[radial-gradient(circle_at_82%_0%,rgba(79,70,229,0.20)_0,rgba(15,23,42,0.18)_32%,transparent_62%),linear-gradient(180deg,#020617_0%,#070b16_48%,#0b1120_100%)] text-slate-200';
+  const panelClass = isLight
+    ? 'bg-white/92 border border-white/80 rounded-2xl p-6 shadow-[0_20px_54px_rgba(15,23,42,0.09)] ring-1 ring-slate-900/[0.035]'
+    : 'bg-slate-900/82 border border-white/[0.07] rounded-2xl p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] ring-1 ring-white/[0.03]';
+  const detailsCardClass = isLight
+    ? 'bg-white/92 border border-white/80 rounded-2xl shadow-[0_16px_42px_rgba(15,23,42,0.075)] ring-1 ring-slate-900/[0.035]'
+    : 'bg-slate-900/82 border border-white/[0.07] rounded-2xl shadow-[0_20px_58px_rgba(0,0,0,0.24)] ring-1 ring-white/[0.03]';
+  const sectionDividerClass = isLight ? 'border-slate-200/80' : 'border-white/[0.07]';
+  const headingMutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
+  const mutedTextClass = isLight ? 'text-slate-500' : 'text-slate-500';
+  const fieldClass = isLight
+    ? 'w-full bg-white/90 border border-slate-200/80 rounded-xl px-4 py-2.5 text-slate-900 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-300 outline-none transition-all cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
+    : 'w-full bg-white/[0.055] border border-white/[0.10] rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400/40 outline-none transition-all cursor-pointer';
+  const textareaClass = isLight
+    ? 'w-full min-h-[86px] bg-white/90 border border-slate-200/80 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-300 outline-none transition-all shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
+    : 'w-full min-h-[86px] bg-white/[0.055] border border-white/[0.10] rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400/40 outline-none transition-all';
+  const disabledButtonClass = isLight
+    ? 'bg-slate-100/90 text-slate-400 border border-slate-200/80 cursor-not-allowed'
+    : 'bg-white/[0.06] text-slate-500 border border-white/[0.06] cursor-not-allowed';
+  const neutralButtonClass = isLight
+    ? 'bg-white/90 hover:bg-slate-50 text-slate-700 border border-slate-200/80 shadow-sm'
+    : 'bg-white/[0.06] hover:bg-white/[0.09] text-slate-200 border border-white/[0.07]';
+  const metricCardClass = isLight
+    ? 'bg-gradient-to-br from-white to-slate-50/90 rounded-xl p-3 border border-slate-200/75 shadow-[0_8px_22px_rgba(15,23,42,0.045)]'
+    : 'bg-white/[0.035] rounded-xl p-3 border border-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]';
+  const subCardClass = isLight
+    ? 'rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-sm'
+    : 'rounded-xl border border-white/[0.07] bg-white/[0.035] p-3';
+  const nestedPanelClass = isLight
+    ? 'rounded-xl border border-slate-200/80 bg-slate-50/80 p-3'
+    : 'rounded-xl border border-white/[0.07] bg-slate-950/35 p-3';
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-200">
-      <Header />
+    <div className={pageClass}>
+      <Header
+        theme={theme}
+        onThemeToggle={() => setTheme((current) => (current === 'light' ? 'dark' : 'light'))}
+      />
 
-      <main className="flex-1 max-w-[1700px] mx-auto w-full p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-        <div className="lg:col-span-5 2xl:col-span-4 space-y-6">
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">使用说明</h2>
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider">可分享给他人</span>
-            </div>
-            <ol className="text-xs text-slate-400 space-y-2 list-decimal list-inside">
-              <li>上传 Excel/DOCX 文件。</li>
-              <li>选择目标语言与翻译策略。</li>
-              <li>点击 Run Global Translation 开始。</li>
-              <li>中途可 Pause 再导出检查进度。</li>
-              <li>提示缺失时用 Retry Missing Cells 补译。</li>
-              <li>翻译后运行 Run Quality Check，并在右侧 Quality Report 查看结果、定位问题。</li>
-              <li>必要时执行 Apply Cleanup、Retry Missing Cells 与 Retry Placeholder Cells。</li>
-              <li>确认无误后点击 Download 导出当前翻译文件。</li>
-            </ol>
-            <details className="mt-3 border border-slate-800 rounded-lg bg-slate-950/40 p-3">
-              <summary className="cursor-pointer text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                功能说明
-              </summary>
-              <ul className="mt-2 text-[11px] text-slate-500 space-y-1 list-disc list-inside">
-                <li>全量翻译：重写所有行，适合首次翻译。</li>
-                <li>智能补译：仅补中文单元格，适合修补或续翻。</li>
-                <li>Retry Missing Cells：只重译缺失单元格，避免重复消耗。</li>
-                <li>Quality Check：扫描非目标语言、空白漏翻、占位符、ID 异常、结构与格式问题。</li>
-                <li>Quality Report：集中显示 Quality Check 结果，支持 Jump 定位、导出报告、抽样审查与清空当前结果。</li>
-                <li>Apply Cleanup：自动修复常见空格与术语格式问题。</li>
-                <li>Retry Placeholder Cells：仅重译占位符异常单元格。</li>
-                <li>Download：导出当前翻译结果，建议在 Quality Check 后执行。</li>
-                <li>组合校验 / 多 AI 核验：可选进一步核查。</li>
-                <li>进度保存在浏览器本地，重新上传同一文件可继续。</li>
-              </ul>
-            </details>
-          </section>
-
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+      <main className="flex-1 max-w-[1680px] mx-auto w-full p-4 lg:px-8 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+        <div className="lg:col-span-4 space-y-6">
+          <section className={panelClass}>
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <span className="w-1.5 h-6 bg-indigo-500 rounded-full"></span>
               Translation Settings
@@ -3237,9 +3272,13 @@ const App: React.FC = () => {
             
             <div className="space-y-4">
               <div className="space-y-4">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">基础设置</h3>
+                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Basics</h3>
               <label className="block">
-                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-800 border-dashed rounded-lg hover:border-indigo-500/50 transition-colors group cursor-pointer relative">
+                <div className={`mt-1 flex justify-center px-6 pt-6 pb-7 border-2 border-dashed rounded-2xl transition-colors group cursor-pointer relative ${
+                  isLight
+                    ? 'border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 hover:border-indigo-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
+                    : 'border-white/[0.08] bg-white/[0.025] hover:border-indigo-500/45'
+                }`}>
                   <input
                     type="file"
                     className="absolute inset-0 opacity-0 cursor-pointer"
@@ -3248,13 +3287,13 @@ const App: React.FC = () => {
                     disabled={processingState.status === 'processing'}
                   />
                   <div className="space-y-1 text-center">
-                    <svg className="mx-auto h-12 w-12 text-slate-500 group-hover:text-indigo-400 transition-colors" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                    <svg className={`mx-auto h-12 w-12 transition-colors ${isLight ? 'text-indigo-300 group-hover:text-indigo-500' : 'text-slate-500 group-hover:text-indigo-400'}`} stroke="currentColor" fill="none" viewBox="0 0 48 48">
                       <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                     <div className="text-sm font-medium text-indigo-500">
                       {file ? file.name : "Upload Source Document"}
                     </div>
-                    <p className="text-xs text-slate-500">
+                    <p className={`text-xs ${mutedTextClass}`}>
                       {documentKind === 'docx'
                         ? 'Supports DOCX manuals with original layout'
                         : 'Supports Excel (.xlsx/.xls) row-by-row precision'}
@@ -3264,9 +3303,9 @@ const App: React.FC = () => {
               </label>
 
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Target Language</label>
+                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>Target Language</label>
                 <select 
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+                  className={fieldClass}
                   value={targetLang}
                   onChange={(e) => setTargetLang(e.target.value as TargetLanguage)}
                   disabled={processingState.status === 'processing'}
@@ -3283,48 +3322,52 @@ const App: React.FC = () => {
                 </select>
               </div>
               {documentKind === 'docx' && docxContextRef.current && (
-                <p className="text-xs text-slate-500 text-center">
+                <p className={`text-xs text-center ${mutedTextClass}`}>
                   DOCX 语义段：{docxStats.total}，本次已翻译 {docxStats.translated}
                 </p>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Translation Strategy</label>
+                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>Translation Strategy</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setTranslationMode('full')}
                     disabled={isTranslating}
-                    className={`py-2 rounded-lg font-semibold border text-sm transition-all ${
+                    className={`py-2.5 rounded-xl font-semibold border text-sm transition-all ${
                       translationMode === 'full'
-                        ? 'bg-indigo-600 text-white border-indigo-400 shadow-indigo-500/30'
-                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+                        ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white border-indigo-400/70 shadow-[0_10px_24px_rgba(79,70,229,0.22)]'
+                        : isLight
+                          ? 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 shadow-sm'
+                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
                     }`}
                   >
-                    全量翻译
+                    Full Translation
                   </button>
                   <button
                     type="button"
                     onClick={() => setTranslationMode('selective')}
                     disabled={isTranslating}
-                    className={`py-2 rounded-lg font-semibold border text-sm transition-all ${
+                    className={`py-2.5 rounded-xl font-semibold border text-sm transition-all ${
                       translationMode === 'selective'
-                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/30'
-                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400/70 shadow-[0_10px_24px_rgba(5,150,105,0.20)]'
+                        : isLight
+                          ? 'bg-white text-slate-500 border-slate-200 hover:border-emerald-300 shadow-sm'
+                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
                     }`}
                   >
-                    智能补译
+                    Smart Fill
                   </button>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   全量翻译会重写所有行；智能补译仅对检测到非目标语言内容的行调用模型。
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Translation Model</label>
+                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>Translation Model</label>
                 <select
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+                  className={fieldClass}
                   value={translationModelPreference}
                   onChange={(e) => setTranslationModelPreference(e.target.value)}
                   disabled={isTranslating}
@@ -3336,49 +3379,49 @@ const App: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   Auto 会按 Gemini → Qwen → DeepSeek 顺序自动切换；手工选择时只使用当前模型。
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>
                   Protected Terms (Do Not Translate)
                 </label>
                 <textarea
-                  className="w-full min-h-[86px] bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  className={textareaClass}
                   value={runtimeProtectedTermsRaw}
                   onChange={(e) => setRuntimeProtectedTermsRaw(e.target.value)}
                   disabled={isTranslating}
                   placeholder={'One term per line. e.g.\nEhome Health Technology Co., Ltd.\nEHVT-75'}
                 />
-                <p className="text-xs text-slate-500 mt-1">
+                <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   本次生效 {runtimeProtectedTermsCount} 个自定义保护词；会自动保存到本地，下次继续使用。
                 </p>
               </div>
               </div>
 
-              <div className="space-y-3 pt-4 border-t border-slate-800">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">核心操作</h3>
+              <div className={`space-y-3 pt-4 border-t ${sectionDividerClass}`}>
+                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Primary Actions</h3>
                 {savedSnapshot && processedData.length === 0 && (
-                  <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-                    <p className="text-xs text-amber-300">
-                      发现本地缓存进度，可恢复上次翻译结果。
+                  <div className={`space-y-2 rounded-xl border p-3 ${isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10'}`}>
+                    <p className={`text-xs ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
+                      Found saved translation progress for this file. You can restore it or ignore it and start over.
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={applySavedProgress}
-                        className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold"
+                        className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white text-sm font-semibold shadow-[0_10px_22px_rgba(217,119,6,0.18)]"
                       >
-                        Load Saved Progress
+                        Restore Progress
                       </button>
                       <button
                         type="button"
                         onClick={discardSavedProgress}
-                        className="w-full py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-sm font-semibold"
+                        className={`w-full py-2 rounded-xl text-sm font-semibold ${isLight ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200' : 'bg-white/[0.06] hover:bg-white/[0.09] text-slate-100 border border-white/[0.08]'}`}
                       >
-                        Discard Saved
+                        Start Over
                       </button>
                     </div>
                   </div>
@@ -3386,10 +3429,10 @@ const App: React.FC = () => {
                 <button 
                   onClick={() => runTranslation('fresh')}
                   disabled={!canRunTranslation || isTranslating}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-semibold transition-all shadow-lg ${
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-all shadow-lg ${
                     !canRunTranslation || isTranslating
-                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
+                    ? disabledButtonClass
+                    : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-[0_14px_28px_rgba(79,70,229,0.24)] active:scale-[0.99]'
                   }`}
                   >
                     {isTranslating ? 'Translating...' : 'Run Global Translation'}
@@ -3399,12 +3442,12 @@ const App: React.FC = () => {
                   <button
                     onClick={pauseResumeHandler}
                     disabled={pauseResumeDisabled}
-                    className={`w-full py-3 rounded-lg font-semibold transition-all shadow-lg ${
+                    className={`w-full py-3 rounded-xl font-semibold transition-all shadow-lg ${
                       pauseResumeDisabled
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                        ? disabledButtonClass
                         : isTranslating
-                        ? 'bg-slate-800 hover:bg-slate-700 text-white'
-                        : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                          ? isLight ? 'bg-slate-900 hover:bg-slate-800 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'
+                          : 'bg-emerald-700 hover:bg-emerald-600 text-white'
                     }`}
                   >
                     {pauseResumeLabel}
@@ -3416,16 +3459,16 @@ const App: React.FC = () => {
                     <button
                       onClick={handleDownload}
                       disabled={!canDownload}
-                      className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-semibold transition-all shadow-lg ${
+                      className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-all shadow-lg ${
                         !canDownload
-                          ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95'
+                          ? disabledButtonClass
+                          : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white active:scale-[0.99] shadow-[0_14px_28px_rgba(5,150,105,0.20)]'
                       }`}
                     >
                       {translationStatus === 'running' ? 'Wait for Translation...' : 'Download Translated Document'}
                     </button>
                     {documentKind === 'docx' && docxBlockingIssueCount > 0 && translationStatus !== 'running' && (
-                      <p className="text-[11px] text-rose-300 text-center">
+                      <p className={`text-[11px] text-center ${isLight ? 'text-rose-600' : 'text-rose-300'}`}>
                         检测到 {docxBlockingIssueCount} 段严重问题（源语言残留/占位符），建议先重译后再下载。
                       </p>
                     )}
@@ -3434,7 +3477,7 @@ const App: React.FC = () => {
               </div>
 
               {hasTranslationAlerts && (
-                <div className="text-xs text-amber-300 text-center space-y-1">
+                <div className={`text-xs text-center space-y-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
                   {currentIssueSummary.cells > 0 && (
                     <p>检测到 {currentIssueSummary.cells} 个非目标语言单元格（{currentIssueSummary.rows} 行）。</p>
                   )}
@@ -3444,7 +3487,7 @@ const App: React.FC = () => {
                     </p>
                   )}
                   {currentIssueSummary.cells > 0 && untranslatedLocationPreview && (
-                    <p className="text-[11px] text-slate-400">
+                    <p className={`text-[11px] ${headingMutedClass}`}>
                       定位示例：{untranslatedLocationPreview}
                     </p>
                   )}
@@ -3453,37 +3496,37 @@ const App: React.FC = () => {
                   )}
                   <button
                     onClick={() => retryMissingRows(currentIssueSummary.rowIndices)}
-                    className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold transition-all shadow-amber-500/20"
+                    className="w-full py-3 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-xl font-semibold text-sm transition-all shadow-[0_12px_26px_rgba(217,119,6,0.18)]"
                     disabled={translationStatus === 'running' || isRetryingMissing}
                   >
                     {isRetryingMissing ? 'Retrying...' : 'Retry Missing Cells'}
                   </button>
                   {retryCandidates.length === 0 && currentIssueSummary.cells > 0 && (
-                    <p className="text-[11px] text-slate-500">当前缺失项多为锁定字段或符号列，无法自动重译。</p>
+                    <p className={`text-[11px] ${mutedTextClass}`}>当前缺失项多为锁定字段或符号列，无法自动重译。</p>
                   )}
                 </div>
               )}
               {hasDocxIssues && (
-                <div className="text-xs text-amber-300 text-center space-y-1">
+                <div className={`text-xs text-center space-y-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
                   <p>DOCX 审计：仍有 {docxIssueDetails.length} 个语义段存在异常。</p>
-                  <p className="text-[11px] text-slate-400">
+                  <p className={`text-[11px] ${headingMutedClass}`}>
                     建议重译 {docxRetryableCount} 段；低优先级短文本 {docxLowPriorityCount} 段。
                   </p>
                   {docxIssuePreview && (
-                    <p className="text-[11px] text-slate-400">
+                    <p className={`text-[11px] ${headingMutedClass}`}>
                       示例：{docxIssuePreview}
                     </p>
                   )}
                   <button
                     onClick={retryDocxSegments}
-                    className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold transition-all shadow-amber-500/20"
+                    className="w-full py-2 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-xl font-semibold transition-all shadow-[0_12px_26px_rgba(217,119,6,0.18)]"
                     disabled={translationStatus === 'running'}
                   >
                     Retry Missing Segments
                   </button>
                   <button
                     onClick={exportDocxIssueReport}
-                    className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-lg font-semibold transition-all"
+                    className={`w-full py-2 rounded-lg font-semibold transition-all ${isLight ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200' : 'bg-slate-700 hover:bg-slate-600 text-slate-100'}`}
                     disabled={translationStatus === 'running' || docxIssueDetails.length === 0}
                   >
                     Export Issue Report
@@ -3491,20 +3534,20 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              <div className="space-y-2 pt-3 border-t border-slate-800">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quality Check</h3>
+              <div className={`space-y-2 pt-3 border-t ${sectionDividerClass}`}>
+                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Check</h3>
                 {documentKind === 'docx' && (
-                  <p className="text-[11px] text-slate-500">
+                  <p className={`text-[11px] ${mutedTextClass}`}>
                     DOCX 已内置自动审计与 Retry Missing Segments；本区按钮仅用于 Excel。
                   </p>
                 )}
                 <button
                   onClick={runQualityCheck}
                   disabled={documentKind !== 'excel' || data.length === 0}
-                  className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
+                  className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
                     documentKind !== 'excel' || data.length === 0
-                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+                      ? disabledButtonClass
+                      : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-[0_12px_26px_rgba(79,70,229,0.22)]'
                   }`}
                 >
                   Run Quality Check
@@ -3513,10 +3556,10 @@ const App: React.FC = () => {
                   <button
                     onClick={applyQualityFixes}
                     disabled={documentKind !== 'excel' || processedData.length === 0}
-                    className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
+                    className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
                       documentKind !== 'excel' || processedData.length === 0
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20'
+                        ? disabledButtonClass
+                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_12px_26px_rgba(5,150,105,0.18)]'
                     }`}
                   >
                     Apply Cleanup
@@ -3524,34 +3567,34 @@ const App: React.FC = () => {
                   <button
                     onClick={retryPlaceholderCells}
                     disabled={!placeholderIssueCount || translationStatus === 'running'}
-                    className={`w-full py-2 rounded-lg font-semibold text-sm transition-all ${
+                    className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
                       !placeholderIssueCount || translationStatus === 'running'
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-500/20'
+                        ? disabledButtonClass
+                        : 'bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white shadow-[0_12px_26px_rgba(217,119,6,0.18)]'
                     }`}
                   >
                     Retry Placeholder Cells
                   </button>
                   {documentKind === 'excel' && placeholderIssueCount > 0 && (
-                    <p className="text-[11px] text-amber-300 text-center">
+                    <p className={`text-[11px] text-center ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
                       当前结果中实时检测到 {placeholderIssueCount} 个占位符异常单元格，可直接重译，无需先运行 Quality Check。
                     </p>
                   )}
                 </div>
               </div>
 
-              <details className="mt-2 border border-slate-800 rounded-lg p-3 bg-slate-950/40">
-                <summary className="cursor-pointer text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              <details className={`mt-2 border rounded-xl p-3 ${isLight ? 'border-slate-200/80 bg-slate-50/80' : 'border-white/[0.07] bg-white/[0.025]'}`}>
+                <summary className={`cursor-pointer text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>
                   Advanced Checks
                 </summary>
                 <div className="mt-3 space-y-2">
                   <button
                     onClick={runRuleCheck}
                     disabled={data.length === 0 || isTranslating}
-                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg font-semibold transition-all shadow-lg ${
+                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl font-semibold transition-all shadow-lg ${
                       data.length === 0 || isTranslating
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-500/20 active:scale-95'
+                        ? disabledButtonClass
+                        : 'bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white shadow-[0_12px_26px_rgba(217,119,6,0.18)] active:scale-[0.99]'
                     }`}
                   >
                     {activeStage === 'ruleCheck' ? 'Analyzing...' : 'Run Combination Check'}
@@ -3560,116 +3603,63 @@ const App: React.FC = () => {
                   <button
                     onClick={runAiValidation}
                     disabled={rules.length === 0 || isTranslating}
-                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg font-semibold transition-all shadow-lg ${
+                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl font-semibold transition-all shadow-lg ${
                       rules.length === 0 || isTranslating
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 active:scale-95'
+                        ? disabledButtonClass
+                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_12px_26px_rgba(5,150,105,0.18)] active:scale-[0.99]'
                     }`}
                   >
                     {activeStage === 'aiValidate' ? 'Cross-checking...' : 'Run Multi-AI Validation'}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-2">
+                <p className={`text-[11px] mt-2 ${mutedTextClass}`}>
                   用于组合校验与多 AI 核验，非必需步骤。
                 </p>
               </details>
             </div>
           </section>
 
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Progress Monitor</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-end text-sm">
-                <span className="text-slate-300">Total Completion</span>
-                <span className="font-mono text-indigo-400">{processingState.progress}%</span>
-              </div>
-              <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-indigo-500 transition-all duration-500"
-                  style={{ width: `${processingState.progress}%` }}
-                />
-              </div>
-              <div className="text-[10px] font-mono text-slate-500 uppercase flex justify-between">
-                <span>Rows: {processingState.total}</span>
-                <span>Batch: {processingState.currentBatch}</span>
-              </div>
-              <div className="space-y-3 pt-2 border-t border-slate-800">
-                {workflowStages.map(stage => (
-                  <div key={stage.key} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2.5 h-2.5 rounded-full ${
-                          stage.status === 'completed'
-                            ? 'bg-emerald-400'
-                            : stage.status === 'running'
-                            ? 'bg-indigo-400'
-                            : stage.status === 'error'
-                            ? 'bg-rose-400'
-                            : 'bg-slate-600'
-                        }`}></span>
-                        <span className="text-slate-300">{stage.label}</span>
-                      </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide ${getStageBadgeClass(stage.status)}`}>
-                        {describeStageStatus(stage.status)}
-                      </span>
-                    </div>
-                    {stage.message && (
-                      <p className="text-[11px] text-slate-500 pl-5">{stage.message}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Analysis Snapshot</h3>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-center text-sm">
-              <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                <p className="text-[11px] text-slate-500">Translation Flags</p>
-                <p className={`text-xl font-semibold ${currentIssueSummary.cells > 0 ? 'text-amber-300' : 'text-slate-200'}`}>
-                  {currentIssueSummary.cells}
-                </p>
-                <p className="text-[11px] text-slate-500">{currentIssueSummary.rows} rows</p>
-                {writeFailedRowIndices.length > 0 && (
-                  <p className="text-[11px] text-amber-300">Write-failed rows: {writeFailedRowIndices.length}</p>
-                )}
-              </div>
-              <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                <p className="text-[11px] text-slate-500">Rules Parsed</p>
-                <p className="text-xl font-semibold text-slate-200">{rules.length}</p>
-              </div>
-              <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                <p className="text-[11px] text-slate-500">Missing Combos</p>
-                <p className="text-xl font-semibold text-amber-300">{missingCombinations.length}</p>
-              </div>
-              <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                <p className="text-[11px] text-slate-500">AI Findings</p>
-                <p className="text-xl font-semibold text-emerald-300">{aiFindings.length}</p>
-              </div>
-            </div>
-          </section>
-
         </div>
 
-        <div className="lg:col-span-7 2xl:col-span-8 space-y-6">
-          <section className="flex flex-col space-y-4">
-             <div className="flex items-center justify-between">
-               <h2 className="text-lg font-semibold flex items-center gap-2">
-                <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>
-                Translation Logs
-              </h2>
-              <button onClick={() => setLogs([])} className="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+        <div className="lg:col-span-8 space-y-6">
+          <section className={`${panelClass} space-y-4`}>
+             <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+               <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>
+                  Run Monitor
+                </h2>
+                <p className={`text-xs mt-1 ${mutedTextClass}`}>Current status, batch progress, and live translation logs.</p>
+               </div>
+              <button onClick={() => setLogs([])} className={`text-xs ${isLight ? 'text-indigo-600 hover:text-indigo-800' : 'text-slate-500 hover:text-slate-300'}`}>Clear Logs</button>
              </div>
-             <LogConsole logs={logs} />
+             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
+              <div className={metricCardClass}>
+                <p className={`text-[11px] ${mutedTextClass}`}>Status</p>
+                <p className={`text-lg font-semibold mt-1 ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>{runStatusLabel}</p>
+              </div>
+              <div className={metricCardClass}>
+                <p className={`text-[11px] ${mutedTextClass}`}>Batch</p>
+                <p className={`text-lg font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{processingState.currentBatch}</p>
+              </div>
+              <div className={metricCardClass}>
+                <p className={`text-[11px] ${mutedTextClass}`}>Processed</p>
+                <p className={`text-lg font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{processingState.progress}%</p>
+              </div>
+              <div className={metricCardClass}>
+                <p className={`text-[11px] ${mutedTextClass}`}>Model</p>
+                <p className={`text-lg font-semibold mt-1 truncate ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{currentModelLabel}</p>
+              </div>
+             </div>
+             <LogConsole logs={logs} theme={theme} />
           </section>
 
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-5">
+          <section className={`${panelClass} space-y-5`}>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quality Report</h3>
-                <p className="text-xs text-slate-500 mt-2">
-                  这里汇总同一套 Quality Check 结果，并提供问题定位、导出和抽样检查。
+                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Report</h3>
+                <p className={`text-xs mt-2 ${mutedTextClass}`}>
+                  Summary view for Quality Check results, issue navigation, export, and sample review.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -3678,8 +3668,8 @@ const App: React.FC = () => {
                   disabled={!hasQualityReport}
                   className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                     !hasQualityReport
-                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                      ? disabledButtonClass
+                      : neutralButtonClass
                   }`}
                 >
                   Clear
@@ -3689,8 +3679,8 @@ const App: React.FC = () => {
                   disabled={!hasQualityReport}
                   className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                     !hasQualityReport
-                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                      ? disabledButtonClass
+                      : neutralButtonClass
                   }`}
                 >
                   Export Report
@@ -3699,58 +3689,63 @@ const App: React.FC = () => {
             </div>
 
             {!hasQualityReport && (
-              <p className="text-xs text-slate-500">
-                运行 `Run Quality Check` 后，这里会显示概览、问题列表和抽样审查入口。
+              <p className={`text-xs ${mutedTextClass}`}>
+                Run `Run Quality Check` to show summary cards, findings, and sample review controls.
               </p>
             )}
 
             {hasQualityReport && qualityReport && (
               <>
                 <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Scanned</p>
-                    <p className="text-sm text-slate-200 mt-1">
+                  <div className={metricCardClass}>
+                    <p className={`text-[11px] ${mutedTextClass}`}>Scanned</p>
+                    <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
                       {qualityReport.totals.rowsScanned} rows / {qualityReport.totals.cellsScanned} cells
                     </p>
                     {formatSnapshot && (
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
                         {formatSnapshot.sheetName} · {formatSnapshot.rows}x{formatSnapshot.cols}
                       </p>
                     )}
                   </div>
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Residual</p>
-                    <p className="text-sm text-slate-200 mt-1">
+                  <div className={metricCardClass}>
+                    <p className={`text-[11px] ${mutedTextClass}`}>Residual</p>
+                    <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
                       非目标语言 {currentIssueSummary.cells} / 中文 {qualityReport.totals.chineseCells}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
                       {currentIssueSummary.rows} rows / {qualityReport.totals.chineseRows} rows
                     </p>
                   </div>
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Repair Targets</p>
-                    <p className="text-sm text-slate-200 mt-1">
+                  <div className={metricCardClass}>
+                    <p className={`text-[11px] ${mutedTextClass}`}>Repair Targets</p>
+                    <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
                       空白漏翻 {qualityReport.totals.emptyTranslations}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
                       占位符 {qualityReport.totals.placeholderCells} · ID {qualityReport.totals.idMismatches}
                     </p>
                   </div>
-                  <div className="bg-slate-950/40 rounded-lg p-3 border border-slate-800">
-                    <p className="text-[11px] text-slate-500">Format & Structure</p>
-                    <p className="text-sm text-slate-200 mt-1">
+                  <div className={metricCardClass}>
+                    <p className={`text-[11px] ${mutedTextClass}`}>Format & Structure</p>
+                    <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
                       格式 {qualityReport.totals.spacingIssues}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
                       H {qualityReport.totals.spacingHigh} · M {qualityReport.totals.spacingMedium} · L {qualityReport.totals.spacingLow}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
                       结构 {qualityReport.totals.structureMismatches}
                     </p>
                   </div>
                 </div>
 
-                <div className="space-y-3">
+                <details className={`rounded-lg border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/30'}`}>
+                  <summary className="cursor-pointer list-none flex items-center justify-between">
+                    <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>Details & Sample Review</span>
+                    <span className={`text-[11px] ${mutedTextClass}`}>{qualityFindings.length} findings</span>
+                  </summary>
+                  <div className="space-y-3 mt-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Findings</h4>
                     <span className="text-[11px] text-slate-500">
@@ -3764,12 +3759,12 @@ const App: React.FC = () => {
                       {qualityFindings.slice(0, 40).map((finding) => (
                         <div
                           key={finding.id}
-                          className="rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+                          className={subCardClass}
                         >
                           <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                             <div className="space-y-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-xs text-slate-200 font-medium">
+                                <p className={`text-xs font-medium ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
                                   {finding.description}
                                 </p>
                                 {finding.severity && (
@@ -3799,9 +3794,9 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   )}
-                </div>
+                  </div>
 
-                <div className="space-y-3 border-t border-slate-800 pt-5">
+                <div className={`space-y-3 border-t pt-5 ${sectionDividerClass}`}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sample Review</h4>
@@ -3811,7 +3806,7 @@ const App: React.FC = () => {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <select
-                        className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200"
+                        className={isLight ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 shadow-sm' : 'bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200'}
                         value={sampleReviewCount}
                         onChange={(e) => setSampleReviewCount(Number(e.target.value))}
                       >
@@ -3824,7 +3819,7 @@ const App: React.FC = () => {
                         disabled={!hasQualityReport || processedData.length === 0}
                         className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                           !hasQualityReport || processedData.length === 0
-                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            ? disabledButtonClass
                             : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                         }`}
                       >
@@ -3835,7 +3830,7 @@ const App: React.FC = () => {
                         disabled={!hasQualityReport || processedData.length === 0 || isRunningSampleReviewAi}
                         className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                           !hasQualityReport || processedData.length === 0 || isRunningSampleReviewAi
-                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            ? disabledButtonClass
                             : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                         }`}
                       >
@@ -3845,7 +3840,7 @@ const App: React.FC = () => {
                   </div>
 
                   {sampleReviewAiSummary.total > 0 && (
-                    <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                    <div className={subCardClass}>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] text-slate-500">AI 审核结果</span>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('high')}`}>
@@ -3881,11 +3876,11 @@ const App: React.FC = () => {
                       {sampleReviewItems.map((item) => {
                         const review = sampleReviewAiResults[item.id];
                         return (
-                          <div key={item.id} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2">
+                          <div key={item.id} className={`${subCardClass} space-y-2`}>
                             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-xs text-slate-200 font-medium">{item.locationLabel}</p>
+                                  <p className={`text-xs font-medium ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{item.locationLabel}</p>
                                   {review && (
                                     <>
                                       <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass(review.risk)}`}>
@@ -3906,30 +3901,30 @@ const App: React.FC = () => {
                               </div>
                               <button
                                 onClick={() => jumpToPreviewCell(item.rowIndex, item.columnKey)}
-                                className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all"
+                                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
                               >
                                 View In Table
                               </button>
                             </div>
                             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
-                              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                              <div className={nestedPanelClass}>
                                 <p className="text-slate-500 uppercase tracking-wider mb-2">Source</p>
-                                <p className="text-slate-300 whitespace-pre-wrap break-words">{item.original || '(empty)'}</p>
+                                <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{item.original || '(empty)'}</p>
                               </div>
-                              <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                              <div className={nestedPanelClass}>
                                 <p className="text-slate-500 uppercase tracking-wider mb-2">Target</p>
-                                <p className="text-slate-300 whitespace-pre-wrap break-words">{item.translated || '(empty)'}</p>
+                                <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{item.translated || '(empty)'}</p>
                               </div>
                             </div>
                             {review && (
                               <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
-                                <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                                <div className={nestedPanelClass}>
                                   <p className="text-slate-500 uppercase tracking-wider mb-2">AI Comment</p>
-                                  <p className="text-slate-300 whitespace-pre-wrap break-words">{review.comment || '未给出额外说明。'}</p>
+                                  <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.comment || '未给出额外说明。'}</p>
                                 </div>
-                                <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                                <div className={nestedPanelClass}>
                                   <p className="text-slate-500 uppercase tracking-wider mb-2">Suggested Fix</p>
-                                  <p className="text-slate-300 whitespace-pre-wrap break-words">{review.suggestion || '无需修改'}</p>
+                                  <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.suggestion || '无需修改'}</p>
                                 </div>
                               </div>
                             )}
@@ -3939,23 +3934,24 @@ const App: React.FC = () => {
                     </div>
                   )}
                 </div>
+                </details>
               </>
             )}
           </section>
 
-          <details className="bg-slate-900 border border-slate-800 rounded-xl shadow-xl">
-            <summary className="cursor-pointer list-none px-6 py-4 flex items-center justify-between text-sm font-semibold text-slate-300 uppercase">
+          <details ref={previewDetailsRef} className={detailsCardClass}>
+            <summary className={`cursor-pointer list-none px-6 py-4 flex items-center justify-between text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
               <span>String Resource Translator</span>
               <span className="text-[10px] text-slate-500">Optional</span>
             </summary>
-            <div className="px-6 pb-6 pt-2 border-t border-slate-800 space-y-3">
+            <div className={`px-6 pb-6 pt-2 border-t space-y-3 ${sectionDividerClass}`}>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-slate-500 pr-3">
                   仅翻译中文说明，保留占位符、缩写、型号与符号（如 %s / LIS / EHBT-75 / {0}）；`translatable="false"` 属性会保留，但中文内容仍会翻译。
                 </p>
               </div>
               <textarea
-                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]"
+                className={isLight ? 'w-full bg-white border border-slate-200 rounded-lg p-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px] shadow-sm' : 'w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]'}
                 placeholder="粘贴 <string name=...>中文</string> 文本；可输出全部语言，或只输出一个目标语言。"
                 value={stringInput}
                 onChange={(e) => setStringInput(e.target.value)}
@@ -3964,7 +3960,7 @@ const App: React.FC = () => {
               <div className="flex flex-col gap-2">
                 <label className="text-xs text-slate-400">字符串输出语言</label>
                 <select
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200"
+                  className={isLight ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 shadow-sm' : 'bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200'}
                   value={stringOutputTarget}
                   onChange={(e) => setStringOutputTarget(e.target.value)}
                   disabled={isStringTranslating}
@@ -4002,7 +3998,7 @@ const App: React.FC = () => {
                     disabled={isStringTranslating || (!stringInput.trim() && !hasStringOutputs)}
                     className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
                       isStringTranslating || (!stringInput.trim() && !hasStringOutputs)
-                        ? 'bg-slate-800 text-slate-600 border border-slate-700 cursor-not-allowed'
+                        ? disabledButtonClass
                         : 'bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/20'
                     }`}
                   >
@@ -4030,7 +4026,7 @@ const App: React.FC = () => {
                     disabled={!hasStringOutputs || isStringTranslating}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       !hasStringOutputs || isStringTranslating
-                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                        ? disabledButtonClass
                         : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                     }`}
                   >
@@ -4041,8 +4037,8 @@ const App: React.FC = () => {
                     disabled={stringHistoryCount === 0 || isStringTranslating}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       stringHistoryCount === 0 || isStringTranslating
-                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                        ? disabledButtonClass
+                        : neutralButtonClass
                     }`}
                   >
                     导出历史记录
@@ -4074,11 +4070,11 @@ const App: React.FC = () => {
                 </div>
               )}
               {hasStringOutputs && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+                <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t ${sectionDividerClass}`}>
                   {selectedStringTargetLangs.map((lang) => (
                     <div
                       key={lang}
-                      className="bg-slate-950/50 border border-slate-800 rounded-lg p-3"
+                      className={isLight ? 'bg-slate-50 border border-slate-200 rounded-lg p-3' : 'bg-slate-950/50 border border-slate-800 rounded-lg p-3'}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs text-slate-400 uppercase">
@@ -4094,7 +4090,7 @@ const App: React.FC = () => {
                       </div>
                       <textarea
                         readOnly
-                        className="w-full bg-slate-900 border border-slate-800 rounded-md p-2 text-xs text-slate-200 min-h-[120px] resize-vertical"
+                        className={isLight ? 'w-full bg-white border border-slate-200 rounded-md p-2 text-xs text-slate-900 min-h-[120px] resize-vertical' : 'w-full bg-slate-900 border border-slate-800 rounded-md p-2 text-xs text-slate-200 min-h-[120px] resize-vertical'}
                         value={stringOutputs[lang] || ''}
                       />
                     </div>
@@ -4104,13 +4100,20 @@ const App: React.FC = () => {
             </div>
           </details>
 
+          <details className={detailsCardClass}>
+            <summary className={`cursor-pointer list-none px-6 py-4 flex items-center justify-between text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
+              <span>Live Data Preview</span>
+              <span className="text-[10px] text-slate-500">
+                {previewData.length > 0 ? `${previewData.length} rows` : 'No data'}
+              </span>
+            </summary>
           <section
             ref={previewSectionRef}
-            className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl flex-1 max-h-[460px]"
+            className={`border-t overflow-hidden flex-1 max-h-[460px] ${sectionDividerClass}`}
           >
-            <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
+            <div className={`p-4 border-b flex justify-between items-center ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-900/50'}`}>
               <div className="flex items-center gap-4">
-                <h2 className="text-sm font-semibold text-slate-300 uppercase">Live Data Preview</h2>
+                <h2 className={`text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>Live Data Preview</h2>
                 {previewData.length > 0 && (
                   <div className="flex items-center gap-2">
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -4121,24 +4124,24 @@ const App: React.FC = () => {
                         onChange={() => setShowComparison(!showComparison)}
                       />
                       <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                      <span className="ml-2 text-xs text-slate-400 font-medium">Verify Mode (Show Original)</span>
+                      <span className={`ml-2 text-xs font-medium ${headingMutedClass}`}>Verify Mode (Show Original)</span>
                     </label>
                   </div>
                 )}
               </div>
               <div className="flex items-center gap-3">
                 {previewFocus && (
-                  <div className="flex items-center gap-2 text-[10px] text-indigo-300">
+                  <div className={`flex items-center gap-2 text-[10px] ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
                     <span>Focused: {formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey)}</span>
                     <button
                       onClick={() => setPreviewFocus(null)}
-                      className="text-slate-500 hover:text-slate-300"
+                      className={isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-300'}
                     >
                       Clear
                     </button>
                   </div>
                 )}
-                <div className="text-[10px] text-slate-500">
+                <div className={`text-[10px] ${mutedTextClass}`}>
                   {previewData.length > 0
                     ? previewFocus
                       ? `Showing ${previewRowIndices.length} focused rows`
@@ -4149,29 +4152,29 @@ const App: React.FC = () => {
             </div>
 
             {focusedPreviewCell && (
-              <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/40">
+              <div className={`px-4 py-3 border-b ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950/40'}`}>
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div>
-                    <p className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider">
+                    <p className={`text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>
                       Focused Cell
                     </p>
-                    <p className="text-xs text-slate-400 mt-1">{focusedPreviewCell.locationLabel}</p>
+                    <p className={`text-xs mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
                   </div>
-                  <span className="text-[10px] text-slate-500">
+                  <span className={`text-[10px] ${mutedTextClass}`}>
                     {focusedPreviewCell.changed ? 'Showing translated value' : 'Original and translated are identical'}
                   </span>
                 </div>
                 <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
-                  <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                  <div className={nestedPanelClass}>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Target</p>
-                    <p className="text-sm text-slate-200 whitespace-pre-wrap break-words">
+                    <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
                       {focusedPreviewCell.translated || '(empty)'}
                     </p>
                   </div>
                   {showComparison && (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                    <div className={nestedPanelClass}>
                       <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Source</p>
-                      <p className="text-sm text-slate-300 whitespace-pre-wrap break-words">
+                      <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                         {focusedPreviewCell.original || '(empty)'}
                       </p>
                     </div>
@@ -4180,22 +4183,22 @@ const App: React.FC = () => {
               </div>
             )}
             
-            <div className="overflow-auto h-[410px] scrollbar-thin scrollbar-thumb-slate-800">
+            <div className={`overflow-auto h-[410px] scrollbar-thin ${isLight ? 'scrollbar-thumb-slate-200' : 'scrollbar-thumb-slate-800'}`}>
               {previewData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-600 text-sm italic">
+                <div className={`h-full flex items-center justify-center text-sm italic ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
                   Waiting for data...
                 </div>
               ) : (
                 <table className="w-full text-left border-collapse min-w-full table-fixed">
-                  <thead className="sticky top-0 bg-slate-800 text-[10px] font-semibold text-slate-400 uppercase z-10 shadow-sm">
+                  <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-800 text-slate-400'}`}>
                     <tr>
-                      <th className="px-4 py-3 border-b border-slate-700 w-20">Row</th>
+                      <th className={`px-4 py-3 border-b w-20 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>Row</th>
                       {previewColumnKeys.map(key => (
-                        <th key={key} className="px-4 py-3 border-b border-slate-700 truncate w-40">{key}</th>
+                        <th key={key} className={`px-4 py-3 border-b truncate w-40 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{key}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-slate-800'}>
                     {previewRowIndices.map((actualIndex) => {
                       const record = previewData[actualIndex] || {};
                       const originalRecord = data[actualIndex] || {};
@@ -4204,9 +4207,9 @@ const App: React.FC = () => {
                       return (
                         <tr
                           key={actualIndex}
-                          className={`hover:bg-slate-800/30 transition-colors ${isFocusedRow ? 'bg-indigo-500/10' : ''}`}
+                          className={`${isLight ? 'hover:bg-indigo-50/60' : 'hover:bg-slate-800/30'} transition-colors ${isFocusedRow ? 'bg-indigo-500/10' : ''}`}
                         >
-                          <td className="px-4 py-3 border-b border-slate-800/50 text-[11px] text-slate-500 font-mono">
+                          <td className={`px-4 py-3 border-b text-[11px] text-slate-500 font-mono ${isLight ? 'border-slate-100' : 'border-slate-800/50'}`}>
                             R{formatExcelRowNumber(actualIndex)}
                           </td>
                           {previewColumnKeys.map((key, j) => {
@@ -4219,12 +4222,12 @@ const App: React.FC = () => {
                             return (
                               <td
                                 key={j}
-                                className={`px-4 py-3 border-b border-slate-800/50 ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
+                                className={`px-4 py-3 border-b ${isLight ? 'border-slate-100' : 'border-slate-800/50'} ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
                               >
                                 <div className="flex flex-col gap-0.5">
                                   <span
                                     title={String(val)}
-                                    className={`text-xs truncate whitespace-nowrap ${isDiff ? 'text-indigo-300 font-medium' : 'text-slate-300'}`}
+                                    className={`text-xs truncate whitespace-nowrap ${isDiff ? (isLight ? 'text-indigo-700 font-medium' : 'text-indigo-300 font-medium') : (isLight ? 'text-slate-700' : 'text-slate-300')}`}
                                   >
                                     {String(val)}
                                   </span>
@@ -4232,7 +4235,7 @@ const App: React.FC = () => {
                                   {showComparison && isDiff && (
                                     <span
                                       title={String(origVal)}
-                                      className="text-[10px] text-slate-500 truncate whitespace-nowrap bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-700/50 w-fit max-w-full"
+                                      className={`text-[10px] text-slate-500 truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-white border-slate-200' : 'bg-slate-800/50 border-slate-700/50'}`}
                                     >
                                       {String(origVal)}
                                     </span>
@@ -4249,35 +4252,41 @@ const App: React.FC = () => {
               )}
             </div>
           </section>
+          </details>
 
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+          <details className={detailsCardClass}>
+            <summary className={`cursor-pointer list-none px-6 py-4 flex items-center justify-between text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
+              <span>Advanced Signals</span>
+              <span className="text-[10px] text-slate-500">Combination / AI Cross-check</span>
+            </summary>
+          <section className={`p-6 border-t ${sectionDividerClass}`}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Missing Combination Highlights</h3>
+                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${headingMutedClass}`}>Missing Combination Highlights</h3>
                 {missingCombinations.length === 0 ? (
                   <p className="text-slate-500 text-sm">尚未检测到缺失组合。</p>
                 ) : (
                   <ul className="space-y-2 max-h-48 overflow-auto pr-2">
                     {missingCombinations.slice(0, 5).map(item => (
-                      <li key={item.id} className="bg-slate-950/40 border border-amber-500/30 rounded-lg p-3">
-                        <p className="text-sm text-amber-200 font-medium">{item.indicator}</p>
-                        <p className="text-xs text-slate-400 mt-1">{item.suggestion}</p>
+                      <li key={item.id} className={isLight ? 'bg-amber-50 border border-amber-200 rounded-lg p-3' : 'bg-slate-950/40 border border-amber-500/30 rounded-lg p-3'}>
+                        <p className={`text-sm font-medium ${isLight ? 'text-amber-800' : 'text-amber-200'}`}>{item.indicator}</p>
+                        <p className={`text-xs mt-1 ${headingMutedClass}`}>{item.suggestion}</p>
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
               <div>
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">AI Cross-Check Signals</h3>
+                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${headingMutedClass}`}>AI Cross-Check Signals</h3>
                 {aiFindings.length === 0 ? (
                   <p className="text-slate-500 text-sm">等待 AI 核验结果...</p>
                 ) : (
                   <ul className="space-y-2 max-h-48 overflow-auto pr-2">
                     {aiFindings.slice(0, 5).map(item => (
-                      <li key={item.ruleId} className="bg-slate-950/40 border border-indigo-500/20 rounded-lg p-3">
-                        <p className="text-sm text-slate-200 font-semibold">Rule {item.ruleId}</p>
-                        <p className="text-xs text-slate-400 mt-1">{item.aggregatedSummary}</p>
-                        <p className="text-[11px] text-emerald-400 mt-2">{item.finalRecommendation}</p>
+                      <li key={item.ruleId} className={isLight ? 'bg-indigo-50 border border-indigo-100 rounded-lg p-3' : 'bg-slate-950/40 border border-indigo-500/20 rounded-lg p-3'}>
+                        <p className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>Rule {item.ruleId}</p>
+                        <p className={`text-xs mt-1 ${headingMutedClass}`}>{item.aggregatedSummary}</p>
+                        <p className={`text-[11px] mt-2 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>{item.finalRecommendation}</p>
                       </li>
                     ))}
                   </ul>
@@ -4285,6 +4294,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </section>
+          </details>
         </div>
       </main>
     </div>

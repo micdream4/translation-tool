@@ -1,25 +1,147 @@
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
-const Header: React.FC = () => {
+type ThemeMode = 'light' | 'dark';
+
+interface HeaderProps {
+  theme: ThemeMode;
+  onThemeToggle: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle }) => {
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const guideRef = useRef<HTMLDivElement>(null);
+  const isLight = theme === 'light';
+
+  useEffect(() => {
+    if (!isGuideOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!guideRef.current?.contains(event.target as Node)) {
+        setIsGuideOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsGuideOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isGuideOpen]);
+
   return (
-    <header className="border-b border-slate-700 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+    <header className={`sticky top-0 z-50 border-b backdrop-blur-md ${
+      isLight
+        ? 'border-slate-200/80 bg-white/90 shadow-[0_10px_34px_rgba(15,23,42,0.08)]'
+        : 'border-slate-800 bg-slate-950/85 shadow-[0_10px_34px_rgba(0,0,0,0.22)]'
+    }`}>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className={`absolute inset-0 ${
+          isLight
+            ? 'bg-[radial-gradient(circle_at_88%_-45%,rgba(99,102,241,0.22)_0,rgba(99,102,241,0.10)_30%,transparent_58%),linear-gradient(135deg,rgba(255,255,255,0)_0%,rgba(248,250,252,0.65)_52%,rgba(238,242,255,0.92)_100%)]'
+            : 'bg-[radial-gradient(circle_at_88%_-40%,rgba(79,70,229,0.38)_0,rgba(37,99,235,0.14)_34%,transparent_62%),linear-gradient(135deg,rgba(2,6,23,0.96)_0%,rgba(15,23,42,0.92)_56%,rgba(30,41,59,0.86)_100%)]'
+        }`}></div>
+        <div className={`absolute -right-24 -top-20 h-44 w-[560px] rotate-[-18deg] border-l ${
+          isLight
+            ? 'border-indigo-100/90 bg-gradient-to-r from-transparent via-indigo-50/80 to-blue-100/70'
+            : 'border-indigo-400/10 bg-gradient-to-r from-transparent via-indigo-500/10 to-cyan-400/10'
+        }`}></div>
+        <div className={`absolute right-24 top-0 h-24 w-px rotate-[46deg] ${
+          isLight ? 'bg-indigo-100/90' : 'bg-indigo-300/10'
+        }`}></div>
+      </div>
+      <div className="relative z-10 max-w-7xl mx-auto px-4 h-[72px] flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="m16 4 3 3L7 19H4v-3L16 4z"/><path d="m14 6 3 3"/><path d="M11 7 8 4"/><path d="m18 12-3-3"/></svg>
+          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.25)] ring-1 ring-white/20">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M4 19.5V5a2 2 0 0 1 2-2h9l5 5v11.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5z"/><path d="M14 3v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/><path d="M8 9h2"/></svg>
           </div>
-          <div>
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-blue-400">
+          <div className="flex flex-col justify-center leading-none">
+            <h1 className={`text-xl font-bold ${
+              isLight
+                ? 'text-slate-950'
+                : 'bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-blue-400'
+            }`}>
               POCT Document Translator
             </h1>
-            <p className="text-xs text-slate-400 font-medium tracking-tight">AI-Powered 1:1 Medical Data Translation</p>
+            <p className={`text-xs font-medium tracking-tight mt-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>AI-Powered 1:1 Medical Data Translation</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            Kernel Ready
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="relative" ref={guideRef}>
+            <button
+              type="button"
+              onClick={() => setIsGuideOpen((open) => !open)}
+              className={`cursor-pointer list-none inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                isLight
+                  ? 'bg-white/80 text-slate-700 border-white/80 shadow-sm hover:border-indigo-300 hover:text-indigo-700'
+                  : 'bg-white/[0.06] text-slate-300 border-white/[0.08] hover:border-indigo-500/40 hover:text-slate-100'
+              }`}
+            >
+              操作说明
+            </button>
+            {isGuideOpen && (
+            <div className={`absolute right-0 mt-3 w-[460px] rounded-xl border p-4 shadow-2xl ${
+              isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-700 bg-slate-950 text-slate-400'
+            }`}>
+              <div className={`space-y-4 text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                <section>
+                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>基础设置</h3>
+                  <ol className="space-y-2 list-decimal list-inside">
+                    <li>上传 Excel 或 DOCX 文件。</li>
+                    <li>选择目标语言，支持英、法、西、德、意、土、俄、葡等 8 国语言翻译。</li>
+                    <li>Full Translation 会重写所有行，适合首次完整翻译或需要全部刷新译文时使用。</li>
+                    <li>Smart Fill 只处理疑似未翻译或非目标语言内容，适合补译、续翻和节省模型调用。</li>
+                    <li>Translation Model 选择 Auto 时会按 Gemini → Qwen → DeepSeek 顺序自动切换；手动选择模型时只使用所选模型。</li>
+                    <li>Protected Terms 用于保护品牌名、公司名、型号、专有术语等不被翻译；一行一个词，保存后会在本机自动记住。</li>
+                  </ol>
+                </section>
+                <section>
+                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>翻译运行</h3>
+                  <ol className="space-y-2 list-decimal list-inside">
+                    <li>点击 Run Global Translation 开始翻译。</li>
+                    <li>翻译中可点击 Pause 暂停，并下载查看翻译质量；暂停后可点击 Resume 继续。</li>
+                    <li>如检测到漏翻，可使用 Retry Missing Cells 只补译问题行。</li>
+                  </ol>
+                </section>
+                <section>
+                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>质检修复</h3>
+                  <ol className="space-y-2 list-decimal list-inside">
+                    <li>导出前建议运行 Run Quality Check，并在 Quality Report 查看摘要和问题详情。</li>
+                    <li>Apply Cleanup 用于自动修复常见空格、格式和术语清理问题。</li>
+                    <li>Retry Placeholder Cells 用于重译占位符异常单元格，例如坏 token 或残留占位符。</li>
+                  </ol>
+                </section>
+                <section>
+                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>抽样审查</h3>
+                  <ol className="space-y-2 list-decimal list-inside">
+                    <li>Start Sample Review 会生成抽样检查池。</li>
+                    <li>Run AI Review 会对抽样内容做只读 AI 审查，不会自动改写译文。</li>
+                    <li>Start Sample Review 和 Run AI Review 需要先完成翻译并运行 Quality Check 后才可用。</li>
+                  </ol>
+                </section>
+              </div>
+            </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onThemeToggle}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+              isLight
+                ? 'border-indigo-200/80 bg-indigo-50/90 text-indigo-700 hover:bg-indigo-100'
+                : 'border-white/[0.08] bg-white/[0.06] text-slate-300 hover:border-indigo-500/40 hover:text-slate-100'
+            }`}
+            aria-label="Toggle color theme"
+          >
+            <span className={`h-2 w-2 rounded-full ${isLight ? 'bg-indigo-500' : 'bg-slate-400'}`}></span>
+            {isLight ? 'Light' : 'Dark'}
+          </button>
         </div>
       </div>
     </header>

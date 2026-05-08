@@ -3234,8 +3234,8 @@ const App: React.FC = () => {
   const headingMutedClass = isLight ? 'text-slate-500' : 'text-slate-400';
   const mutedTextClass = isLight ? 'text-slate-500' : 'text-slate-500';
   const fieldClass = isLight
-    ? 'w-full bg-white/90 border border-slate-200/80 rounded-xl px-4 py-2.5 text-slate-900 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-300 outline-none transition-all cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
-    : 'w-full bg-white/[0.055] border border-white/[0.10] rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400/40 outline-none transition-all cursor-pointer';
+    ? 'w-full bg-white/90 border border-slate-200/80 rounded-xl px-4 py-2.5 text-slate-900 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-300 outline-none transition-all cursor-pointer shadow-[0_1px_2px_rgba(15,23,42,0.04)] [color-scheme:light]'
+    : 'w-full bg-slate-950/70 border border-white/[0.16] rounded-xl px-4 py-2.5 text-slate-100 focus:ring-2 focus:ring-indigo-500/35 focus:border-indigo-400/60 outline-none transition-all cursor-pointer [color-scheme:dark]';
   const textareaClass = isLight
     ? 'w-full min-h-[86px] bg-white/90 border border-slate-200/80 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-300 outline-none transition-all shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
     : 'w-full min-h-[86px] bg-white/[0.055] border border-white/[0.10] rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400/40 outline-none transition-all';
@@ -3256,7 +3256,7 @@ const App: React.FC = () => {
     : 'rounded-xl border border-white/[0.07] bg-slate-950/35 p-3';
 
   return (
-    <div className={pageClass}>
+    <div className={pageClass} data-theme={theme}>
       <Header
         theme={theme}
         onThemeToggle={() => setTheme((current) => (current === 'light' ? 'dark' : 'light'))}

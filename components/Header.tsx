@@ -86,7 +86,7 @@ const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle }) => {
               操作说明
             </button>
             {isGuideOpen && (
-            <div className={`absolute right-0 mt-3 w-[460px] rounded-xl border p-4 shadow-2xl ${
+            <div className={`absolute right-0 mt-3 w-[min(460px,calc(100vw-2rem))] max-h-[calc(100vh-96px)] overflow-y-auto overscroll-contain rounded-xl border p-4 shadow-2xl ${
               isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-700 bg-slate-950 text-slate-400'
             }`}>
               <div className={`space-y-4 text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>

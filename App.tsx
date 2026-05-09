@@ -31,6 +31,15 @@ import {
   clearTranslationProgress,
   type TranslationProgressSnapshot
 } from './utils/storage';
+import {
+  buildTranslationMemoryKey,
+  clearTranslationMemory,
+  countTranslationMemoryEntries,
+  lookupTranslationMemoryBatch,
+  normalizeMemorySource,
+  saveTranslationMemoryPairs,
+  type TranslationMemoryPair
+} from './utils/translationMemory';
 import { normalizeTerminology } from './utils/terminology';
 import { polishTranslation, fixSpacingArtifacts } from './utils/postprocess';
 import {
@@ -100,6 +109,11 @@ const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'deepseek/deepseek-v3.2': 'DeepSeek V3.2'
 };
 type ThemeMode = 'light' | 'dark';
+type TranslationMemoryStats = {
+  hits: number;
+  deduped: number;
+  stored: number;
+};
 
 const parseOpenRouterModelOptions = () => {
   const raw =
@@ -394,6 +408,7 @@ const App: React.FC = () => {
   const [stringAutoFix, setStringAutoFix] = useState<boolean>(true);
   const [runtimeProtectedTermsRaw, setRuntimeProtectedTermsRaw] = useState<string>('');
   const [stringHistoryCount, setStringHistoryCount] = useState<number>(0);
+  const [translationMemoryCount, setTranslationMemoryCount] = useState<number>(0);
   const [processingState, setProcessingState] = useState<ProcessingState>({
     status: 'idle',
     progress: 0,
@@ -411,6 +426,7 @@ const App: React.FC = () => {
   const [pdfStats, setPdfStats] = useState<{ pages: number; total: number; translated: number }>({ pages: 0, total: 0, translated: 0 });
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
+  const translationMemorySessionRef = useRef<Map<string, string>>(new Map());
 
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
@@ -462,6 +478,91 @@ const App: React.FC = () => {
       model: 'openrouter' as const,
       openRouterModel: translationModelPreference
     };
+  };
+
+  const createTranslationMemoryStats = (): TranslationMemoryStats => ({
+    hits: 0,
+    deduped: 0,
+    stored: 0
+  });
+
+  const getTranslationMemoryKey = (sourceText: string, lang: TargetLanguage = targetLang) =>
+    buildTranslationMemoryKey(sourceText, lang);
+
+  const isUsableMemoryTarget = (targetText: string, lang: TargetLanguage = targetLang) => {
+    const trimmed = String(targetText || '').trim();
+    return Boolean(trimmed) && !valueNeedsTranslation(trimmed, lang);
+  };
+
+  const lookupReusableTranslations = async (
+    sourceTexts: string[],
+    lang: TargetLanguage = targetLang
+  ) => {
+    const output = new Map<string, string>();
+    const lookupItems = new Map<string, string>();
+
+    sourceTexts.forEach((sourceText) => {
+      const normalized = normalizeMemorySource(sourceText);
+      if (!normalized) return;
+      const key = getTranslationMemoryKey(sourceText, lang);
+      const sessionValue = translationMemorySessionRef.current.get(key);
+      if (sessionValue && isUsableMemoryTarget(sessionValue, lang)) {
+        output.set(key, sessionValue);
+        return;
+      }
+      lookupItems.set(key, sourceText);
+    });
+
+    if (lookupItems.size > 0) {
+      const entries = await lookupTranslationMemoryBatch(
+        Array.from(lookupItems.values()).map((sourceText) => ({
+          sourceText,
+          targetLang: lang
+        }))
+      );
+      entries.forEach((entry, key) => {
+        if (!isUsableMemoryTarget(entry.targetText, lang)) return;
+        translationMemorySessionRef.current.set(key, entry.targetText);
+        output.set(key, entry.targetText);
+      });
+    }
+
+    return output;
+  };
+
+  const rememberTranslationPairs = async (
+    pairs: TranslationMemoryPair[],
+    stats?: TranslationMemoryStats
+  ) => {
+    const uniquePairs = new Map<string, TranslationMemoryPair>();
+    pairs.forEach((pair) => {
+      if (!isUsableMemoryTarget(pair.targetText, pair.targetLang)) return;
+      const key = buildTranslationMemoryKey(pair.sourceText, pair.targetLang, pair.sourceLang);
+      translationMemorySessionRef.current.set(key, pair.targetText);
+      uniquePairs.set(key, pair);
+    });
+    if (uniquePairs.size === 0) return;
+    const saved = await saveTranslationMemoryPairs(Array.from(uniquePairs.values()));
+    if (stats) {
+      stats.stored += saved;
+    }
+    if (saved > 0) {
+      await refreshTranslationMemoryCount();
+    }
+  };
+
+  const logTranslationMemoryStats = (label: string, stats: TranslationMemoryStats) => {
+    if (stats.hits === 0 && stats.deduped === 0 && stats.stored === 0) return;
+    addLog(
+      `${label} Translation Memory: 复用 ${stats.hits} 条，批内去重 ${stats.deduped} 条，新写入 ${stats.stored} 条。`
+    );
+  };
+
+  const clearTranslationMemoryData = async () => {
+    await clearTranslationMemory();
+    translationMemorySessionRef.current.clear();
+    await refreshTranslationMemoryCount();
+    addLog('已清空本地翻译记忆。');
   };
 
   const applyStringAutoFix = (text: string) => {
@@ -788,6 +889,15 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setStringHistoryCount(loadStringHistory().length);
+  }, []);
+
+  const refreshTranslationMemoryCount = async () => {
+    const count = await countTranslationMemoryEntries();
+    setTranslationMemoryCount(count);
+  };
+
+  useEffect(() => {
+    void refreshTranslationMemoryCount();
   }, []);
 
   const persistProgress = (
@@ -1511,34 +1621,74 @@ const App: React.FC = () => {
           const chunk = candidates.slice(i, i + DOCX_BATCH_SIZE);
           const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
           addLog(`Docx Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段`);
-          let translatedBatch: POCTRecord[];
+          const memoryStats = createTranslationMemoryStats();
+          const memoryHits = await lookupReusableTranslations(
+            chunk.map((segment) => getDocxSegmentText(segment) || segment.original)
+          );
+          const leaders: Array<{
+            segment: typeof chunk[number];
+            rawText: string;
+            sanitized: string;
+            placeholders: Record<string, string> | null;
+            memoryKey: string;
+          }> = [];
+          const followers = new Map<string, typeof chunk>();
+          const seenInBatch = new Set<string>();
+
+          chunk.forEach((segment) => {
+            const rawText = getDocxSegmentText(segment) || segment.original;
+            const memoryKey = getTranslationMemoryKey(rawText);
+            const memoryTarget = memoryHits.get(memoryKey);
+            if (memoryTarget) {
+              setDocxSegmentText(segment, memoryTarget);
+              memoryStats.hits += 1;
+              return;
+            }
+            if (seenInBatch.has(memoryKey)) {
+              const existing = followers.get(memoryKey) || [];
+              existing.push(segment);
+              followers.set(memoryKey, existing);
+              memoryStats.deduped += 1;
+              return;
+            }
+            seenInBatch.add(memoryKey);
+            const { sanitized, placeholders } = guardTranslationTokens(rawText);
+            if (placeholders) {
+              docxPlaceholderStore.current.set(segment.id, placeholders);
+            }
+            leaders.push({
+              segment,
+              rawText,
+              sanitized,
+              placeholders,
+              memoryKey
+            });
+          });
+
+          let translatedBatch: POCTRecord[] = [];
           try {
-            const payload = chunk.map((segment) => {
-              const rawText = getDocxSegmentText(segment) || segment.original;
-              const { sanitized, placeholders } = guardTranslationTokens(rawText);
-              if (placeholders) {
-                docxPlaceholderStore.current.set(segment.id, placeholders);
-              }
-              return {
-                content: sanitized
-              };
-            });
-            translatedBatch = await translationHub.translateBatch({
-              records: payload,
-              targetLang,
-              options: getTranslationOptions()
-            });
-            addLog(`Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+            if (leaders.length > 0) {
+              translatedBatch = await translationHub.translateBatch({
+                records: leaders.map((leader) => ({ content: leader.sanitized })),
+                targetLang,
+                options: getTranslationOptions()
+              });
+              addLog(`Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+            } else {
+              addLog(`Docx Batch ${batchNum}: 全部命中本地翻译记忆。`);
+            }
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(`Docx Batch ${batchNum} 翻译失败：${errMsg}`);
             continue;
           }
 
-          chunk.forEach((segment, index) => {
+          const memoryPairs: TranslationMemoryPair[] = [];
+          leaders.forEach((leader, index) => {
+            const segment = leader.segment;
             const translatedRecord = translatedBatch[index] || {};
-            const rawText = getDocxSegmentText(segment) || segment.original;
-            const placeholders = docxPlaceholderStore.current.get(segment.id);
+            const rawText = leader.rawText;
+            const placeholders = leader.placeholders || docxPlaceholderStore.current.get(segment.id);
             const sanitizedResult =
               typeof translatedRecord.content === 'string'
                 ? translatedRecord.content
@@ -1549,7 +1699,20 @@ const App: React.FC = () => {
               polishTranslation(rawText || '', restored, targetLang)
             );
             setDocxSegmentText(segment, polished);
+            (followers.get(leader.memoryKey) || []).forEach((follower) => {
+              setDocxSegmentText(follower, polished);
+            });
+            memoryPairs.push({
+              sourceText: rawText,
+              targetText: polished,
+              targetLang,
+              model: translationHub.getLastEngine(),
+              documentKind,
+              fileName: file?.name
+            });
           });
+          await rememberTranslationPairs(memoryPairs, memoryStats);
+          logTranslationMemoryStats(`Docx Batch ${batchNum}`, memoryStats);
 
           completed += chunk.length;
           setDocxStats({
@@ -1642,32 +1805,74 @@ const App: React.FC = () => {
           const chunk = candidates.slice(i, i + DOCX_BATCH_SIZE);
           const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
           addLog(`PDF Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段`);
-          let translatedBatch: POCTRecord[];
+          const memoryStats = createTranslationMemoryStats();
+          const memoryHits = await lookupReusableTranslations(
+            chunk.map((segment) => getPdfSegmentText(segment) || segment.original)
+          );
+          const leaders: Array<{
+            segment: typeof chunk[number];
+            rawText: string;
+            sanitized: string;
+            placeholders: Record<string, string> | null;
+            memoryKey: string;
+          }> = [];
+          const followers = new Map<string, typeof chunk>();
+          const seenInBatch = new Set<string>();
+
+          chunk.forEach((segment) => {
+            const rawText = getPdfSegmentText(segment) || segment.original;
+            const memoryKey = getTranslationMemoryKey(rawText);
+            const memoryTarget = memoryHits.get(memoryKey);
+            if (memoryTarget) {
+              setPdfSegmentText(segment, memoryTarget);
+              memoryStats.hits += 1;
+              return;
+            }
+            if (seenInBatch.has(memoryKey)) {
+              const existing = followers.get(memoryKey) || [];
+              existing.push(segment);
+              followers.set(memoryKey, existing);
+              memoryStats.deduped += 1;
+              return;
+            }
+            seenInBatch.add(memoryKey);
+            const { sanitized, placeholders } = guardTranslationTokens(rawText);
+            if (placeholders) {
+              docxPlaceholderStore.current.set(segment.id, placeholders);
+            }
+            leaders.push({
+              segment,
+              rawText,
+              sanitized,
+              placeholders,
+              memoryKey
+            });
+          });
+
+          let translatedBatch: POCTRecord[] = [];
           try {
-            const payload = chunk.map((segment) => {
-              const rawText = getPdfSegmentText(segment) || segment.original;
-              const { sanitized, placeholders } = guardTranslationTokens(rawText);
-              if (placeholders) {
-                docxPlaceholderStore.current.set(segment.id, placeholders);
-              }
-              return { content: sanitized };
-            });
-            translatedBatch = await translationHub.translateBatch({
-              records: payload,
-              targetLang,
-              options: getTranslationOptions()
-            });
-            addLog(`PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+            if (leaders.length > 0) {
+              translatedBatch = await translationHub.translateBatch({
+                records: leaders.map((leader) => ({ content: leader.sanitized })),
+                targetLang,
+                options: getTranslationOptions()
+              });
+              addLog(`PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+            } else {
+              addLog(`PDF Batch ${batchNum}: 全部命中本地翻译记忆。`);
+            }
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(`PDF Batch ${batchNum} 翻译失败：${errMsg}`);
             continue;
           }
 
-          chunk.forEach((segment, index) => {
+          const memoryPairs: TranslationMemoryPair[] = [];
+          leaders.forEach((leader, index) => {
+            const segment = leader.segment;
             const translatedRecord = translatedBatch[index] || {};
-            const rawText = getPdfSegmentText(segment) || segment.original;
-            const placeholders = docxPlaceholderStore.current.get(segment.id);
+            const rawText = leader.rawText;
+            const placeholders = leader.placeholders || docxPlaceholderStore.current.get(segment.id);
             const sanitizedResult =
               typeof translatedRecord.content === 'string'
                 ? translatedRecord.content
@@ -1678,7 +1883,20 @@ const App: React.FC = () => {
               polishTranslation(rawText || '', restored, targetLang)
             );
             setPdfSegmentText(segment, polished);
+            (followers.get(leader.memoryKey) || []).forEach((follower) => {
+              setPdfSegmentText(follower, polished);
+            });
+            memoryPairs.push({
+              sourceText: rawText,
+              targetText: polished,
+              targetLang,
+              model: translationHub.getLastEngine(),
+              documentKind,
+              fileName: file?.name
+            });
           });
+          await rememberTranslationPairs(memoryPairs, memoryStats);
+          logTranslationMemoryStats(`PDF Batch ${batchNum}`, memoryStats);
 
           completed += chunk.length;
           setPdfStats({
@@ -2353,39 +2571,109 @@ const App: React.FC = () => {
           const rowLabel = formatRowRanges(pendingIndices, 1);
           addLog(`Translating Batch ${batchNum}/${totalBatches} (${pendingIndices.length} records，行 ${rowLabel})...`);
 
-          let translatedBatch: POCTRecord[];
-          const batchPlaceholders: Array<Record<string, Record<string, string> | null>> = [];
-          try {
-            const sanitizedRecords = pendingIndices.map((rowIdx) => {
-              const row = data[rowIdx];
-              const placeholdersForRow: Record<string, Record<string, string> | null> = {};
-              const sanitizedRow: POCTRecord = {};
+          let translatedBatch: POCTRecord[] = [];
+          const memoryStats = createTranslationMemoryStats();
+          const translatableCells: Array<{ rowIdx: number; key: string; value: string }> = [];
+          pendingIndices.forEach((rowIdx) => {
+            Object.entries(data[rowIdx]).forEach(([key, value]) => {
+              if (
+                typeof value === 'string' &&
+                value.trim() &&
+                !shouldLockCell(key, value) &&
+                shouldTranslateValue(value, key)
+              ) {
+                translatableCells.push({ rowIdx, key, value });
+              }
+            });
+          });
+          const memoryHits = await lookupReusableTranslations(
+            translatableCells.map((cell) => cell.value)
+          );
+          const callRows: Array<{
+            rowIdx: number;
+            sanitizedRow: POCTRecord;
+            placeholders: Record<string, Record<string, string> | null>;
+          }> = [];
+          const leaderByCell = new Map<
+            string,
+            {
+              rowIdx: number;
+              key: string;
+              sourceText: string;
+              placeholders: Record<string, string> | null;
+              memoryKey: string;
+            }
+          >();
+          const followers = new Map<string, Array<{ rowIdx: number; key: string }>>();
+          const seenInBatch = new Set<string>();
 
-              Object.entries(row).forEach(([key, value]) => {
-                if (typeof value !== 'string') {
-                  sanitizedRow[key] = value;
-                  return;
-                }
-                if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value, key)) {
-                  sanitizedRow[key] = value;
-                  return;
-                }
-                const { sanitized, placeholders } = guardTranslationTokens(value);
-                if (placeholders) {
-                  placeholdersForRow[key] = placeholders;
-                }
-                sanitizedRow[key] = sanitized;
+          pendingIndices.forEach((rowIdx) => {
+            const row = data[rowIdx];
+            const sanitizedRow: POCTRecord = {};
+            const placeholdersForRow: Record<string, Record<string, string> | null> = {};
+
+            Object.entries(row).forEach(([key, value]) => {
+              if (typeof value !== 'string') {
+                return;
+              }
+              if (!value.trim() || shouldLockCell(key, value) || !shouldTranslateValue(value, key)) {
+                return;
+              }
+
+              const memoryKey = getTranslationMemoryKey(value);
+              const memoryTarget = memoryHits.get(memoryKey);
+              if (memoryTarget) {
+                finalResults[rowIdx] = {
+                  ...(finalResults[rowIdx] || data[rowIdx]),
+                  [key]: memoryTarget
+                };
+                memoryStats.hits += 1;
+                return;
+              }
+
+              if (seenInBatch.has(memoryKey)) {
+                const existing = followers.get(memoryKey) || [];
+                existing.push({ rowIdx, key });
+                followers.set(memoryKey, existing);
+                memoryStats.deduped += 1;
+                return;
+              }
+
+              seenInBatch.add(memoryKey);
+              const { sanitized, placeholders } = guardTranslationTokens(value);
+              if (placeholders) {
+                placeholdersForRow[key] = placeholders;
+              }
+              sanitizedRow[key] = sanitized;
+              leaderByCell.set(`${rowIdx}\u0000${key}`, {
+                rowIdx,
+                key,
+                sourceText: value,
+                placeholders,
+                memoryKey
               });
+            });
 
-              batchPlaceholders.push(placeholdersForRow);
-              return sanitizedRow;
-            });
-            translatedBatch = await translationHub.translateBatch({
-              records: sanitizedRecords,
-              targetLang,
-              options: getTranslationOptions()
-            });
-            addLog(`Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+            if (Object.keys(sanitizedRow).length > 0) {
+              callRows.push({
+                rowIdx,
+                sanitizedRow,
+                placeholders: placeholdersForRow
+              });
+            }
+          });
+
+          try {
+            if (callRows.length > 0) {
+              translatedBatch = await translationHub.translateBatch({
+                records: callRows.map((item) => item.sanitizedRow),
+                targetLang,
+                options: getTranslationOptions()
+              });
+              addLog(`Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+            } else {
+              addLog(`Batch ${batchNum}: 全部命中本地翻译记忆或无需模型翻译。`);
+            }
           } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
             addLog(`Translation warning: 批次 ${batchNum} 行 ${rowLabel} 失败 (${errMsg})，将跳过该批继续。`);
@@ -2399,14 +2687,17 @@ const App: React.FC = () => {
           }
 
           const incompleteRows: number[] = [];
-          pendingIndices.forEach((rowIdx, index) => {
+          const memoryPairs: TranslationMemoryPair[] = [];
+          callRows.forEach((item, index) => {
             const translated = translatedBatch[index];
-            const original = data[rowIdx];
-            const merged: POCTRecord = { ...original };
-            const placeholdersForRow = batchPlaceholders[index] || {};
+            const original = data[item.rowIdx];
+            const merged: POCTRecord = { ...(finalResults[item.rowIdx] || original) };
+            const placeholdersForRow = item.placeholders || {};
 
-            Object.keys(original).forEach(key => {
+            Object.keys(item.sanitizedRow).forEach(key => {
               if (!translated || translated[key] === undefined) return;
+              const leader = leaderByCell.get(`${item.rowIdx}\u0000${key}`);
+              if (!leader) return;
               const originalValue = original[key];
               if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue, key)) {
                 merged[key] = originalValue;
@@ -2427,9 +2718,33 @@ const App: React.FC = () => {
                   placeholdersForRow[key]
                 );
               }
+              (followers.get(leader.memoryKey) || []).forEach((follower) => {
+                finalResults[follower.rowIdx] = {
+                  ...(finalResults[follower.rowIdx] || data[follower.rowIdx]),
+                  [follower.key]: merged[key]
+                };
+              });
+              memoryPairs.push({
+                sourceText: leader.sourceText,
+                targetText: String(merged[key] || ''),
+                targetLang,
+                model: translationHub.getLastEngine(),
+                documentKind,
+                fileName: file?.name
+              });
             });
 
-            finalResults[rowIdx] = normalizeTerminology(merged, targetLang, data[rowIdx]);
+            finalResults[item.rowIdx] = normalizeTerminology(merged, targetLang, data[item.rowIdx]);
+          });
+          await rememberTranslationPairs(memoryPairs, memoryStats);
+          logTranslationMemoryStats(`Batch ${batchNum}`, memoryStats);
+
+          pendingIndices.forEach((rowIdx) => {
+            finalResults[rowIdx] = normalizeTerminology(
+              finalResults[rowIdx] || data[rowIdx],
+              targetLang,
+              data[rowIdx]
+            );
             const stillUntranslated =
               detectUntranslatedCells([finalResults[rowIdx]], targetLang).length > 0;
             if (stillUntranslated) {
@@ -3654,6 +3969,22 @@ const App: React.FC = () => {
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   本次生效 {runtimeProtectedTermsCount} 个自定义保护词；会自动保存到本地，下次继续使用。
                 </p>
+              </div>
+
+              <div className={`flex items-center justify-between gap-3 text-xs ${mutedTextClass}`}>
+                <span>Translation Memory: {translationMemoryCount} 条本地记忆</span>
+                <button
+                  type="button"
+                  onClick={clearTranslationMemoryData}
+                  disabled={isTranslating || translationMemoryCount === 0}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                    isTranslating || translationMemoryCount === 0
+                      ? disabledButtonClass
+                      : neutralButtonClass
+                  }`}
+                >
+                  Clear TM
+                </button>
               </div>
               </div>
 

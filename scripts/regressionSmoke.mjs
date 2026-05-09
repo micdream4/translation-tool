@@ -114,3 +114,27 @@ test("production proxy builds do not inject server-side model keys into the brow
   assert.doesNotMatch(viteSource, /allowClientKeys\s*\?\s*env\.DEEPSEEK_API_KEY/);
   assert.match(viteSource, /'process\.env\.OPENROUTER_API_KEY': JSON\.stringify\(''\)/);
 });
+
+test("translation memory supports exact reuse and in-file dedupe", async () => {
+  const memorySource = fs.readFileSync(path.join(repoRoot, "utils/translationMemory.ts"), "utf8");
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const { normalizeMemorySource, buildTranslationMemoryKey } = await transpileTsModule(
+    path.join(repoRoot, "utils/translationMemory.ts")
+  );
+
+  assert.equal(normalizeMemorySource("  WBC\r\n count\t  "), "WBC\n count");
+  assert.equal(
+    buildTranslationMemoryKey("WBC count", "Chinese"),
+    buildTranslationMemoryKey(" WBC  count ", "Chinese")
+  );
+  assert.notEqual(
+    buildTranslationMemoryKey("WBC count", "Chinese"),
+    buildTranslationMemoryKey("WBC count", "English")
+  );
+  assert.match(memorySource, /indexedDB/);
+  assert.match(memorySource, /lookupTranslationMemoryBatch/);
+  assert.match(memorySource, /saveTranslationMemoryPairs/);
+  assert.match(appSource, /Translation Memory: 复用/);
+  assert.match(appSource, /followers\.get\(leader\.memoryKey\)/);
+  assert.match(appSource, /Clear TM/);
+});

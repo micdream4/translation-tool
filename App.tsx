@@ -11,6 +11,13 @@ import {
   getDocxSegmentText,
   setDocxSegmentText
 } from './utils/docx';
+import {
+  parsePdfFile,
+  exportPdfTranslationAsDocx,
+  getPdfSegmentText,
+  setPdfSegmentText,
+  type PdfContext
+} from './utils/pdf';
 import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
 import { MultiAIJudge } from './services/multiAIJudge';
@@ -347,7 +354,7 @@ const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState<POCTRecord[]>([]); // Original Data
   const [processedData, setProcessedData] = useState<POCTRecord[]>([]); // Translated Data
-  const [documentKind, setDocumentKind] = useState<'excel' | 'docx'>('excel');
+  const [documentKind, setDocumentKind] = useState<'excel' | 'docx' | 'pdf'>('excel');
   const [excelContext, setExcelContext] = useState<ExcelContext | null>(null);
   const [targetLang, setTargetLang] = useState<TargetLanguage>('English');
   const [theme, setTheme] = useState<ThemeMode>(() => {
@@ -394,12 +401,14 @@ const App: React.FC = () => {
     currentBatch: 0
   });
   const docxContextRef = useRef<DocxContext | null>(null);
+  const pdfContextRef = useRef<PdfContext | null>(null);
   const docxPlaceholderStore = useRef<Map<string, Record<string, string>>>(new Map());
   const previewDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const [docxIssueIndices, setDocxIssueIndices] = useState<number[]>([]);
   const [docxIssueDetails, setDocxIssueDetails] = useState<DocxIssueDetail[]>([]);
   const [docxStats, setDocxStats] = useState<{ total: number; translated: number }>({ total: 0, translated: 0 });
+  const [pdfStats, setPdfStats] = useState<{ pages: number; total: number; translated: number }>({ pages: 0, total: 0, translated: 0 });
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
 
@@ -535,6 +544,13 @@ const App: React.FC = () => {
     const uploadedFile = e.target.files?.[0];
     if (!uploadedFile) return;
 
+    const extension = uploadedFile.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'xlsx' && extension !== 'docx' && extension !== 'pdf') {
+      e.target.value = '';
+      addLog('Error: 目前仅支持上传 .xlsx Excel、.docx Word 或 .pdf 文档。');
+      return;
+    }
+
     setFile(uploadedFile);
     setSavedSnapshot(null);
     snapshotPromptKeyRef.current = '';
@@ -549,10 +565,10 @@ const App: React.FC = () => {
     updateStageStatus('ingest', 'running', '解析中...');
     addLog(`Importing: ${uploadedFile.name}`);
 
-    const extension = uploadedFile.name.split('.').pop()?.toLowerCase();
     if (extension === 'docx') {
       setDocumentKind('docx');
       setExcelContext(null);
+      pdfContextRef.current = null;
       docxContextRef.current = null;
       docxPlaceholderStore.current.clear();
       setDocxIssueIndices([]);
@@ -567,6 +583,7 @@ const App: React.FC = () => {
       setMissingRowIndices([]);
       setWriteFailedRowIndices([]);
       setDocxStats({ total: 0, translated: 0 });
+      setPdfStats({ pages: 0, total: 0, translated: 0 });
       setSavedSnapshot(null);
       try {
         const context = await parseDocxFile(uploadedFile);
@@ -582,6 +599,52 @@ const App: React.FC = () => {
         });
         updateStageStatus('ingest', 'completed', `DOCX: 检测到 ${context.segments.length} 个语义段`);
         addLog(`Success: Loaded DOCX with ${context.segments.length} semantic segments.`);
+        if (context.coverageWarnings.length) {
+          addLog(`DOCX scope note: ${context.coverageWarnings.join('；')}。`);
+        }
+      } catch (err) {
+        addLog(`Error: ${err instanceof Error ? err.message : String(err)}`);
+        setProcessingState(prev => ({ ...prev, status: 'error' }));
+        updateStageStatus('ingest', 'error', '解析失败');
+      }
+      return;
+    }
+
+    if (extension === 'pdf') {
+      setDocumentKind('pdf');
+      setExcelContext(null);
+      docxContextRef.current = null;
+      pdfContextRef.current = null;
+      docxPlaceholderStore.current.clear();
+      setDocxIssueIndices([]);
+      setDocxIssueDetails([]);
+      setData([]);
+      setProcessedData([]);
+      setRules([]);
+      setMissingCombinations([]);
+      setAiFindings([]);
+      setTranslationIssues(createIssueSummary());
+      setTranslatedFlags([]);
+      setMissingRowIndices([]);
+      setWriteFailedRowIndices([]);
+      setDocxStats({ total: 0, translated: 0 });
+      setPdfStats({ pages: 0, total: 0, translated: 0 });
+      setSavedSnapshot(null);
+      try {
+        const context = await parsePdfFile(uploadedFile);
+        pdfContextRef.current = context;
+        setPdfStats({ pages: context.pageCount, total: context.segments.length, translated: 0 });
+        setProcessingState({
+          status: 'idle',
+          progress: 0,
+          total: context.segments.length,
+          currentBatch: 0
+        });
+        updateStageStatus('ingest', 'completed', `PDF: ${context.pageCount} 页 / ${context.segments.length} 段文本`);
+        addLog(`Success: Loaded PDF with ${context.pageCount} page(s) and ${context.segments.length} text segments.`);
+        if (context.coverageWarnings.length) {
+          addLog(`PDF scope note: ${context.coverageWarnings.join('；')}。`);
+        }
       } catch (err) {
         addLog(`Error: ${err instanceof Error ? err.message : String(err)}`);
         setProcessingState(prev => ({ ...prev, status: 'error' }));
@@ -592,10 +655,12 @@ const App: React.FC = () => {
 
     setDocumentKind('excel');
     docxContextRef.current = null;
+    pdfContextRef.current = null;
     setDocxIssueIndices([]);
     setDocxIssueDetails([]);
     setExcelContext(null);
       setDocxStats({ total: 0, translated: 0 });
+      setPdfStats({ pages: 0, total: 0, translated: 0 });
       setSavedSnapshot(null);
       try {
       const { records, context } = await parseExcelFile(uploadedFile);
@@ -615,8 +680,11 @@ const App: React.FC = () => {
         total: records.length,
         currentBatch: 0
       });
-      updateStageStatus('ingest', 'completed', `已载入 ${records.length} 行`);
-      addLog(`Success: Detected ${records.length} records with ${Object.keys(records[0]).length} columns.`);
+      const sheetCount = context.sheets?.length || 1;
+      updateStageStatus('ingest', 'completed', `已载入 ${records.length} 行 / ${sheetCount} 个工作表`);
+      addLog(
+        `Success: Detected ${records.length} records across ${sheetCount} sheet(s); first row has ${Object.keys(records[0] || {}).length} columns.`
+      );
     } catch (err) {
       addLog(`Error: ${err instanceof Error ? err.message : String(err)}`);
       setProcessingState(prev => ({ ...prev, status: 'error' }));
@@ -761,13 +829,23 @@ const App: React.FC = () => {
     };
   };
 
+  const getExcelSheetForRow = (rowIndex: number) => {
+    if (!excelContext) return null;
+    return (
+      excelContext.sheets?.find(
+        (sheet) => rowIndex >= sheet.startIndex && rowIndex < sheet.startIndex + sheet.rowCount
+      ) || excelContext
+    );
+  };
+
   const formatExcelRowNumber = (rowIndex: number) => {
-    if (!excelContext) return rowIndex + 1;
+    const sheetContext = getExcelSheetForRow(rowIndex);
+    if (!sheetContext) return rowIndex + 1;
     const startRow =
-      Number.isFinite(excelContext.dataStartRow)
-        ? excelContext.dataStartRow
-        : excelContext.headerRow + 1;
-    return startRow + rowIndex + 1;
+      Number.isFinite(sheetContext.dataStartRow)
+        ? sheetContext.dataStartRow
+        : sheetContext.headerRow + 1;
+    return startRow + (rowIndex - sheetContext.startIndex) + 1;
   };
 
   const encodeExcelColumn = (index: number) => {
@@ -781,40 +859,44 @@ const App: React.FC = () => {
     return output;
   };
 
-  const getColumnLocationMeta = (columnKey: string) => {
-    if (!excelContext || columnKey === '__ROW__') {
+  const getColumnLocationMeta = (columnKey: string, rowIndex?: number) => {
+    const sheetContext =
+      typeof rowIndex === 'number' ? getExcelSheetForRow(rowIndex) : excelContext;
+    if (!sheetContext || columnKey === '__ROW__') {
       return {
         columnKey,
         columnLetter: '',
         headerName: columnKey,
-        occurrence: null as number | null
+        occurrence: null as number | null,
+        sheetName: sheetContext?.sheetName || ''
       };
     }
 
-    const columnIndex = excelContext.headerKeys.indexOf(columnKey);
+    const columnIndex = sheetContext.headerKeys.indexOf(columnKey);
     if (columnIndex === -1) {
       return {
         columnKey,
         columnLetter: '',
         headerName: columnKey,
-        occurrence: null as number | null
+        occurrence: null as number | null,
+        sheetName: sheetContext.sheetName
       };
     }
 
-    const sheetColumn = excelContext.range.s.c + columnIndex;
-    const headerAddress = `${encodeExcelColumn(sheetColumn)}${excelContext.headerRow + 1}`;
-    const rawHeader = excelContext.worksheet[headerAddress]?.v ?? columnKey;
+    const sheetColumn = sheetContext.range.s.c + columnIndex;
+    const headerAddress = `${encodeExcelColumn(sheetColumn)}${sheetContext.headerRow + 1}`;
+    const rawHeader = sheetContext.worksheet[headerAddress]?.v ?? columnKey;
     const headerName = String(rawHeader || columnKey);
-    const sameHeaderCount = excelContext.headerKeys.reduce((count, key, idx) => {
-      const addr = `${encodeExcelColumn(excelContext.range.s.c + idx)}${excelContext.headerRow + 1}`;
-      const value = String(excelContext.worksheet[addr]?.v ?? key);
+    const sameHeaderCount = sheetContext.headerKeys.reduce((count, key, idx) => {
+      const addr = `${encodeExcelColumn(sheetContext.range.s.c + idx)}${sheetContext.headerRow + 1}`;
+      const value = String(sheetContext.worksheet[addr]?.v ?? key);
       return value === headerName ? count + 1 : count;
     }, 0);
     const occurrence =
       sameHeaderCount > 1
-        ? excelContext.headerKeys.slice(0, columnIndex + 1).reduce((count, key, idx) => {
-            const addr = `${encodeExcelColumn(excelContext.range.s.c + idx)}${excelContext.headerRow + 1}`;
-            const value = String(excelContext.worksheet[addr]?.v ?? key);
+        ? sheetContext.headerKeys.slice(0, columnIndex + 1).reduce((count, key, idx) => {
+            const addr = `${encodeExcelColumn(sheetContext.range.s.c + idx)}${sheetContext.headerRow + 1}`;
+            const value = String(sheetContext.worksheet[addr]?.v ?? key);
             return value === headerName ? count + 1 : count;
           }, 0)
         : null;
@@ -823,7 +905,8 @@ const App: React.FC = () => {
       columnKey,
       columnLetter: encodeExcelColumn(sheetColumn),
       headerName,
-      occurrence
+      occurrence,
+      sheetName: sheetContext.sheetName
     };
   };
 
@@ -844,11 +927,15 @@ const App: React.FC = () => {
 
   const formatLocationLabel = (rowIndex: number, columnKey: string) => {
     const rowNo = formatExcelRowNumber(rowIndex);
-    if (columnKey === '__ROW__') return `R${rowNo}`;
-    const meta = getColumnLocationMeta(columnKey);
+    const sheetName =
+      excelContext && (excelContext.sheets?.length || 0) > 1
+        ? `${getExcelSheetForRow(rowIndex)?.sheetName || excelContext.sheetName}!`
+        : '';
+    if (columnKey === '__ROW__') return `${sheetName}R${rowNo}`;
+    const meta = getColumnLocationMeta(columnKey, rowIndex);
     if (!meta.columnLetter) return `R${rowNo}/${columnKey}`;
     const duplicateLabel = meta.occurrence ? `（第${meta.occurrence}列）` : '';
-    return `R${rowNo} / ${meta.columnLetter}列 / ${meta.headerName}${duplicateLabel}`;
+    return `${sheetName}R${rowNo} / ${meta.columnLetter}列 / ${meta.headerName}${duplicateLabel}`;
   };
 
   const autoRepairExcelPlaceholders = (
@@ -1511,6 +1598,132 @@ const App: React.FC = () => {
     }
   };
 
+  const runPdfTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
+    const context = pdfContextRef.current;
+    if (!context) {
+      addLog('PDF: 未检测到可翻译的内容。');
+      return;
+    }
+    const segments = context.segments;
+    const candidates = segments.filter((segment) =>
+      shouldTranslateDocxText(getPdfSegmentText(segment) || segment.original)
+    );
+    if (!candidates.length) {
+      addLog('PDF: 当前文档已经是目标语言或没有可翻译的文本。');
+      return;
+    }
+
+    pauseRequestedRef.current = false;
+    const alreadyTranslated = Math.max(0, segments.length - candidates.length);
+    setPdfStats({ pages: context.pageCount, total: segments.length, translated: alreadyTranslated });
+    setTranslationStatus('running');
+    if (mode === 'resume') {
+      addLog(`PDF Resume: 已处理 ${alreadyTranslated}/${segments.length}，继续处理剩余 ${candidates.length} 个文本段。`);
+    }
+    setProcessingState({
+      status: 'processing',
+      progress: 0,
+      total: candidates.length,
+      currentBatch: 0
+    });
+
+    try {
+      const result = await runStage('translate', async () => {
+        let completed = 0;
+        let paused = false;
+        const totalBatches = Math.ceil(candidates.length / DOCX_BATCH_SIZE);
+
+        for (let i = 0; i < candidates.length; i += DOCX_BATCH_SIZE) {
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`PDF translation paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
+            break;
+          }
+          const chunk = candidates.slice(i, i + DOCX_BATCH_SIZE);
+          const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
+          addLog(`PDF Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段`);
+          let translatedBatch: POCTRecord[];
+          try {
+            const payload = chunk.map((segment) => {
+              const rawText = getPdfSegmentText(segment) || segment.original;
+              const { sanitized, placeholders } = guardTranslationTokens(rawText);
+              if (placeholders) {
+                docxPlaceholderStore.current.set(segment.id, placeholders);
+              }
+              return { content: sanitized };
+            });
+            translatedBatch = await translationHub.translateBatch({
+              records: payload,
+              targetLang,
+              options: getTranslationOptions()
+            });
+            addLog(`PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            addLog(`PDF Batch ${batchNum} 翻译失败：${errMsg}`);
+            continue;
+          }
+
+          chunk.forEach((segment, index) => {
+            const translatedRecord = translatedBatch[index] || {};
+            const rawText = getPdfSegmentText(segment) || segment.original;
+            const placeholders = docxPlaceholderStore.current.get(segment.id);
+            const sanitizedResult =
+              typeof translatedRecord.content === 'string'
+                ? translatedRecord.content
+                : rawText;
+            const restored = restoreTranslationTokens(sanitizedResult, placeholders);
+            const polished = dedupeLeadingRepeat(
+              rawText || '',
+              polishTranslation(rawText || '', restored, targetLang)
+            );
+            setPdfSegmentText(segment, polished);
+          });
+
+          completed += chunk.length;
+          setPdfStats({
+            pages: context.pageCount,
+            total: segments.length,
+            translated: Math.min(alreadyTranslated + completed, segments.length)
+          });
+          setProcessingState((prev) => ({
+            ...prev,
+            progress: Math.round((completed / candidates.length) * 100),
+            currentBatch: batchNum
+          }));
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`PDF translation paused after batch ${batchNum}.`);
+            break;
+          }
+        }
+
+        if (paused) {
+          setProcessingState((prev) => ({ ...prev, status: 'idle' }));
+          setTranslationStatus('paused');
+          return 'paused';
+        }
+
+        setProcessingState((prev) => ({
+          ...prev,
+          status: 'completed',
+          progress: 100
+        }));
+        addLog(`PDF Translation Completed: ${completed}/${candidates.length} 个文本段处理完成。`);
+        return 'completed';
+      });
+
+      if (result !== 'paused') {
+        setTranslationStatus('completed');
+      }
+    } catch (error) {
+      setTranslationStatus('idle');
+      addLog(`PDF Translation Failed: ${error instanceof Error ? error.message : String(error)}`);
+      setProcessingState((prev) => ({ ...prev, status: 'error' }));
+    }
+  };
+
   const retryDocxSegments = async () => {
     const context = docxContextRef.current;
     if (!context) return;
@@ -2044,6 +2257,10 @@ const App: React.FC = () => {
   const runTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
     if (documentKind === 'docx') {
       await runDocxTranslation(mode);
+      return;
+    }
+    if (documentKind === 'pdf') {
+      await runPdfTranslation(mode);
       return;
     }
     if (data.length === 0) return;
@@ -2877,6 +3094,22 @@ const App: React.FC = () => {
       return;
     }
 
+    if (documentKind === 'pdf') {
+      const context = pdfContextRef.current;
+      if (!context) return;
+      const untranslatedCount = context.segments.filter((segment) =>
+        shouldTranslateDocxText(getPdfSegmentText(segment) || segment.original)
+      ).length;
+      if (untranslatedCount > 0) {
+        addLog(`PDF download warning: 仍有 ${untranslatedCount} 个文本段可能未翻译，建议先继续翻译再导出。`);
+      }
+      const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
+      const filename = `Translated_${targetLang}_${baseName}.docx`;
+      addLog(`Generating file: ${filename}`);
+      void exportPdfTranslationAsDocx(context, filename, targetLang);
+      return;
+    }
+
     if (processedData.length === 0) return;
     const filename = `Translated_${targetLang}_${file?.name || 'Result.xlsx'}`;
     addLog(`Generating file: ${filename}`);
@@ -2929,7 +3162,7 @@ const App: React.FC = () => {
 
   const isTranslating = translationStatus === 'running';
   const canResume =
-    (documentKind === 'excel' || documentKind === 'docx') &&
+    (documentKind === 'excel' || documentKind === 'docx' || documentKind === 'pdf') &&
     translationStatus === 'paused' &&
     activeStage === null;
   const showPauseResume = isTranslating || canResume;
@@ -2950,11 +3183,16 @@ const App: React.FC = () => {
   );
   const canDownload =
     documentKind === 'docx'
-      ? docxContextRef.current !== null &&
-        translationStatus !== 'running'
+      ? docxContextRef.current !== null && translationStatus !== 'running'
+      : documentKind === 'pdf'
+      ? pdfContextRef.current !== null && translationStatus !== 'running'
       : processedData.length > 0 && translationStatus !== 'running';
   const canRunTranslation =
-    documentKind === 'docx' ? docxContextRef.current !== null : data.length > 0;
+    documentKind === 'docx'
+      ? docxContextRef.current !== null
+      : documentKind === 'pdf'
+      ? pdfContextRef.current !== null
+      : data.length > 0;
   const currentRowsForRetry =
     processedData.length === data.length && processedData.length > 0 ? processedData : data;
   const currentIssueSummary = useMemo(
@@ -3039,10 +3277,16 @@ const App: React.FC = () => {
   const placeholderIssueCount = livePlaceholderIssues.length;
   const formatSnapshot = excelContext
     ? {
-        sheetName: excelContext.sheetName,
-        rows: excelContext.range.e.r - excelContext.range.s.r + 1,
-        cols: excelContext.range.e.c - excelContext.range.s.c + 1,
-        merges: (excelContext.worksheet['!merges'] || []).length
+        sheetName:
+          (excelContext.sheets?.length || 0) > 1
+            ? `${excelContext.sheets.length} sheets`
+            : excelContext.sheetName,
+        rows: data.length,
+        cols: Math.max(...(excelContext.sheets || [excelContext]).map((sheet) => sheet.headerKeys.length)),
+        merges: (excelContext.sheets || [excelContext]).reduce(
+          (count, sheet) => count + ((sheet.worksheet['!merges'] || []).length),
+          0
+        )
       }
     : null;
   const qualityFindings = useMemo<QualityFinding[]>(() => {
@@ -3245,6 +3489,9 @@ const App: React.FC = () => {
   const neutralButtonClass = isLight
     ? 'bg-white/90 hover:bg-slate-50 text-slate-700 border border-slate-200/80 shadow-sm'
     : 'bg-white/[0.06] hover:bg-white/[0.09] text-slate-200 border border-white/[0.07]';
+  const primaryInlineButtonClass = isLight
+    ? 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white border border-indigo-400/40 shadow-[0_12px_26px_rgba(79,70,229,0.20)]'
+    : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white border border-indigo-400/25 shadow-[0_12px_26px_rgba(79,70,229,0.22)]';
   const metricCardClass = isLight
     ? 'bg-gradient-to-br from-white to-slate-50/90 rounded-xl p-3 border border-slate-200/75 shadow-[0_8px_22px_rgba(15,23,42,0.045)]'
     : 'bg-white/[0.035] rounded-xl p-3 border border-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]';
@@ -3282,7 +3529,7 @@ const App: React.FC = () => {
                   <input
                     type="file"
                     className="absolute inset-0 opacity-0 cursor-pointer"
-                    accept=".xlsx,.xls,.docx"
+                    accept=".xlsx,.docx,.pdf"
                     onChange={handleFileUpload}
                     disabled={processingState.status === 'processing'}
                   />
@@ -3294,9 +3541,7 @@ const App: React.FC = () => {
                       {file ? file.name : "Upload Source Document"}
                     </div>
                     <p className={`text-xs ${mutedTextClass}`}>
-                      {documentKind === 'docx'
-                        ? 'Supports DOCX manuals with original layout'
-                        : 'Supports Excel (.xlsx/.xls) row-by-row precision'}
+                      Supports Excel (.xlsx), Word (.docx), and text-based PDF documents
                     </p>
                   </div>
                 </div>
@@ -3322,9 +3567,20 @@ const App: React.FC = () => {
                 </select>
               </div>
               {documentKind === 'docx' && docxContextRef.current && (
-                <p className={`text-xs text-center ${mutedTextClass}`}>
-                  DOCX 语义段：{docxStats.total}，本次已翻译 {docxStats.translated}
-                </p>
+                <div className={`text-xs text-center space-y-1 ${mutedTextClass}`}>
+                  <p>DOCX 语义段：{docxStats.total}，本次已翻译 {docxStats.translated}</p>
+                  {docxContextRef.current.coverageWarnings.length > 0 && (
+                    <p>范围提示：{docxContextRef.current.coverageWarnings.join('；')}。</p>
+                  )}
+                </div>
+              )}
+              {documentKind === 'pdf' && pdfContextRef.current && (
+                <div className={`text-xs text-center space-y-1 ${mutedTextClass}`}>
+                  <p>PDF 页数：{pdfStats.pages}，文本段：{pdfStats.total}，本次已翻译 {pdfStats.translated}</p>
+                  {pdfContextRef.current.coverageWarnings.length > 0 && (
+                    <p>范围提示：{pdfContextRef.current.coverageWarnings.join('；')}。</p>
+                  )}
+                </div>
               )}
 
               <div>
@@ -3374,7 +3630,7 @@ const App: React.FC = () => {
                 >
                   <option value={AUTO_OPENROUTER_MODEL}>Auto (Gemini → Qwen → DeepSeek)</option>
                   {openRouterModels.map((model) => (
-                    <option key={model} value={model} disabled={!capabilities.openrouter}>
+                    <option key={model} value={model}>
                       {OPENROUTER_MODEL_LABELS[model] || model}
                     </option>
                   ))}
@@ -3454,7 +3710,13 @@ const App: React.FC = () => {
                   </button>
                 )}
 
-                {(documentKind === 'docx' ? docxContextRef.current !== null : processedData.length > 0) && (
+                {(
+                  documentKind === 'docx'
+                    ? docxContextRef.current !== null
+                    : documentKind === 'pdf'
+                    ? pdfContextRef.current !== null
+                    : processedData.length > 0
+                ) && (
                   <>
                     <button
                       onClick={handleDownload}
@@ -3539,6 +3801,11 @@ const App: React.FC = () => {
                 {documentKind === 'docx' && (
                   <p className={`text-[11px] ${mutedTextClass}`}>
                     DOCX 已内置自动审计与 Retry Missing Segments；本区按钮仅用于 Excel。
+                  </p>
+                )}
+                {documentKind === 'pdf' && (
+                  <p className={`text-[11px] ${mutedTextClass}`}>
+                    PDF 第一阶段导出为 Word 译文；本区按钮仅用于 Excel。
                   </p>
                 )}
                 <button
@@ -3680,7 +3947,7 @@ const App: React.FC = () => {
                   className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                     !hasQualityReport
                       ? disabledButtonClass
-                      : neutralButtonClass
+                      : primaryInlineButtonClass
                   }`}
                 >
                   Export Report

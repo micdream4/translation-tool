@@ -8,14 +8,17 @@
     "dev": "npm run prepare:terminology && vite",
     "build": "npm run prepare:terminology && vite build",
     "preview": "vite preview",
+    "test": "node --test scripts/regressionSmoke.mjs",
     "deepseek:test": "node scripts/deepseekTest.mjs",
     "docx:translate": "python3 scripts/translate_docx_openrouter.py",
-    "deploy:pages": "npm run build && npx wrangler pages deploy dist --project-name translation-tool"
+    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name translation-tool"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
     "@types/jszip": "^3.4.0",
+    "docx": "^9.6.1",
     "jszip": "^3.10.1",
+    "pdfjs-dist": "^5.7.284",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "xlsx": "^0.18.5"
@@ -24,6 +27,7 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "wrangler": "^4.40.2"
   }
 }

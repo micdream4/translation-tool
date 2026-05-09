@@ -1,7 +1,7 @@
 # Cloudflare Pages Deployment Guide
 
 This guide deploys the app as a full workflow for other users:
-upload `.xlsx/.docx` -> translate -> download.
+upload `.xlsx` / `.docx` / text-based `.pdf` -> translate -> download. Excel `.xlsx` files can contain multiple worksheets; legacy `.xls` upload is intentionally disabled because style-safe writeback is unreliable.
 
 ## 1. Prerequisites
 - Cloudflare account
@@ -32,6 +32,7 @@ Recommended for controlled sharing:
 - `REQUIRE_CF_ACCESS_EMAIL=true`（仅当你已配置 Cloudflare Access 并希望强制登录邮箱身份时开启）
 
 说明：
+- Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.
 - 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。
 - `OPENROUTER_MODEL` 仍可保留给单模型场景；多模型时优先使用 `OPENROUTER_MODELS`。
 - 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。
@@ -52,17 +53,21 @@ If deploying from local CLI:
 1. `npx wrangler login`
 2. `npm run deploy:pages`
 
+The project pins `wrangler` in `devDependencies`, so `npm run deploy:pages` uses the repository version instead of an arbitrary global install.
+
 If deploying from Git integration:
 - push to your configured branch, Cloudflare auto-builds and deploys.
 
 ## 6. Post-Deploy Checklist
 1. Open site URL
-2. Upload a small `.docx`
+2. Upload a small `.docx` or text-based `.pdf`
 3. Run translation (for example Chinese -> English)
 4. Download output and verify:
    - layout intact
    - images intact
    - translated text updated
+   - if the document has headers, footers, footnotes, endnotes, or comments, confirm the app surfaced the DOCX scope note
+   - for PDF, confirm the app exports a Word `.docx` containing translated text and any extractable source images
 
 ## 7. Cost and Stability Tips
 - Use `OPENROUTER_KEYS_BY_EMAIL` for per-user budget control.

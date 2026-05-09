@@ -29,3 +29,7 @@ dist-ssr
 *.doc
 *.docx
 原始/
+.playwright-cli/
+.wrangler/
+local-data/design/
+local-data/reports/

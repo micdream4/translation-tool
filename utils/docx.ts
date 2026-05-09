@@ -18,6 +18,7 @@ export interface DocxContext {
   textNodes: DocxTextNode[];
   segments: DocxSegment[];
   fileName: string;
+  coverageWarnings: string[];
 }
 
 const DOCUMENT_XML_PATH = "word/document.xml";
@@ -102,7 +103,11 @@ const ANALYZER_RIGHT_BOUNDARY_WORDS = new Set([
   "work"
 ]);
 
-const collectUniqueElements = (root: ParentNode, tagNames: string[]) => {
+type DocxSearchRoot = ParentNode & {
+  getElementsByTagName: Document["getElementsByTagName"];
+};
+
+const collectUniqueElements = (root: DocxSearchRoot, tagNames: string[]) => {
   const seen = new Set<Element>();
   const output: Element[] = [];
   tagNames.forEach((tagName) => {
@@ -123,6 +128,20 @@ const getDocxParagraphElements = (root: ParentNode) =>
 
 const buildSegmentText = (nodes: Element[]) =>
   nodes.map((node) => node.textContent || "").join("");
+
+const getDocxCoverageWarnings = (zip: JSZip) => {
+  const warnings: string[] = [];
+  if (zip.file(/^word\/header\d*\.xml$/).length || zip.file(/^word\/footer\d*\.xml$/).length) {
+    warnings.push("页眉/页脚文本暂不翻译");
+  }
+  if (zip.file(/^word\/footnotes\.xml$/).length || zip.file(/^word\/endnotes\.xml$/).length) {
+    warnings.push("脚注/尾注文本暂不翻译");
+  }
+  if (zip.file(/^word\/comments\.xml$/).length) {
+    warnings.push("批注文本暂不翻译");
+  }
+  return warnings;
+};
 
 export async function parseDocxFile(file: File): Promise<DocxContext> {
   const buffer = await file.arrayBuffer();
@@ -159,7 +178,8 @@ export async function parseDocxFile(file: File): Promise<DocxContext> {
     xmlDoc,
     textNodes,
     segments,
-    fileName: file.name
+    fileName: file.name,
+    coverageWarnings: getDocxCoverageWarnings(zip)
   };
 }
 

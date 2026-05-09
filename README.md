@@ -1,9 +1,10 @@
 # POCT Medical Document Translator
 
-面向 POCT 医疗文档的翻译与质检工具。支持 Excel/Word 文档导入导出，基于多模型翻译与规则校验流程完成批量医学术语翻译、组合规则核验与质量检查。
+面向 POCT 医疗文档的翻译与质检工具。支持 Excel/Word/PDF 文档导入，基于多模型翻译与规则校验流程完成批量医学术语翻译、组合规则核验与质量检查。
 
 ## 功能概览
-- Excel/Word（.xlsx/.docx）导入导出，尽量保持原始结构与版式
+- Excel（.xlsx，多工作表）/Word（.docx）导入导出，尽量保持原始结构与版式
+- 文本型 PDF 导入，抽取可复制文本后翻译，并导出仅含译文且回填可提取图片的 Word（.docx）
 - 多翻译引擎（DeepSeek/Gemini/OpenRouter）自动切换与失败回退
 - 目标语言支持：中文、英语、西班牙语、法语、德语、意大利语、土耳其语、俄语、葡萄牙语
 - 术语表与后处理：术语统一、占位符保护、标识符锁定
@@ -13,7 +14,7 @@
 
 ## 技术栈
 - React 19 + TypeScript + Vite
-- xlsx / jszip（表格与文档处理）
+- xlsx / jszip / pdfjs-dist / docx（表格、文档与 PDF 文本处理）
 - 多模型翻译服务适配（DeepSeek / Gemini / OpenRouter）
 
 ## 快速开始
@@ -23,12 +24,12 @@
    ```
 2. 配置环境变量（新建 `.env.local`，文件已被 git 忽略）
    ```bash
-   # 至少配置一个翻译引擎的 key
-   VITE_DEEPSEEK_API_KEY=your_key
-   GEMINI_API_KEY=your_key
+   # 推荐：本地也走代理模式，避免把模型 Key 注入浏览器 bundle
+   VITE_TRANSLATION_MODE=proxy
    OPENROUTER_API_KEY=your_key
    OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v3.2
    ```
+   如需本地纯浏览器直连模型，显式设置 `VITE_TRANSLATION_MODE=direct` 后再使用 `VITE_*_API_KEY`。
 3. 启动开发环境
    ```bash
    npm run dev
@@ -38,6 +39,7 @@
 - `npm run dev`：本地开发
 - `npm run build`：生产构建
 - `npm run preview`：本地预览
+- `npm run test`：运行轻量回归检查（多工作表 Excel、上传格式、安全配置、DOCX 范围提示、PDF 文本导出路径）
 - `npm run deepseek:test`：DeepSeek 接口连通性测试
 - `npm run docx:translate -- "<docx_path>" --target English`：离线批量翻译/验收脚本（运维辅助，不是最终用户入口）
 - `npm run deploy:pages`：构建并发布到 Cloudflare Pages（需先 `wrangler login`）
@@ -48,7 +50,7 @@
 
 ## 说明
 - 项目目录中的本地翻译前后文档不纳入版本控制（已在 `.gitignore` 中忽略）。
-- 如需部署，请先配置对应的 API Key。
+- 如需部署，请先在 Cloudflare Pages 环境变量里配置服务端 API Key；生产构建不要设置浏览器端 `VITE_*_API_KEY`。
 
 ## 内部共享（简便安全版）
 推荐用于“只给少数同事使用”的场景。
@@ -91,8 +93,17 @@
    给每个人那把 Key 设置 `limit` + `limit_reset=monthly`，即可限制每人每月花费。
 
 5. 安全建议  
-   不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。
+   不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。本项目只有在 `VITE_TRANSLATION_MODE=direct` 时才会把 `VITE_*_API_KEY` 注入前端。
    如果某个 OpenRouter 模型存在区域限制，优先改 `OPENROUTER_MODELS`，而不是改前端代码。
+
+6. DOCX 范围说明
+   浏览器端 DOCX 翻译当前处理正文 `word/document.xml` 的段落/表格文本；页眉页脚、脚注/尾注、批注会在上传后提示为暂不翻译范围。
+
+7. PDF 范围说明
+   浏览器端 PDF 翻译当前处理“可抽取文本”的 PDF，并导出为仅含译文的 Word（.docx）。PDF 中可提取的图片会按页插入到对应译文段落后；扫描版 PDF、图片内文字 OCR、复杂坐标级版式复原暂不支持。
+
+8. 依赖安全说明
+   `xlsx` 当前仍有 npm audit 公告且上游暂无修复版本；本项目已禁用旧 `.xls` 上传，仅支持可信来源的 `.xlsx` 文件。若后续需要处理外部不可信 Excel，应优先评估迁移到维护更活跃的解析库或服务端隔离解析。
 
 ## 适用场景
 - 医疗设备说明书、质控手册、检验参考区间等多语种版本同步
@@ -104,7 +115,7 @@
 ## 潜能与演进方向
 - 行业术语库可配置化与版本管理（不同医院/品牌差异）
 - 引入“风格指南”与“审校模式”输出（规范化、可追溯）
-- 支持更多格式（PDF/HTML/图片 OCR）与增量更新
+- 支持更多格式（HTML/图片 OCR）与 PDF 版式增强
 - 人机协作：批注、审校流、修订历史与对照对齐
 - 质检升级：医学实体一致性、数值范围校验、单位规范化
 - 端到端流水线：翻译 → 规则校验 → 生成多语言发布包

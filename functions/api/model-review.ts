@@ -4,6 +4,7 @@ import {
   DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
   DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
   normalizeModelReviewScores,
+  type ModelReviewStyle,
   type ModelReviewCandidate,
   type ModelReviewJudgeResult,
   type ModelReviewSample
@@ -64,6 +65,20 @@ const parseModelList = (value: unknown, fallback: string[]) => {
     .map((item) => normalizeOpenRouterModelId(String(item || "")))
     .filter(Boolean);
   return Array.from(new Set(parsed.length ? parsed : fallback.map(normalizeOpenRouterModelId)));
+};
+
+const MODEL_REVIEW_STYLES = new Set<ModelReviewStyle>([
+  "auto",
+  "medical-report",
+  "ifu-manual",
+  "marketing-readable",
+  "terminology-faithful"
+]);
+
+const parseReviewStyle = (value: unknown, profile: TranslationProfile): ModelReviewStyle => {
+  const raw = String(value || "").trim();
+  if (MODEL_REVIEW_STYLES.has(raw as ModelReviewStyle)) return raw as ModelReviewStyle;
+  return "auto";
 };
 
 const parseSamples = (value: unknown): ModelReviewSample[] => {
@@ -186,36 +201,67 @@ const translateWithModel = async ({
   });
 };
 
+const getReviewStyleGuidance = (reviewStyle: ModelReviewStyle) => {
+  const guidanceMap: Record<ModelReviewStyle, { scenario: string; guidance: string; system: string }> = {
+    auto: {
+      scenario: "medical/IVD content with an unspecified target style",
+      guidance: `- First infer the source content type from samples, then apply the most appropriate professional medical translation standard.
+- Do not force IFU/manual style onto spreadsheet cells, and do not force terse table style onto prose.
+- Score "manualStyle" as fit for the inferred content type.`,
+      system: "You are a strict anonymous translation quality judge for medical and IVD translations. Infer the appropriate style from the samples. Return JSON only."
+    },
+    "medical-report": {
+      scenario: "clinical/POCT spreadsheet cells, AI interpretation tables, and report comments",
+      guidance: `- Evaluate cell-level translation quality: concise, medically clear, suitable for spreadsheet/report interpretation, and not over-expanded.
+- Do not require IFU/manual prose style for spreadsheet cells. Score "manualStyle" as "cell/report style fit".
+- Score "avoidYou" as concise impersonal phrasing; there is usually no reason to introduce "you/your" in spreadsheet interpretations.`,
+      system: "You are a strict anonymous translation quality judge for clinical spreadsheet and POCT report interpretation translations. Return JSON only."
+    },
+    "ifu-manual": {
+      scenario: "IVD analyzer IFU/operator manuals",
+      guidance: `- For English manual prose, penalize unnecessary direct "you/your"; prefer imperative, passive voice, "the user", "the operator", or "personnel" when natural.
+- Score "manualStyle" as IFU/operator manual style fit.
+- Score "avoidYou" as avoiding unnecessary direct address.`,
+      system: "You are a strict anonymous translation quality judge for IVD operator manuals. Return JSON only."
+    },
+    "marketing-readable": {
+      scenario: "medical product copy that should be user-readable without losing technical meaning",
+      guidance: `- Reward natural, clear, user-readable language while preserving medical and product claims exactly.
+- Penalize exaggerated claims, added benefits, unsafe simplification, or casual tone.
+- Score "manualStyle" as audience readability and product-copy fit.`,
+      system: "You are a strict anonymous translation quality judge for readable medical product translations. Return JSON only."
+    },
+    "terminology-faithful": {
+      scenario: "regulated medical labels, parameters, terminology lists, and conservative technical text",
+      guidance: `- Reward conservative, terminology-faithful translation with minimal rewriting.
+- Penalize creative paraphrase, extra interpretation, changed term boundaries, and format drift.
+- Score "manualStyle" as faithful technical/register fit.`,
+      system: "You are a strict anonymous translation quality judge for conservative terminology-faithful medical translations. Return JSON only."
+    }
+  };
+  return guidanceMap[reviewStyle] || guidanceMap.auto;
+};
+
 const buildJudgePrompt = (
   samples: ModelReviewSample[],
   candidates: ModelReviewCandidate[],
   targetLang: TargetLanguage,
-  profile: TranslationProfile
+  reviewStyle: ModelReviewStyle
 ) => {
   const anonymousOutputs = candidates.map((candidate) => ({
     alias: candidate.alias,
     outputs: candidate.translations
   }));
-  const isSpreadsheet = profile === "spreadsheet";
-  const scenario = isSpreadsheet
-    ? `clinical/POCT spreadsheet cells and AI interpretation tables`
-    : `IVD analyzer IFU/operator manuals`;
-  const styleGuidance = isSpreadsheet
-    ? `- Evaluate cell-level translation quality: concise, medically clear, suitable for spreadsheet/report interpretation, and not over-expanded.
-- Do not require IFU/manual prose style for spreadsheet cells. Score "manualStyle" as "cell/report style fit".
-- Score "avoidYou" as concise impersonal phrasing; there is usually no reason to introduce "you/your" in spreadsheet interpretations.`
-    : `- For English manual prose, penalize unnecessary direct "you/your"; prefer imperative, passive voice, "the user", "the operator", or "personnel" when natural.
-- Score "manualStyle" as IFU/operator manual style fit.
-- Score "avoidYou" as avoiding unnecessary direct address.`;
+  const styleGuidance = getReviewStyleGuidance(reviewStyle);
   return `
-Evaluate anonymous Chinese-to-${targetLang} translations for ${scenario}.
+Evaluate anonymous Chinese-to-${targetLang} translations for ${styleGuidance.scenario}.
 
 Important:
 - Do not infer or mention model names. Judge only Candidate aliases.
 - Company-name romanization is not a scoring factor unless the source explicitly contains a protected company name and the candidate changes it incorrectly.
 - Preserve clinical meaning, severity, conditions, units, symbols, placeholders, table headers, and UI labels.
 - Penalize literal Chinese syntax, omitted meaning, unsafe interpretation changes, terminology drift, and placeholder/UI-label damage.
-${styleGuidance}
+${styleGuidance.guidance}
 
 Score each candidate 1-10 on:
 accuracy, fluency, manualStyle, terminology, formatSafety, avoidLiteral, avoidYou, overall.
@@ -237,6 +283,7 @@ export const onRequestPost = async (context: any) => {
     const samples = parseSamples(payload?.samples);
     const targetLang = payload?.targetLang as TargetLanguage | undefined;
     const profile: TranslationProfile = payload?.profile === "docx-manual" ? "docx-manual" : "spreadsheet";
+    const reviewStyle = parseReviewStyle(payload?.reviewStyle, profile);
 
     if (!samples.length || !targetLang) {
       return json({ error: "Invalid payload." }, 400);
@@ -328,10 +375,8 @@ export const onRequestPost = async (context: any) => {
           key: openRouterKey,
           referer,
           model,
-          system: profile === "spreadsheet"
-            ? "You are a strict anonymous translation quality judge for clinical spreadsheet and POCT report interpretation translations. Return JSON only."
-            : "You are a strict anonymous translation quality judge for IVD operator manuals. Return JSON only.",
-          user: buildJudgePrompt(samples, successfulCandidates, targetLang, profile),
+          system: getReviewStyleGuidance(reviewStyle).system,
+          user: buildJudgePrompt(samples, successfulCandidates, targetLang, reviewStyle),
           maxTokens: 7000
         });
         const parsed = parseModelJsonObject<{ scores?: unknown }>(content);
@@ -353,6 +398,7 @@ export const onRequestPost = async (context: any) => {
       createdAt: new Date().toISOString(),
       targetLang,
       profile,
+      reviewStyle,
       samples,
       candidates,
       judges,

@@ -73,9 +73,11 @@ import {
 import {
   DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
   DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
+  MODEL_REVIEW_STYLE_LABELS,
   formatModelReviewReport,
   type ModelReviewResult,
-  type ModelReviewSample
+  type ModelReviewSample,
+  type ModelReviewStyle
 } from './utils/modelReview';
 import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
 import {
@@ -127,6 +129,7 @@ const OPENROUTER_MODEL_LABELS: Record<string, string> = {
 };
 type ThemeMode = 'light' | 'dark';
 type AppView = 'translator' | 'modelReview';
+type ModelReviewStyleSelection = 'recommended' | ModelReviewStyle;
 type TranslationMemoryStats = {
   hits: number;
   deduped: number;
@@ -409,6 +412,7 @@ const App: React.FC = () => {
   const [sampleReviewAiMeta, setSampleReviewAiMeta] = useState<{ model?: string; engine?: string } | null>(null);
   const [isRunningSampleReviewAi, setIsRunningSampleReviewAi] = useState(false);
   const [modelReviewCount, setModelReviewCount] = useState<number>(10);
+  const [modelReviewStyleSelection, setModelReviewStyleSelection] = useState<ModelReviewStyleSelection>('recommended');
   const [modelReviewResult, setModelReviewResult] = useState<ModelReviewResult | null>(null);
   const [isRunningModelReview, setIsRunningModelReview] = useState(false);
   const [modelReviewStatus, setModelReviewStatus] = useState<{
@@ -1722,6 +1726,17 @@ const App: React.FC = () => {
     return false;
   };
 
+  const getRecommendedModelReviewStyle = (): ModelReviewStyle => {
+    if (documentKind === 'excel') return 'medical-report';
+    if (documentKind === 'docx') return 'ifu-manual';
+    return 'auto';
+  };
+
+  const getEffectiveModelReviewStyle = (): ModelReviewStyle =>
+    modelReviewStyleSelection === 'recommended'
+      ? getRecommendedModelReviewStyle()
+      : modelReviewStyleSelection;
+
   const runModelReview = async () => {
     if (!canRunModelReview()) {
       addLog('Multi-AI Review: 请先上传可抽样的 Excel、DOCX 或 PDF 文档。');
@@ -1742,12 +1757,13 @@ const App: React.FC = () => {
     }
     setIsRunningModelReview(true);
     setModelReviewResult(null);
+    const reviewStyle = getEffectiveModelReviewStyle();
     setModelReviewStatus({
       stage: 'translating',
       message: `Translating ${samples.length} samples with ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} candidate models...`
     });
 	    addLog(
-	      `Multi-AI Review: 抽取 ${samples.length} 个 ${getModelReviewSourceLabel()}，并发调用 ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} 个候选模型和 ${DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length} 个匿名评审模型。`
+	      `Multi-AI Review: 抽取 ${samples.length} 个 ${getModelReviewSourceLabel()}，评审风格 ${MODEL_REVIEW_STYLE_LABELS[reviewStyle]}，并发调用 ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} 个候选模型和 ${DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length} 个匿名评审模型。`
 	    );
     try {
       window.setTimeout(() => {
@@ -1765,6 +1781,7 @@ const App: React.FC = () => {
         targetLang,
         translationModels: DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
         judgeModels: DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
+        reviewStyle,
         profile: documentKind === 'excel' ? 'spreadsheet' : 'docx-manual'
       });
       setModelReviewResult(result);
@@ -3982,8 +3999,17 @@ const App: React.FC = () => {
   const modelReviewScoredRows =
     modelReviewResult?.ranking.filter((row) => row.judgeCount > 0) || [];
   const hasModelReviewJudgeScores = modelReviewScoredRows.length > 0;
-  const modelReviewStyleMetricLabel = documentKind === 'excel' ? 'Cell' : 'Manual';
-  const modelReviewAvoidYouMetricLabel = documentKind === 'excel' ? 'Concise' : 'Avoid you';
+  const effectiveModelReviewStyle = getEffectiveModelReviewStyle();
+  const modelReviewStyleMetricLabel =
+    effectiveModelReviewStyle === 'medical-report'
+      ? 'Cell'
+      : effectiveModelReviewStyle === 'marketing-readable'
+        ? 'Readable'
+        : effectiveModelReviewStyle === 'terminology-faithful'
+          ? 'Faithful'
+          : effectiveModelReviewStyle === 'auto'
+            ? 'Style'
+            : 'Manual';
 
   return (
     <div className={pageClass} data-theme={theme}>
@@ -4039,11 +4065,11 @@ const App: React.FC = () => {
             </div>
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>Target</p>
-              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{targetLang}</p>
-              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                {documentKind === 'excel' ? 'Spreadsheet profile' : 'Manual profile'}
-              </p>
-            </div>
+	              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{targetLang}</p>
+	              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+	                {MODEL_REVIEW_STYLE_LABELS[effectiveModelReviewStyle]}
+	              </p>
+	            </div>
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>Candidates</p>
               <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
@@ -4074,11 +4100,27 @@ const App: React.FC = () => {
               <p className={`text-xs mt-2 ${mutedTextClass}`}>
                 先抽样，再翻译，再匿名评分。建议先从 5 条样本开始验证费用和速度。
               </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                className={fieldClass}
-                value={modelReviewCount}
+	            </div>
+	            <div className="flex flex-wrap items-center gap-2">
+	              <select
+	                className={fieldClass}
+	                value={modelReviewStyleSelection}
+	                onChange={(e) => setModelReviewStyleSelection(e.target.value as ModelReviewStyleSelection)}
+	                disabled={isRunningModelReview}
+	                title="Review style"
+	              >
+	                <option value="recommended">
+	                  Recommended ({MODEL_REVIEW_STYLE_LABELS[getRecommendedModelReviewStyle()]})
+	                </option>
+	                <option value="auto">{MODEL_REVIEW_STYLE_LABELS.auto}</option>
+	                <option value="medical-report">{MODEL_REVIEW_STYLE_LABELS['medical-report']}</option>
+	                <option value="ifu-manual">{MODEL_REVIEW_STYLE_LABELS['ifu-manual']}</option>
+	                <option value="marketing-readable">{MODEL_REVIEW_STYLE_LABELS['marketing-readable']}</option>
+	                <option value="terminology-faithful">{MODEL_REVIEW_STYLE_LABELS['terminology-faithful']}</option>
+	              </select>
+	              <select
+	                className={fieldClass}
+	                value={modelReviewCount}
                 onChange={(e) => setModelReviewCount(Number(e.target.value))}
                 disabled={isRunningModelReview}
               >

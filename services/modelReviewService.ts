@@ -1,5 +1,5 @@
 import type { TargetLanguage } from "../types";
-import type { ModelReviewResult, ModelReviewSample } from "../utils/modelReview";
+import type { ModelReviewResult, ModelReviewSample, ModelReviewStyle } from "../utils/modelReview";
 
 const getEnvValue = (key: string): string | undefined => {
   if (typeof import.meta !== "undefined") {
@@ -25,12 +25,14 @@ export class ModelReviewService {
     targetLang,
     translationModels,
     judgeModels,
+    reviewStyle,
     profile = "docx-manual"
   }: {
     samples: ModelReviewSample[];
     targetLang: TargetLanguage;
     translationModels?: string[];
     judgeModels?: string[];
+    reviewStyle?: ModelReviewStyle;
     profile?: "spreadsheet" | "docx-manual";
   }): Promise<ModelReviewResult> {
     const response = await fetch(this.endpoint, {
@@ -41,6 +43,7 @@ export class ModelReviewService {
         targetLang,
         translationModels,
         judgeModels,
+        reviewStyle,
         profile
       })
     });

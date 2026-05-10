@@ -6,6 +6,13 @@ import {
   type TranslationProfile
 } from "./translationProfiles";
 
+export type ModelReviewStyle =
+  | "auto"
+  | "medical-report"
+  | "ifu-manual"
+  | "marketing-readable"
+  | "terminology-faithful";
+
 export interface ModelReviewSample {
   id: string;
   location: string;
@@ -66,6 +73,7 @@ export interface ModelReviewResult {
   createdAt: string;
   targetLang: TargetLanguage;
   profile?: TranslationProfile;
+  reviewStyle?: ModelReviewStyle;
   samples: ModelReviewSample[];
   candidates: ModelReviewCandidate[];
   judges: ModelReviewJudgeResult[];
@@ -88,6 +96,14 @@ export const DEFAULT_MODEL_REVIEW_JUDGE_MODELS = [
 ];
 
 export const DEFAULT_DOCX_REVIEW_MODEL_CHAIN = DOCX_MANUAL_OPENROUTER_MODELS;
+
+export const MODEL_REVIEW_STYLE_LABELS: Record<ModelReviewStyle, string> = {
+  auto: "Auto / General medical",
+  "medical-report": "Medical report / Table interpretation",
+  "ifu-manual": "Instructions for use / IFU",
+  "marketing-readable": "Marketing / User-readable",
+  "terminology-faithful": "Terminology-faithful / Low rewrite"
+};
 
 const toNumber = (value: unknown) => {
   const num = Number(value);
@@ -179,13 +195,21 @@ export const buildModelReviewRanking = (
 };
 
 export const formatModelReviewReport = (result: ModelReviewResult) => {
-  const styleLabel = result.profile === "spreadsheet" ? "Cell Style" : "Manual";
-  const avoidYouLabel = result.profile === "spreadsheet" ? "Concise" : "Avoid You";
+  const styleLabel =
+    result.reviewStyle === "medical-report"
+      ? "Cell Style"
+      : result.reviewStyle === "marketing-readable"
+        ? "Readability"
+        : result.reviewStyle === "terminology-faithful"
+          ? "Faithful"
+          : "Manual";
+  const avoidYouLabel = result.reviewStyle === "medical-report" ? "Concise" : "Avoid You";
   const lines: string[] = [
     "Multi-AI Model Review",
     `Created: ${result.createdAt}`,
     `Target: ${result.targetLang}`,
     `Profile: ${result.profile || "unknown"}`,
+    `Review style: ${result.reviewStyle ? MODEL_REVIEW_STYLE_LABELS[result.reviewStyle] : "unknown"}`,
     "",
     "Ranking",
     `| Rank | Model | Overall | Accuracy | Fluency | ${styleLabel} | Term | Format | Avoid Literal | ${avoidYouLabel} |`,

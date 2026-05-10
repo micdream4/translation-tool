@@ -47,6 +47,8 @@
 ## 云端部署
 - Cloudflare Pages 部署清单见：
   - [`docs/CLOUDFLARE_PAGES_DEPLOY.md`](./docs/CLOUDFLARE_PAGES_DEPLOY.md)
+- 当前项目进度见：
+  - [`docs/PROJECT_PROGRESS.md`](./docs/PROJECT_PROGRESS.md)
 
 ## 说明
 - 项目目录中的本地翻译前后文档不纳入版本控制（已在 `.gitignore` 中忽略）。

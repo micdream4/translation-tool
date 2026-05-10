@@ -1,4 +1,5 @@
 import { POCTRecord, TargetLanguage } from "../types";
+import type { TranslationProfile } from "../utils/translationProfiles";
 
 export type ProxyEngine = "auto" | "openrouter" | "deepseek" | "gemini";
 
@@ -28,12 +29,23 @@ export class ProxyTranslationService {
     records: POCTRecord[],
     targetLang: TargetLanguage,
     engine: ProxyEngine = "auto",
-    model?: string
+    model?: string,
+    options: {
+      models?: string[];
+      profile?: TranslationProfile;
+    } = {}
   ): Promise<POCTRecord[]> {
     const response = await fetch(this.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ records, targetLang, engine, model })
+      body: JSON.stringify({
+        records,
+        targetLang,
+        engine,
+        model,
+        models: options.models,
+        profile: options.profile
+      })
     });
 
     if (!response.ok) {

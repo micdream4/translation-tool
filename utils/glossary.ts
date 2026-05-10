@@ -23,6 +23,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     variants: [
       "Hunan Ehung Health Technology Co., Ltd.",
       "Hunan Ehong Health Technology Co., Ltd.",
+      "Hunan Ehon Health Technology Co., Ltd.",
       "Hunan Yihong Health Technology Co., Ltd."
     ]
   },

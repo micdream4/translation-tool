@@ -15,13 +15,13 @@ import {
   parsePdfFile,
   exportPdfTranslationAsDocx,
   getPdfSegmentText,
-  setPdfSegmentText,
   type PdfContext
 } from './utils/pdf';
 import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
 import { MultiAIJudge } from './services/multiAIJudge';
 import { SampleReviewAuditService } from './services/sampleReviewAuditService';
+import { runPdfTranslationWorkflow } from './workflows/pdfTranslationWorkflow';
 import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
 import type { UntranslatedCell } from './utils/language';
 import { summarizeUntranslated } from './utils/untranslated';
@@ -64,6 +64,7 @@ import {
   restoreStringResourceTokens
 } from './utils/stringResources';
 import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
+import { DOCX_MANUAL_OPENROUTER_MODELS } from './utils/translationProfiles';
 import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
 import {
   ClinicalRule,
@@ -105,8 +106,12 @@ const DEFAULT_OPENROUTER_MODELS = [
 const AUTO_OPENROUTER_MODEL = '__AUTO_OPENROUTER__';
 const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'google/gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+  'google/gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
+  'google/gemini-2.5-pro': 'Gemini 2.5 Pro',
   'qwen/qwen3.6-plus': 'Qwen 3.6 Plus',
-  'deepseek/deepseek-v3.2': 'DeepSeek V3.2'
+  'deepseek/deepseek-v3.2': 'DeepSeek V3.2',
+  'deepseek/deepseek-v4-pro': 'DeepSeek V4 Pro',
+  'openai/gpt-5.3-chat': 'OpenAI GPT-5.3 Chat'
 };
 type ThemeMode = 'light' | 'dark';
 type TranslationMemoryStats = {
@@ -431,9 +436,25 @@ const App: React.FC = () => {
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
   const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
+  const availableOpenRouterModels = useMemo(
+    () =>
+      documentKind === 'docx'
+        ? Array.from(new Set([...DOCX_MANUAL_OPENROUTER_MODELS, ...openRouterModels]))
+        : openRouterModels,
+    [documentKind, openRouterModels]
+  );
   const [translationModelPreference, setTranslationModelPreference] = useState<string>(
     AUTO_OPENROUTER_MODEL
   );
+  useEffect(() => {
+    if (
+      documentKind !== 'docx' &&
+      translationModelPreference !== AUTO_OPENROUTER_MODEL &&
+      !openRouterModels.includes(translationModelPreference)
+    ) {
+      setTranslationModelPreference(AUTO_OPENROUTER_MODEL);
+    }
+  }, [documentKind, openRouterModels, translationModelPreference]);
   const ruleEngine = useMemo(() => new RuleEngine(), []);
   const multiAIJudge = useMemo(() => new MultiAIJudge(), []);
   const sampleReviewAuditService = useMemo(() => new SampleReviewAuditService(), []);
@@ -477,6 +498,20 @@ const App: React.FC = () => {
     return {
       model: 'openrouter' as const,
       openRouterModel: translationModelPreference
+    };
+  };
+
+  const getDocxTranslationOptions = () => {
+    if (translationModelPreference !== AUTO_OPENROUTER_MODEL) {
+      return {
+        model: 'openrouter' as const,
+        openRouterModel: translationModelPreference,
+        profile: 'docx-manual' as const
+      };
+    }
+    return {
+      profile: 'docx-manual' as const,
+      openRouterModels: DOCX_MANUAL_OPENROUTER_MODELS
     };
   };
 
@@ -1671,7 +1706,7 @@ const App: React.FC = () => {
               translatedBatch = await translationHub.translateBatch({
                 records: leaders.map((leader) => ({ content: leader.sanitized })),
                 targetLang,
-                options: getTranslationOptions()
+                options: getDocxTranslationOptions()
               });
               addLog(`Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
             } else {
@@ -1767,179 +1802,31 @@ const App: React.FC = () => {
       addLog('PDF: 未检测到可翻译的内容。');
       return;
     }
-    const segments = context.segments;
-    const candidates = segments.filter((segment) =>
-      shouldTranslateDocxText(getPdfSegmentText(segment) || segment.original)
-    );
-    if (!candidates.length) {
-      addLog('PDF: 当前文档已经是目标语言或没有可翻译的文本。');
-      return;
-    }
 
-    pauseRequestedRef.current = false;
-    const alreadyTranslated = Math.max(0, segments.length - candidates.length);
-    setPdfStats({ pages: context.pageCount, total: segments.length, translated: alreadyTranslated });
-    setTranslationStatus('running');
-    if (mode === 'resume') {
-      addLog(`PDF Resume: 已处理 ${alreadyTranslated}/${segments.length}，继续处理剩余 ${candidates.length} 个文本段。`);
-    }
-    setProcessingState({
-      status: 'processing',
-      progress: 0,
-      total: candidates.length,
-      currentBatch: 0
+    await runPdfTranslationWorkflow({
+      context,
+      mode,
+      batchSize: DOCX_BATCH_SIZE,
+      targetLang,
+      documentKind,
+      fileName: file?.name,
+      translationHub,
+      placeholderStore: docxPlaceholderStore.current,
+      pauseRequestedRef,
+      addLog,
+      shouldTranslateText: shouldTranslateDocxText,
+      dedupeLeadingRepeat,
+      getTranslationOptions,
+      createTranslationMemoryStats,
+      lookupReusableTranslations,
+      getTranslationMemoryKey,
+      rememberTranslationPairs,
+      logTranslationMemoryStats,
+      runStage,
+      setPdfStats,
+      setTranslationStatus,
+      setProcessingState
     });
-
-    try {
-      const result = await runStage('translate', async () => {
-        let completed = 0;
-        let paused = false;
-        const totalBatches = Math.ceil(candidates.length / DOCX_BATCH_SIZE);
-
-        for (let i = 0; i < candidates.length; i += DOCX_BATCH_SIZE) {
-          if (pauseRequestedRef.current) {
-            paused = true;
-            addLog(`PDF translation paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
-            break;
-          }
-          const chunk = candidates.slice(i, i + DOCX_BATCH_SIZE);
-          const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
-          addLog(`PDF Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段`);
-          const memoryStats = createTranslationMemoryStats();
-          const memoryHits = await lookupReusableTranslations(
-            chunk.map((segment) => getPdfSegmentText(segment) || segment.original)
-          );
-          const leaders: Array<{
-            segment: typeof chunk[number];
-            rawText: string;
-            sanitized: string;
-            placeholders: Record<string, string> | null;
-            memoryKey: string;
-          }> = [];
-          const followers = new Map<string, typeof chunk>();
-          const seenInBatch = new Set<string>();
-
-          chunk.forEach((segment) => {
-            const rawText = getPdfSegmentText(segment) || segment.original;
-            const memoryKey = getTranslationMemoryKey(rawText);
-            const memoryTarget = memoryHits.get(memoryKey);
-            if (memoryTarget) {
-              setPdfSegmentText(segment, memoryTarget);
-              memoryStats.hits += 1;
-              return;
-            }
-            if (seenInBatch.has(memoryKey)) {
-              const existing = followers.get(memoryKey) || [];
-              existing.push(segment);
-              followers.set(memoryKey, existing);
-              memoryStats.deduped += 1;
-              return;
-            }
-            seenInBatch.add(memoryKey);
-            const { sanitized, placeholders } = guardTranslationTokens(rawText);
-            if (placeholders) {
-              docxPlaceholderStore.current.set(segment.id, placeholders);
-            }
-            leaders.push({
-              segment,
-              rawText,
-              sanitized,
-              placeholders,
-              memoryKey
-            });
-          });
-
-          let translatedBatch: POCTRecord[] = [];
-          try {
-            if (leaders.length > 0) {
-              translatedBatch = await translationHub.translateBatch({
-                records: leaders.map((leader) => ({ content: leader.sanitized })),
-                targetLang,
-                options: getTranslationOptions()
-              });
-              addLog(`PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
-            } else {
-              addLog(`PDF Batch ${batchNum}: 全部命中本地翻译记忆。`);
-            }
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            addLog(`PDF Batch ${batchNum} 翻译失败：${errMsg}`);
-            continue;
-          }
-
-          const memoryPairs: TranslationMemoryPair[] = [];
-          leaders.forEach((leader, index) => {
-            const segment = leader.segment;
-            const translatedRecord = translatedBatch[index] || {};
-            const rawText = leader.rawText;
-            const placeholders = leader.placeholders || docxPlaceholderStore.current.get(segment.id);
-            const sanitizedResult =
-              typeof translatedRecord.content === 'string'
-                ? translatedRecord.content
-                : rawText;
-            const restored = restoreTranslationTokens(sanitizedResult, placeholders);
-            const polished = dedupeLeadingRepeat(
-              rawText || '',
-              polishTranslation(rawText || '', restored, targetLang)
-            );
-            setPdfSegmentText(segment, polished);
-            (followers.get(leader.memoryKey) || []).forEach((follower) => {
-              setPdfSegmentText(follower, polished);
-            });
-            memoryPairs.push({
-              sourceText: rawText,
-              targetText: polished,
-              targetLang,
-              model: translationHub.getLastEngine(),
-              documentKind,
-              fileName: file?.name
-            });
-          });
-          await rememberTranslationPairs(memoryPairs, memoryStats);
-          logTranslationMemoryStats(`PDF Batch ${batchNum}`, memoryStats);
-
-          completed += chunk.length;
-          setPdfStats({
-            pages: context.pageCount,
-            total: segments.length,
-            translated: Math.min(alreadyTranslated + completed, segments.length)
-          });
-          setProcessingState((prev) => ({
-            ...prev,
-            progress: Math.round((completed / candidates.length) * 100),
-            currentBatch: batchNum
-          }));
-          await new Promise((resolve) => setTimeout(resolve, 80));
-          if (pauseRequestedRef.current) {
-            paused = true;
-            addLog(`PDF translation paused after batch ${batchNum}.`);
-            break;
-          }
-        }
-
-        if (paused) {
-          setProcessingState((prev) => ({ ...prev, status: 'idle' }));
-          setTranslationStatus('paused');
-          return 'paused';
-        }
-
-        setProcessingState((prev) => ({
-          ...prev,
-          status: 'completed',
-          progress: 100
-        }));
-        addLog(`PDF Translation Completed: ${completed}/${candidates.length} 个文本段处理完成。`);
-        return 'completed';
-      });
-
-      if (result !== 'paused') {
-        setTranslationStatus('completed');
-      }
-    } catch (error) {
-      setTranslationStatus('idle');
-      addLog(`PDF Translation Failed: ${error instanceof Error ? error.message : String(error)}`);
-      setProcessingState((prev) => ({ ...prev, status: 'error' }));
-    }
   };
 
   const retryDocxSegments = async () => {
@@ -2050,7 +1937,7 @@ const App: React.FC = () => {
             translatedBatch = await translationHub.translateBatch({
               records: payload,
               targetLang,
-              options: getTranslationOptions()
+              options: getDocxTranslationOptions()
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -3943,15 +3830,21 @@ const App: React.FC = () => {
                   onChange={(e) => setTranslationModelPreference(e.target.value)}
                   disabled={isTranslating}
                 >
-                  <option value={AUTO_OPENROUTER_MODEL}>Auto (Gemini → Qwen → DeepSeek)</option>
-                  {openRouterModels.map((model) => (
+                  <option value={AUTO_OPENROUTER_MODEL}>
+                    {documentKind === 'docx'
+                      ? 'Auto DOCX Quality (Qwen → DeepSeek → Gemini 3.1 → OpenAI)'
+                      : 'Auto (Gemini → Qwen → DeepSeek)'}
+                  </option>
+                  {availableOpenRouterModels.map((model) => (
                     <option key={model} value={model}>
                       {OPENROUTER_MODEL_LABELS[model] || model}
                     </option>
                   ))}
                 </select>
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
-                  Auto 会按 Gemini → Qwen → DeepSeek 顺序自动切换；手工选择时只使用当前模型。
+                  {documentKind === 'docx'
+                    ? 'DOCX Auto 使用说明书专用提示词与质量模型组；手工选择时只使用当前模型。'
+                    : 'Auto 会按 Gemini → Qwen → DeepSeek 顺序自动切换；手工选择时只使用当前模型。'}
                 </p>
               </div>
 

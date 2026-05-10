@@ -3,6 +3,7 @@ import { DeepseekService } from "./deepseekService";
 import { OpenRouterService } from "./openRouterService";
 import { ProxyTranslationService, ProxyEngine } from "./proxyService";
 import { POCTRecord, TargetLanguage } from "../types";
+import type { TranslationProfile } from "../utils/translationProfiles";
 
 export interface TranslationRequest {
   records: POCTRecord[];
@@ -10,6 +11,8 @@ export interface TranslationRequest {
   options?: {
     model?: "deepseek" | "gemini" | "openrouter";
     openRouterModel?: string;
+    openRouterModels?: string[];
+    profile?: TranslationProfile;
   };
 }
 
@@ -167,7 +170,11 @@ export class TranslationHub {
         req.records,
         req.targetLang,
         engine,
-        req.options?.openRouterModel
+        req.options?.openRouterModel,
+        {
+          models: req.options?.openRouterModels,
+          profile: req.options?.profile
+        }
       );
       this.lastEngine = this.proxy.getLastEngine();
       return translated;
@@ -196,7 +203,11 @@ export class TranslationHub {
       if (!this.openRouter) {
         throw new Error("OpenRouter API key unavailable.");
       }
-      return this.openRouter.translateBatch(req.records, req.targetLang);
+      return this.openRouter.translateBatch(req.records, req.targetLang, {
+        model: req.options?.openRouterModel,
+        models: req.options?.openRouterModels,
+        profile: req.options?.profile
+      });
     };
 
     let translated: POCTRecord[];
@@ -266,6 +277,9 @@ export class TranslationHub {
       lang: req.targetLang,
       records: req.records,
       model: preferred || "auto",
+      openRouterModel: req.options?.openRouterModel || "",
+      openRouterModels: req.options?.openRouterModels || [],
+      profile: req.options?.profile || "spreadsheet",
       mode: this.proxy ? "proxy" : "direct"
     });
 

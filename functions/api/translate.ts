@@ -1,7 +1,11 @@
-import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "../../utils/glossary";
 import type { POCTRecord, TargetLanguage } from "../../types";
 import { parseModelJsonArray, sanitizeModelJson } from "../../utils/jsonRepair";
-import { getSeedGlossaryPrompt } from "../../utils/seedTerminology";
+import {
+  buildOpenRouterPrompt,
+  buildOpenRouterSystemPrompt,
+  DOCX_MANUAL_OPENROUTER_MODELS,
+  type TranslationProfile
+} from "../../utils/translationProfiles";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -46,53 +50,6 @@ const getAccessEmail = (request: Request) =>
 const getLocalBypassEmail = (request: Request, env: Record<string, unknown>) =>
   normalizeEmail(request.headers.get("x-user-email") || env.LOCAL_DEV_EMAIL);
 
-const joinGlossaryBlocks = (...blocks: Array<string | undefined>) =>
-  Array.from(
-    new Set(
-      blocks
-        .flatMap((block) => String(block || "").split("\n"))
-        .map((line) => line.trim())
-        .filter(Boolean)
-    )
-  ).join("\n");
-
-const buildOpenRouterPrompt = (records: POCTRecord[], targetLang: TargetLanguage) => {
-  const useEnglishGlossary = shouldUseEnglishGlossary(targetLang);
-  const sourceText = JSON.stringify(records);
-  const seedGlossaryPrompt = getSeedGlossaryPrompt(targetLang, sourceText);
-  const combinedGlossaryPrompt = joinGlossaryBlocks(
-    useEnglishGlossary ? GLOSSARY_PROMPT : "",
-    seedGlossaryPrompt
-  );
-  const glossarySection = combinedGlossaryPrompt
-    ? `\nTerminology (Chinese => preferred target wording):\n${combinedGlossaryPrompt}\n`
-    : "";
-  const glossaryRule = combinedGlossaryPrompt
-    ? "- Follow the terminology list exactly when the source contains those concepts."
-    : `- Translate medical terminology fully into ${targetLang}. Keep only true codes, model numbers, and standard abbreviations (e.g., WBC, RBC, QC) unchanged.`;
-
-  return `
-You are a senior hematology-manual translator. Convert every string within the JSON array to ${targetLang} while maintaining fluent instructions.
-${glossarySection}
-
-Rules:
-${glossaryRule}
-- Translate any non-${targetLang} natural-language text (including full English sentences) into ${targetLang}.
-- Translate address/common nouns such as "Room", "Building", "Street", "District", "City", "Province" into ${targetLang}; keep only true proper names transliterated or unchanged.
-- Preserve numbers, IDs, measurement units, and codes exactly.
-- If a cell mixes code + text, keep the code intact and only translate the descriptive part.
-- Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark protected IDs, codes, or format placeholders.
-- Do not invent or introduce new placeholder tokens; only preserve placeholders already present in input.
-- Keep only true UI/code tokens unchanged (e.g., "Login", "admin", "START", button labels, product code literals). Do NOT keep full English prose unchanged when target is not English.
-- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); do not replace them with straight quotes.
-- Optimize spacing and punctuation to read naturally in ${targetLang}.
-- Always return a valid JSON object: {"records":[...]} where records keeps the same length/keys. No explanations outside JSON.
-
-INPUT:
-${JSON.stringify(records)}
-`;
-};
-
 const sanitizeResponse = (text: string) =>
   sanitizeModelJson(text.replace(/```json|```/gi, ""));
 
@@ -117,6 +74,19 @@ const parseOpenRouterModels = (env: Record<string, unknown>) => {
 
 const parseRequestedModel = (value: unknown) => String(value || "").trim();
 
+const parseRequestedModels = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return String(value || "")
+    .split(/[,\n;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const parseTranslationProfile = (value: unknown): TranslationProfile =>
+  String(value || "").trim() === "docx-manual" ? "docx-manual" : "spreadsheet";
+
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
@@ -130,6 +100,8 @@ export const onRequestPost = async (context: any) => {
     const targetLang = payload?.targetLang as TargetLanguage | undefined;
     const engine = String(payload?.engine || "auto").toLowerCase();
     const requestedModel = parseRequestedModel(payload?.model);
+    const requestedModels = parseRequestedModels(payload?.models);
+    const profile = parseTranslationProfile(payload?.profile);
 
     if (!Array.isArray(records) || !targetLang) {
       return json({ error: "Invalid payload." }, 400);
@@ -187,12 +159,22 @@ export const onRequestPost = async (context: any) => {
 
     if (chosen === "openrouter") {
       if (!hasOpenRouter) return json({ error: "OpenRouter key missing." }, 400);
-      const models = requestedModel ? [requestedModel] : parseOpenRouterModels(env);
+      const models = requestedModel
+        ? [requestedModel]
+        : requestedModels.length
+          ? requestedModels
+          : profile === "docx-manual"
+            ? parseRequestedModels(
+                env.DOCX_OPENROUTER_MODELS ||
+                  env.VITE_DOCX_OPENROUTER_MODELS ||
+                  env.OPENROUTER_DOCX_MODELS
+              ).concat(DOCX_MANUAL_OPENROUTER_MODELS).filter((model, index, arr) => arr.indexOf(model) === index)
+            : parseOpenRouterModels(env);
       const referer =
         env.OPENROUTER_SITE ||
         context.request.headers.get("Origin") ||
         "https://poct-translator.local";
-      const prompt = buildOpenRouterPrompt(records, targetLang);
+      const prompt = buildOpenRouterPrompt(records, targetLang, profile);
       const errors: string[] = [];
 
       for (const model of models) {
@@ -214,8 +196,7 @@ export const onRequestPost = async (context: any) => {
               messages: [
                 {
                   role: "system",
-                  content:
-                    "You translate medical POCT spreadsheets to the requested language while keeping structure unchanged."
+                  content: buildOpenRouterSystemPrompt(profile)
                 },
                 { role: "user", content: prompt }
               ]

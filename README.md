@@ -27,7 +27,7 @@
    # 推荐：本地也走代理模式，避免把模型 Key 注入浏览器 bundle
    VITE_TRANSLATION_MODE=proxy
    OPENROUTER_API_KEY=your_key
-   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v3.2
+   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
    ```
    如需本地纯浏览器直连模型，显式设置 `VITE_TRANSLATION_MODE=direct` 后再使用 `VITE_*_API_KEY`。
 3. 启动开发环境
@@ -78,7 +78,7 @@
    OPENROUTER_API_KEY=sk-or-fallback
 
    # 可选：OpenRouter 内部模型回退列表，按顺序尝试
-   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v3.2
+   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
 
    # 可选：本地调试（线上不要开）
    ALLOW_LOCAL_WITHOUT_ACCESS=false

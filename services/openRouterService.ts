@@ -3,6 +3,7 @@ import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 import {
   buildOpenRouterPrompt,
   buildOpenRouterSystemPrompt,
+  normalizeOpenRouterModelId,
   type TranslationProfile
 } from "../utils/translationProfiles";
 
@@ -60,7 +61,7 @@ export class OpenRouterService {
   private readonly apiKey: string;
 
   constructor(model?: string) {
-    this.model = (model || getEnvModel() || DEFAULT_MODEL).trim();
+    this.model = normalizeOpenRouterModelId(model || getEnvModel() || DEFAULT_MODEL);
     this.apiKey = getEnvKey().trim();
     if (!this.apiKey) {
       throw new Error("Missing OpenRouter API key. Set OPENROUTER_API_KEY in .env.local.");
@@ -83,7 +84,7 @@ export class OpenRouterService {
     const models = Array.from(
       new Set(
         modelCandidates
-          .map((model) => String(model || "").trim())
+          .map((model) => normalizeOpenRouterModelId(model))
           .filter(Boolean)
       )
     );

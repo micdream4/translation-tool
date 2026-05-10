@@ -21,6 +21,7 @@ import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
 import { MultiAIJudge } from './services/multiAIJudge';
 import { SampleReviewAuditService } from './services/sampleReviewAuditService';
+import { ModelReviewService } from './services/modelReviewService';
 import { runPdfTranslationWorkflow } from './workflows/pdfTranslationWorkflow';
 import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
 import type { UntranslatedCell } from './utils/language';
@@ -64,7 +65,18 @@ import {
   restoreStringResourceTokens
 } from './utils/stringResources';
 import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
-import { DOCX_MANUAL_OPENROUTER_MODELS } from './utils/translationProfiles';
+import {
+  DEEPSEEK_OPENROUTER_MODEL,
+  DOCX_MANUAL_OPENROUTER_MODELS,
+  normalizeOpenRouterModelId
+} from './utils/translationProfiles';
+import {
+  DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
+  DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
+  formatModelReviewReport,
+  type ModelReviewResult,
+  type ModelReviewSample
+} from './utils/modelReview';
 import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
 import {
   ClinicalRule,
@@ -98,10 +110,11 @@ const STRING_TARGET_LANGS: TargetLanguage[] = [
 const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
 const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
 const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
+const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || '').trim();
 const DEFAULT_OPENROUTER_MODELS = [
   'google/gemini-3-flash-preview',
   'qwen/qwen3.6-plus',
-  'deepseek/deepseek-v3.2'
+  DEEPSEEK_OPENROUTER_MODEL
 ] as const;
 const AUTO_OPENROUTER_MODEL = '__AUTO_OPENROUTER__';
 const OPENROUTER_MODEL_LABELS: Record<string, string> = {
@@ -109,11 +122,11 @@ const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'google/gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
   'google/gemini-2.5-pro': 'Gemini 2.5 Pro',
   'qwen/qwen3.6-plus': 'Qwen 3.6 Plus',
-  'deepseek/deepseek-v3.2': 'DeepSeek V3.2',
   'deepseek/deepseek-v4-pro': 'DeepSeek V4 Pro',
   'openai/gpt-5.3-chat': 'OpenAI GPT-5.3 Chat'
 };
 type ThemeMode = 'light' | 'dark';
+type AppView = 'translator' | 'modelReview';
 type TranslationMemoryStats = {
   hits: number;
   deduped: number;
@@ -124,7 +137,7 @@ const parseOpenRouterModelOptions = () => {
   const raw =
     String((import.meta as any)?.env?.VITE_OPENROUTER_MODELS || '').trim();
   const values = raw
-    ? raw.split(/[,\n;]+/).map((item: string) => item.trim()).filter(Boolean)
+    ? raw.split(/[,\n;]+/).map((item: string) => normalizeOpenRouterModelId(item)).filter(Boolean)
     : [...DEFAULT_OPENROUTER_MODELS];
   return Array.from(new Set(values));
 };
@@ -374,6 +387,7 @@ const App: React.FC = () => {
   const [data, setData] = useState<POCTRecord[]>([]); // Original Data
   const [processedData, setProcessedData] = useState<POCTRecord[]>([]); // Translated Data
   const [documentKind, setDocumentKind] = useState<'excel' | 'docx' | 'pdf'>('excel');
+  const [activeView, setActiveView] = useState<AppView>('translator');
   const [excelContext, setExcelContext] = useState<ExcelContext | null>(null);
   const [targetLang, setTargetLang] = useState<TargetLanguage>('English');
   const [theme, setTheme] = useState<ThemeMode>(() => {
@@ -394,6 +408,13 @@ const App: React.FC = () => {
   const [sampleReviewAiResults, setSampleReviewAiResults] = useState<Record<string, SampleReviewAIResult>>({});
   const [sampleReviewAiMeta, setSampleReviewAiMeta] = useState<{ model?: string; engine?: string } | null>(null);
   const [isRunningSampleReviewAi, setIsRunningSampleReviewAi] = useState(false);
+  const [modelReviewCount, setModelReviewCount] = useState<number>(10);
+  const [modelReviewResult, setModelReviewResult] = useState<ModelReviewResult | null>(null);
+  const [isRunningModelReview, setIsRunningModelReview] = useState(false);
+  const [modelReviewStatus, setModelReviewStatus] = useState<{
+    stage: 'idle' | 'sampling' | 'translating' | 'judging' | 'completed' | 'error';
+    message: string;
+  }>({ stage: 'idle', message: 'Ready to run.' });
   const [activeStage, setActiveStage] = useState<WorkflowStageKey | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [translationStatus, setTranslationStatus] = useState<'idle' | 'running' | 'paused' | 'completed'>('idle');
@@ -447,6 +468,13 @@ const App: React.FC = () => {
     AUTO_OPENROUTER_MODEL
   );
   useEffect(() => {
+    if (!APP_VERSION || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('v') === APP_VERSION) return;
+    url.searchParams.set('v', APP_VERSION);
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+  useEffect(() => {
     if (
       documentKind !== 'docx' &&
       translationModelPreference !== AUTO_OPENROUTER_MODEL &&
@@ -458,6 +486,7 @@ const App: React.FC = () => {
   const ruleEngine = useMemo(() => new RuleEngine(), []);
   const multiAIJudge = useMemo(() => new MultiAIJudge(), []);
   const sampleReviewAuditService = useMemo(() => new SampleReviewAuditService(), []);
+  const modelReviewService = useMemo(() => new ModelReviewService(), []);
   const selectedStringTargetLangs = useMemo<TargetLanguage[]>(
     () =>
       stringOutputTarget === ALL_STRING_TARGETS
@@ -474,6 +503,12 @@ const App: React.FC = () => {
     setSampleReviewItems([]);
     setSampleReviewAiResults({});
     setSampleReviewAiMeta(null);
+  };
+
+  const resetModelReviewState = () => {
+    setModelReviewResult(null);
+    setIsRunningModelReview(false);
+    setModelReviewStatus({ stage: 'idle', message: 'Ready to run.' });
   };
 
   const getFallbackPriority = (
@@ -692,6 +727,7 @@ const App: React.FC = () => {
     snapshotPromptKeyRef.current = '';
     setPreviewFocus(null);
     resetSampleReviewState();
+    resetModelReviewState();
     const identifier = `${uploadedFile.name}-${uploadedFile.size}-${uploadedFile.lastModified || Date.now()}`;
     setFileId(identifier);
     setQualityReport(null);
@@ -1575,6 +1611,216 @@ const App: React.FC = () => {
     const safeStamp = iso.replace(/[:.]/g, '-');
     downloadTextFile(`Docx_Issue_Report_${targetLang}_${safeStamp}.txt`, lines.join('\n'));
     addLog(`Docx report: 已导出 ${docxIssueDetails.length} 段问题文本明细。`);
+  };
+
+  const getModelReviewSourceLabel = () => {
+    if (documentKind === 'excel') return 'Excel cells';
+    if (documentKind === 'docx') return 'DOCX segments';
+    if (documentKind === 'pdf') return 'PDF text segments';
+    return 'current document';
+  };
+
+  const buildTextSegmentModelReviewSamples = (
+    segments: Array<{ id: string; original: string }>,
+    readText: (segment: any) => string,
+    sourceLabel: string,
+    limit: number
+  ): ModelReviewSample[] => {
+    const candidates = segments
+      .map((segment, index) => ({
+        segment,
+        index,
+        text: (readText(segment) || segment.original || '').replace(/\s+/g, ' ').trim()
+      }))
+      .filter((item) => item.text && shouldTranslateDocxText(item.text));
+    const selected: typeof candidates = [];
+    const need = Math.min(limit, candidates.length);
+    if (need <= 0) return [];
+    const step = Math.max(1, Math.floor(candidates.length / need));
+    for (let i = 0; i < candidates.length && selected.length < need; i += step) {
+      selected.push(candidates[i]);
+    }
+    for (const item of candidates) {
+      if (selected.length >= need) break;
+      if (!selected.some((selectedItem) => selectedItem.index === item.index)) {
+        selected.push(item);
+      }
+    }
+    return selected.map((item) => {
+      const contextBefore = segments
+        .slice(Math.max(0, item.index - 2), item.index)
+        .map((segment) => (readText(segment) || segment.original || '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      const contextAfter = segments
+        .slice(item.index + 1, item.index + 3)
+        .map((segment) => (readText(segment) || segment.original || '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      return {
+        id: item.segment.id,
+        location: `${sourceLabel} #${item.index + 1}`,
+        sourceText: item.text,
+        contextBefore,
+        contextAfter
+      };
+    });
+  };
+
+  const buildExcelModelReviewSamples = (limit: number): ModelReviewSample[] => {
+    const cells: ModelReviewSample[] = [];
+    const seen = new Set<string>();
+    data.forEach((row, rowIndex) => {
+      Object.entries(row).forEach(([key, value]) => {
+        if (typeof value !== 'string') return;
+        const text = value.replace(/\s+/g, ' ').trim();
+        if (!text || shouldLockCell(key, value) || !shouldTranslateValue(value, key)) return;
+        const memoryKey = `${key}\u0000${normalizeMemorySource(text)}`;
+        if (seen.has(memoryKey)) return;
+        seen.add(memoryKey);
+        cells.push({
+          id: `excel-${rowIndex}-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`,
+          location: `Excel row ${rowIndex + 1} · ${key}`,
+          sourceText: text
+        });
+      });
+    });
+    if (cells.length <= limit) return cells;
+    const selected: ModelReviewSample[] = [];
+    const step = Math.max(1, Math.floor(cells.length / limit));
+    for (let i = 0; i < cells.length && selected.length < limit; i += step) {
+      selected.push(cells[i]);
+    }
+    return selected;
+  };
+
+  const buildModelReviewSamples = (limit: number = modelReviewCount): ModelReviewSample[] => {
+    if (documentKind === 'excel') {
+      return buildExcelModelReviewSamples(limit);
+    }
+    if (documentKind === 'docx' && docxContextRef.current) {
+      return buildTextSegmentModelReviewSamples(
+        docxContextRef.current.segments,
+        (segment) => getDocxSegmentText(segment),
+        'DOCX Segment',
+        limit
+      );
+    }
+    if (documentKind === 'pdf' && pdfContextRef.current) {
+      return buildTextSegmentModelReviewSamples(
+        pdfContextRef.current.segments,
+        (segment) => getPdfSegmentText(segment),
+        'PDF Segment',
+        limit
+      );
+    }
+    return [];
+  };
+
+  const canRunModelReview = () => {
+    if (documentKind === 'excel') return data.length > 0;
+    if (documentKind === 'docx') return docxContextRef.current !== null;
+    if (documentKind === 'pdf') return pdfContextRef.current !== null;
+    return false;
+  };
+
+  const runModelReview = async () => {
+    if (!canRunModelReview()) {
+      addLog('Multi-AI Review: 请先上传可抽样的 Excel、DOCX 或 PDF 文档。');
+      setModelReviewStatus({ stage: 'error', message: '请先在 Translator 页面上传并解析文件。' });
+      return;
+    }
+    if (isRunningModelReview || translationStatus === 'running') {
+      addLog('Multi-AI Review: 当前有任务正在运行，请稍后再试。');
+      setModelReviewStatus({ stage: 'error', message: '当前有任务正在运行，请稍后再试。' });
+      return;
+    }
+    setModelReviewStatus({ stage: 'sampling', message: `Sampling ${getModelReviewSourceLabel()}...` });
+    const samples = buildModelReviewSamples(modelReviewCount);
+    if (!samples.length) {
+      addLog('Multi-AI Review: 当前文档中没有可抽样的源语言文本。');
+      setModelReviewStatus({ stage: 'error', message: '当前文档中没有可抽样的源语言文本。' });
+      return;
+    }
+    setIsRunningModelReview(true);
+    setModelReviewResult(null);
+    setModelReviewStatus({
+      stage: 'translating',
+      message: `Translating ${samples.length} samples with ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} candidate models...`
+    });
+	    addLog(
+	      `Multi-AI Review: 抽取 ${samples.length} 个 ${getModelReviewSourceLabel()}，并发调用 ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} 个候选模型和 ${DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length} 个匿名评审模型。`
+	    );
+    try {
+      window.setTimeout(() => {
+        setModelReviewStatus((current) =>
+          current.stage === 'translating'
+            ? {
+                stage: 'judging',
+                message: `Anonymous judges are scoring candidate translations...`
+              }
+            : current
+        );
+      }, 1200);
+      const result = await modelReviewService.reviewModels({
+        samples,
+        targetLang,
+        translationModels: DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
+        judgeModels: DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
+        profile: documentKind === 'excel' ? 'spreadsheet' : 'docx-manual'
+      });
+      setModelReviewResult(result);
+      const successfulCandidates = result.candidates.filter((candidate) => candidate.translations.length > 0);
+      const failedCandidates = result.candidates.filter((candidate) => candidate.error);
+      const failedJudges = result.judges.filter((judge) => judge.error || judge.scores.length === 0);
+      failedCandidates.forEach((candidate) => {
+        addLog(`Multi-AI Review: 候选模型失败 ${candidate.model} - ${candidate.error || 'no translations returned'}`);
+      });
+      failedJudges.forEach((judge) => {
+        addLog(`Multi-AI Review: 匿名评审失败 ${judge.model} - ${judge.error || 'no scores returned'}`);
+      });
+      const top = result.ranking[0];
+      if (top && top.judgeCount > 0) {
+        addLog(`Multi-AI Review: 完成，当前最高分 ${top.model} (${top.overall.toFixed(2)})。`);
+        setModelReviewStatus({
+          stage: 'completed',
+          message: `Completed. Top model: ${OPENROUTER_MODEL_LABELS[top.model] || top.model} (${top.overall.toFixed(2)}).`
+        });
+      } else if (successfulCandidates.length) {
+        addLog(
+          `Multi-AI Review: 候选翻译完成 ${successfulCandidates.length}/${result.candidates.length}，但匿名评审没有返回有效分数。`
+        );
+        setModelReviewStatus({
+          stage: 'completed',
+          message: `Translations completed for ${successfulCandidates.length}/${result.candidates.length} candidate models, but judges returned no usable scores.`
+        });
+      } else {
+        addLog('Multi-AI Review: 完成，但评审模型未返回有效排名。');
+        setModelReviewStatus({
+          stage: 'completed',
+          message: 'Completed, but no valid ranking was returned by the judges.'
+        });
+      }
+    } catch (error) {
+      addLog(`Multi-AI Review: ${error instanceof Error ? error.message : String(error)}`);
+      setModelReviewStatus({
+        stage: 'error',
+        message: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      setIsRunningModelReview(false);
+    }
+  };
+
+  const exportModelReviewReport = () => {
+    if (!modelReviewResult) {
+      addLog('Multi-AI Review: 当前没有可导出的评审报告。');
+      return;
+    }
+    const safeStamp = modelReviewResult.createdAt.replace(/[:.]/g, '-');
+    downloadTextFile(
+      `Multi_AI_Review_${documentKind}_${targetLang}_${safeStamp}.md`,
+      formatModelReviewReport(modelReviewResult)
+    );
+    addLog('Multi-AI Review: 已导出 Markdown 评审报告。');
   };
 
   const auditDocxTranslation = () => {
@@ -3652,6 +3898,28 @@ const App: React.FC = () => {
         return 'text-slate-400 border border-slate-700 bg-slate-900/40';
     }
   };
+  const modelReviewStageClass = (stage: typeof modelReviewStatus.stage) => {
+    switch (stage) {
+      case 'completed':
+        return isLight
+          ? 'text-emerald-700 border border-emerald-200 bg-emerald-50'
+          : 'text-emerald-300 border border-emerald-500/30 bg-emerald-500/10';
+      case 'error':
+        return isLight
+          ? 'text-rose-700 border border-rose-200 bg-rose-50'
+          : 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+      case 'sampling':
+      case 'translating':
+      case 'judging':
+        return isLight
+          ? 'text-indigo-700 border border-indigo-200 bg-indigo-50'
+          : 'text-indigo-300 border border-indigo-500/30 bg-indigo-500/10';
+      default:
+        return isLight
+          ? 'text-slate-600 border border-slate-200 bg-slate-50'
+          : 'text-slate-400 border border-slate-700 bg-slate-900/40';
+    }
+  };
   const runStatusLabel =
     translationStatus === 'running'
       ? 'Running'
@@ -3703,14 +3971,329 @@ const App: React.FC = () => {
   const nestedPanelClass = isLight
     ? 'rounded-xl border border-slate-200/80 bg-slate-50/80 p-3'
     : 'rounded-xl border border-white/[0.07] bg-slate-950/35 p-3';
+  const modelReviewSamplesPreview =
+    activeView === 'modelReview' ? buildModelReviewSamples(modelReviewCount).slice(0, 5) : [];
+  const modelReviewSuccessfulCandidates =
+    modelReviewResult?.candidates.filter((candidate) => candidate.translations.length > 0) || [];
+  const modelReviewFailedCandidates =
+    modelReviewResult?.candidates.filter((candidate) => candidate.error || candidate.translations.length === 0) || [];
+  const modelReviewFailedJudges =
+    modelReviewResult?.judges.filter((judge) => judge.error || judge.scores.length === 0) || [];
+  const modelReviewScoredRows =
+    modelReviewResult?.ranking.filter((row) => row.judgeCount > 0) || [];
+  const hasModelReviewJudgeScores = modelReviewScoredRows.length > 0;
+  const modelReviewStyleMetricLabel = documentKind === 'excel' ? 'Cell' : 'Manual';
+  const modelReviewAvoidYouMetricLabel = documentKind === 'excel' ? 'Concise' : 'Avoid you';
 
   return (
     <div className={pageClass} data-theme={theme}>
       <Header
         theme={theme}
+        activeView={activeView}
+        onNavigate={setActiveView}
+        version={APP_VERSION}
         onThemeToggle={() => setTheme((current) => (current === 'light' ? 'dark' : 'light'))}
       />
 
+      {activeView === 'modelReview' ? (
+      <main className="flex-1 max-w-[1480px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-6">
+        <section className={`${panelClass} space-y-5`}>
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Independent Workspace</p>
+              <h2 className={`text-2xl font-semibold mt-2 ${isLight ? 'text-slate-950' : 'text-slate-100'}`}>
+                Multi-AI Review Lab
+              </h2>
+              <p className={`text-sm mt-2 max-w-3xl ${mutedTextClass}`}>
+                从当前 Excel、DOCX 或 PDF 中抽样，分别调用多个翻译模型，再由高质量模型匿名评分。该流程只读，不会改写正文译文。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveView('translator')}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+              >
+                Back to Translator
+              </button>
+              <button
+                type="button"
+                onClick={exportModelReviewReport}
+                disabled={!modelReviewResult || isRunningModelReview}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  !modelReviewResult || isRunningModelReview ? disabledButtonClass : primaryInlineButtonClass
+                }`}
+              >
+                Export Markdown
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+            <div className={metricCardClass}>
+              <p className={`text-[11px] ${mutedTextClass}`}>Source</p>
+              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                {file?.name || 'No file uploaded'}
+              </p>
+              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>{getModelReviewSourceLabel()}</p>
+            </div>
+            <div className={metricCardClass}>
+              <p className={`text-[11px] ${mutedTextClass}`}>Target</p>
+              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{targetLang}</p>
+              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                {documentKind === 'excel' ? 'Spreadsheet profile' : 'Manual profile'}
+              </p>
+            </div>
+            <div className={metricCardClass}>
+              <p className={`text-[11px] ${mutedTextClass}`}>Candidates</p>
+              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                {DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} translation models
+              </p>
+              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                {DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length} anonymous judges
+              </p>
+            </div>
+	            <div className={metricCardClass}>
+	              <p className={`text-[11px] ${mutedTextClass}`}>Status</p>
+	              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+	                {isRunningModelReview ? 'Running' : modelReviewResult ? (hasModelReviewJudgeScores ? 'Completed' : 'No judge score') : 'Idle'}
+	              </p>
+	              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+	                {modelReviewResult
+                    ? `${modelReviewSuccessfulCandidates.length}/${modelReviewResult.candidates.length} candidates translated`
+                    : `${modelReviewCount} planned samples`}
+	              </p>
+	            </div>
+          </div>
+        </section>
+
+        <section className={`${panelClass} space-y-5`}>
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Run Review</h3>
+              <p className={`text-xs mt-2 ${mutedTextClass}`}>
+                先抽样，再翻译，再匿名评分。建议先从 5 条样本开始验证费用和速度。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className={fieldClass}
+                value={modelReviewCount}
+                onChange={(e) => setModelReviewCount(Number(e.target.value))}
+                disabled={isRunningModelReview}
+              >
+                {[5, 10, 20].map((value) => (
+                  <option key={value} value={value}>{value} samples</option>
+                ))}
+              </select>
+              <button
+                onClick={runModelReview}
+                disabled={!canRunModelReview() || isTranslating || isRunningModelReview}
+                className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                  !canRunModelReview() || isTranslating || isRunningModelReview
+                    ? disabledButtonClass
+                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-[0_12px_26px_rgba(109,40,217,0.20)]'
+                }`}
+              >
+                {isRunningModelReview ? 'Running Translation + Anonymous Review...' : 'Run Translation + Anonymous Review'}
+              </button>
+            </div>
+          </div>
+
+	          <div className={`rounded-xl px-4 py-3 text-xs ${modelReviewStageClass(modelReviewStatus.stage)}`}>
+	            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	              <div className="flex items-center gap-2">
+	                {isRunningModelReview && (
+	                  <span className="h-2 w-2 rounded-full bg-current animate-pulse"></span>
+                )}
+                <span className="font-semibold uppercase tracking-wider">{modelReviewStatus.stage}</span>
+              </div>
+              <span className="text-left sm:text-right">{modelReviewStatus.message}</span>
+            </div>
+            {isRunningModelReview && (
+              <div className={`mt-3 h-1.5 overflow-hidden rounded-full ${isLight ? 'bg-white/80' : 'bg-slate-950/60'}`}>
+                <div className="h-full w-2/3 rounded-full bg-current opacity-60 animate-pulse"></div>
+	              </div>
+	            )}
+	          </div>
+
+		          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className={subCardClass}>
+              <p className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Sample Preview</p>
+              {modelReviewSamplesPreview.length === 0 ? (
+                <p className={`text-xs mt-3 ${mutedTextClass}`}>上传文件后会在这里显示抽样预览。</p>
+              ) : (
+                <div className="space-y-2 mt-3 max-h-[280px] overflow-auto pr-1">
+                  {modelReviewSamplesPreview.map((sample) => (
+                    <div key={sample.id} className={nestedPanelClass}>
+                      <p className={`text-[11px] font-semibold ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{sample.location}</p>
+                      <p className={`text-[11px] mt-1 line-clamp-3 ${mutedTextClass}`}>{sample.sourceText}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+	            <div className={subCardClass}>
+	              <p className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Model Set</p>
+	              <div className="grid grid-cols-1 gap-2 mt-3">
+	                {DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.map((model) => {
+	                  const candidate = modelReviewResult?.candidates.find((item) => item.model === model);
+	                  const statusLabel = candidate
+	                    ? candidate.translations.length > 0
+	                      ? 'Translated'
+	                      : 'Failed'
+	                    : isRunningModelReview
+	                      ? 'Running'
+	                      : 'Planned';
+	                  return (
+	                    <div key={model} className={nestedPanelClass}>
+	                      <div className="flex items-center justify-between gap-3">
+	                        <p className={`text-[11px] ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+	                          {OPENROUTER_MODEL_LABELS[model] || model}
+	                        </p>
+	                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+	                          statusLabel === 'Translated'
+	                            ? isLight ? 'bg-emerald-50 text-emerald-700' : 'bg-emerald-500/10 text-emerald-300'
+	                            : statusLabel === 'Failed'
+	                              ? isLight ? 'bg-rose-50 text-rose-700' : 'bg-rose-500/10 text-rose-300'
+	                              : isLight ? 'bg-slate-100 text-slate-500' : 'bg-white/[0.05] text-slate-400'
+	                        }`}>
+	                          {statusLabel}
+	                        </span>
+	                      </div>
+	                    </div>
+	                  );
+	                })}
+	              </div>
+	            </div>
+          </div>
+        </section>
+
+        {modelReviewResult && (
+          <section className={`${panelClass} space-y-5`}>
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+	                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Review Results</h3>
+	                <p className={`text-xs mt-2 ${mutedTextClass}`}>
+	                  {modelReviewResult.samples.length} samples · {modelReviewSuccessfulCandidates.length}/{modelReviewResult.candidates.length} candidates translated · {modelReviewScoredRows.length} scored rows
+	                </p>
+	              </div>
+              <button
+                onClick={exportModelReviewReport}
+                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${primaryInlineButtonClass}`}
+              >
+                Export Markdown
+	              </button>
+	            </div>
+
+	            {(modelReviewFailedCandidates.length > 0 || modelReviewFailedJudges.length > 0 || !hasModelReviewJudgeScores) && (
+	              <div className={`rounded-xl border px-4 py-3 text-xs ${
+	                isLight
+	                  ? 'border-amber-200 bg-amber-50/85 text-amber-800'
+	                  : 'border-amber-500/25 bg-amber-500/10 text-amber-200'
+	              }`}>
+	                <p className="font-semibold">
+	                  {hasModelReviewJudgeScores ? 'Partial model availability issue' : 'Candidate translations completed, but anonymous scoring is unavailable'}
+	                </p>
+	                <p className="mt-1">
+	                  {modelReviewFailedCandidates.length > 0 && `${modelReviewFailedCandidates.length} candidate model(s) failed. `}
+	                  {modelReviewFailedJudges.length > 0 && `${modelReviewFailedJudges.length} judge model(s) returned no usable score. `}
+	                  常见原因是 OpenRouter 区域限制、当前节点不可用或模型临时不可用。
+	                </p>
+	              </div>
+	            )}
+
+	            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+	              {modelReviewResult.ranking.slice(0, 6).map((row, index) => (
+	                <div key={row.model} className={metricCardClass}>
+	                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className={`text-[11px] ${mutedTextClass}`}>#{index + 1}</p>
+                      <p className={`text-sm font-semibold truncate ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+	                        {OPENROUTER_MODEL_LABELS[row.model] || row.model}
+	                      </p>
+	                    </div>
+	                    <p className={`text-lg font-semibold ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>
+	                      {row.judgeCount > 0 ? row.overall.toFixed(2) : 'Not scored'}
+	                    </p>
+	                  </div>
+	                  <p className={`text-[11px] mt-2 ${mutedTextClass}`}>
+		                    {row.judgeCount > 0
+		                      ? `Acc ${row.accuracy.toFixed(1)} · Fluency ${row.fluency.toFixed(1)} · ${modelReviewStyleMetricLabel} ${row.manualStyle.toFixed(1)} · Term ${row.terminology.toFixed(1)}`
+		                      : '译文已生成，但匿名评审模型没有返回分数。'}
+	                  </p>
+	                </div>
+	              ))}
+	            </div>
+
+	            {(modelReviewFailedCandidates.length > 0 || modelReviewFailedJudges.length > 0) && (
+	              <details className={`rounded-xl border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-white/[0.07] bg-slate-950/30'}`}>
+	                <summary className={`cursor-pointer list-none flex items-center justify-between text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>
+	                  <span>Call Diagnostics</span>
+	                  <span>{modelReviewFailedCandidates.length + modelReviewFailedJudges.length} issue(s)</span>
+	                </summary>
+	                <div className="mt-3 space-y-2">
+	                  {modelReviewFailedCandidates.map((candidate) => (
+	                    <div key={`candidate-${candidate.model}`} className={nestedPanelClass}>
+	                      <p className={`text-[11px] font-semibold ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
+	                        Candidate · {OPENROUTER_MODEL_LABELS[candidate.model] || candidate.model}
+	                      </p>
+	                      <p className={`text-[11px] mt-1 whitespace-pre-wrap break-words ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
+	                        {candidate.error || 'No translations returned.'}
+	                      </p>
+	                    </div>
+	                  ))}
+	                  {modelReviewFailedJudges.map((judge) => (
+	                    <div key={`judge-${judge.model}`} className={nestedPanelClass}>
+	                      <p className={`text-[11px] font-semibold ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
+	                        Judge · {OPENROUTER_MODEL_LABELS[judge.model] || judge.model}
+	                      </p>
+	                      <p className={`text-[11px] mt-1 whitespace-pre-wrap break-words ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
+	                        {judge.error || 'No scores returned.'}
+	                      </p>
+	                    </div>
+	                  ))}
+	                </div>
+	              </details>
+	            )}
+
+	            <details className={`rounded-xl border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-white/[0.07] bg-slate-950/30'}`}>
+              <summary className={`cursor-pointer list-none flex items-center justify-between text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>
+                <span>Per-Sample Translation Comparison</span>
+                <span>{modelReviewResult.samples.length} samples</span>
+              </summary>
+              <div className="space-y-4 mt-4 max-h-[620px] overflow-auto pr-1">
+                {modelReviewResult.samples.map((sample) => (
+                  <div key={sample.id} className={`${subCardClass} space-y-3`}>
+                    <div>
+                      <p className={`text-xs font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{sample.location}</p>
+                      <p className={`text-[11px] mt-1 whitespace-pre-wrap break-words ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {sample.sourceText}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                      {modelReviewResult.candidates.map((candidate) => {
+                        const translation = candidate.translations.find((item) => item.id === sample.id);
+                        return (
+                          <div key={`${sample.id}-${candidate.model}`} className={nestedPanelClass}>
+                            <p className="text-slate-500 uppercase tracking-wider mb-2 text-[10px]">
+                              {OPENROUTER_MODEL_LABELS[candidate.model] || candidate.model}
+                            </p>
+                            <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words text-[11px]`}>
+                              {translation?.translation || candidate.error || '(empty)'}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </section>
+        )}
+      </main>
+      ) : (
       <main className="flex-1 max-w-[1680px] mx-auto w-full p-4 lg:px-8 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
         <div className="lg:col-span-4 space-y-6">
           <section className={panelClass}>
@@ -4102,6 +4685,7 @@ const App: React.FC = () => {
                   >
                     {activeStage === 'aiValidate' ? 'Cross-checking...' : 'Run Multi-AI Validation'}
                   </button>
+
                 </div>
                 <p className={`text-[11px] mt-2 ${mutedTextClass}`}>
                   用于组合校验与多 AI 核验，非必需步骤。
@@ -4140,7 +4724,7 @@ const App: React.FC = () => {
               <div className={metricCardClass}>
                 <p className={`text-[11px] ${mutedTextClass}`}>Model</p>
                 <p className={`text-lg font-semibold mt-1 truncate ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{currentModelLabel}</p>
-              </div>
+             </div>
              </div>
              <LogConsole logs={logs} theme={theme} />
           </section>
@@ -4788,6 +5372,7 @@ const App: React.FC = () => {
           </details>
         </div>
       </main>
+      )}
     </div>
   );
 };

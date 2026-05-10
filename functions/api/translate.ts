@@ -4,6 +4,7 @@ import {
   buildOpenRouterPrompt,
   buildOpenRouterSystemPrompt,
   DOCX_MANUAL_OPENROUTER_MODELS,
+  normalizeOpenRouterModelId,
   type TranslationProfile
 } from "../../utils/translationProfiles";
 
@@ -66,7 +67,7 @@ const parseOpenRouterModels = (env: Record<string, unknown>) => {
     new Set(
       rawList
         .split(/[,\n;]+/)
-        .map((item) => item.trim())
+        .map((item) => normalizeOpenRouterModelId(item))
         .filter(Boolean)
     )
   );
@@ -76,11 +77,11 @@ const parseRequestedModel = (value: unknown) => String(value || "").trim();
 
 const parseRequestedModels = (value: unknown) => {
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean);
+    return value.map((item) => normalizeOpenRouterModelId(String(item || ""))).filter(Boolean);
   }
   return String(value || "")
     .split(/[,\n;]+/)
-    .map((item) => item.trim())
+    .map((item) => normalizeOpenRouterModelId(item))
     .filter(Boolean);
 };
 

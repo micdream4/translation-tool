@@ -6,9 +6,12 @@ type ThemeMode = 'light' | 'dark';
 interface HeaderProps {
   theme: ThemeMode;
   onThemeToggle: () => void;
+  activeView?: 'translator' | 'modelReview';
+  onNavigate?: (view: 'translator' | 'modelReview') => void;
+  version?: string;
 }
 
-const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle }) => {
+const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle, activeView = 'translator', onNavigate, version }) => {
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const guideRef = useRef<HTMLDivElement>(null);
   const isLight = theme === 'light';
@@ -62,17 +65,62 @@ const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle }) => {
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M4 19.5V5a2 2 0 0 1 2-2h9l5 5v11.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5z"/><path d="M14 3v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/><path d="M8 9h2"/></svg>
           </div>
           <div className="flex flex-col justify-center leading-none">
-            <h1 className={`text-xl font-bold ${
-              isLight
-                ? 'text-slate-950'
-                : 'bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-blue-400'
-            }`}>
-              POCT Document Translator
-            </h1>
-            <p className={`text-xs font-medium tracking-tight mt-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>AI-Powered 1:1 Medical Data Translation</p>
-          </div>
+	            <h1 className={`text-xl font-bold ${
+	              isLight
+	                ? 'text-slate-950'
+	                : 'bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-blue-400'
+	            }`}>
+	              POCT Document Translator
+	            </h1>
+	            <div className="mt-1.5 flex items-center gap-2">
+	              <p className={`text-xs font-medium tracking-tight ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>AI-Powered 1:1 Medical Data Translation</p>
+	              {version && (
+	                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+	                  isLight ? 'bg-slate-100 text-slate-500' : 'bg-white/[0.07] text-slate-400'
+	                }`}>
+	                  v{version}
+	                </span>
+	              )}
+	            </div>
+	          </div>
         </div>
         <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-1 rounded-full border p-1 ${
+            isLight ? 'border-slate-200 bg-white/75 shadow-sm' : 'border-white/[0.08] bg-white/[0.05]'
+          }`}>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('translator')}
+              className={`rounded-full px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-all ${
+                activeView === 'translator'
+                  ? isLight
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white text-slate-950'
+                  : isLight
+                    ? 'text-slate-600 hover:text-slate-950'
+                    : 'text-slate-400 hover:text-slate-100'
+              }`}
+            >
+              <span className="hidden sm:inline">Translator</span>
+              <span className="sm:hidden">Translate</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('modelReview')}
+              className={`rounded-full px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-all ${
+                activeView === 'modelReview'
+                  ? isLight
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-indigo-400 text-slate-950'
+                  : isLight
+                    ? 'text-slate-600 hover:text-indigo-700'
+                    : 'text-slate-400 hover:text-slate-100'
+              }`}
+            >
+              <span className="hidden sm:inline">Multi-AI Review Lab</span>
+              <span className="sm:hidden">Review</span>
+            </button>
+          </div>
           <div className="relative" ref={guideRef}>
             <button
               type="button"

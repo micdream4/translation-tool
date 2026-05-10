@@ -4,13 +4,23 @@ import { getSeedGlossaryPrompt } from "./seedTerminology";
 
 export type TranslationProfile = "spreadsheet" | "docx-manual";
 
+export const DEEPSEEK_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro";
+const LEGACY_DEEPSEEK_OPENROUTER_MODELS = new Set(["deepseek/deepseek-v3.2"]);
+
 export const DOCX_MANUAL_OPENROUTER_MODELS = [
   "qwen/qwen3.6-plus",
-  "deepseek/deepseek-v4-pro",
+  DEEPSEEK_OPENROUTER_MODEL,
   "google/gemini-3.1-pro-preview",
   "openai/gpt-5.3-chat",
   "google/gemini-3-flash-preview"
 ];
+
+export const normalizeOpenRouterModelId = (model: string) => {
+  const normalized = String(model || "").trim();
+  return LEGACY_DEEPSEEK_OPENROUTER_MODELS.has(normalized)
+    ? DEEPSEEK_OPENROUTER_MODEL
+    : normalized;
+};
 
 const joinGlossaryBlocks = (...blocks: Array<string | undefined>) =>
   Array.from(

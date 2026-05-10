@@ -27,7 +27,7 @@ Recommended for controlled sharing:
 - `ALLOWED_USER_EMAILS=user1@company.com,user2@company.com`
 - `OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}`
 - `OPENROUTER_MODEL=google/gemini-3-flash-preview`
-- `OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v3.2`
+- `OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v4-pro`
 - `ALLOW_LOCAL_WITHOUT_ACCESS=false`
 - `REQUIRE_CF_ACCESS_EMAIL=true`（仅当你已配置 Cloudflare Access 并希望强制登录邮箱身份时开启）
 

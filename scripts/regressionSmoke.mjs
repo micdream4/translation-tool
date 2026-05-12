@@ -95,6 +95,9 @@ test("PDF support is text-first and exports translated content as DOCX", () => {
   assert.match(pdfSource, /已回填 .* 个可提取图片/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);
   assert.match(appSource, /PDF 第一阶段导出为 Word 译文/);
+  assert.match(appSource, /documentKind === 'docx' \|\| documentKind === 'pdf'/);
+  assert.match(appSource, /getTranslationOptions: getDocumentQualityTranslationOptions/);
+  assert.match(appSource, /Auto \$\{documentKind\.toUpperCase\(\)\} Quality/);
 });
 
 test("DOCX scope warnings are surfaced for unsupported document parts", () => {

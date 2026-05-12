@@ -1,5 +1,10 @@
 # 项目进度
 
+## v0.0.38
+
+- PDF 正式翻译模型选择已改为与 DOCX 一致：PDF 上传后显示高质量文档模型组，Auto 使用 Qwen → DeepSeek → Gemini 3.1 → OpenAI → Gemini Flash 的文档质量链路。
+- PDF 翻译请求改为使用 `docx-manual` 文档质量 prompt/profile，和 DOCX 一样强调说明书/文档语气、占位符、单位、代码和段落边界保护。
+
 ## v0.0.37
 
 - 修复本地 dev 环境 `APP_VERSION` 为空导致 Header 不显示版本号的问题，改为从 `package.json` 兜底读取版本。

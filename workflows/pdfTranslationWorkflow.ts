@@ -1,4 +1,4 @@
-import type { TranslationHub } from "../services/translationHub";
+import type { TranslationHub, TranslationRequest } from "../services/translationHub";
 import type { POCTRecord, ProcessingState, TargetLanguage, WorkflowStageKey } from "../types";
 import { getPdfSegmentText, setPdfSegmentText, type PdfContext, type PdfSegment } from "../utils/pdf";
 import { polishTranslation } from "../utils/postprocess";
@@ -28,12 +28,7 @@ export interface PdfTranslationWorkflowOptions {
   addLog: (message: string) => void;
   shouldTranslateText: (text: string) => boolean;
   dedupeLeadingRepeat: (source: string, translated: string) => string;
-  getTranslationOptions: () =>
-    | {
-        model: "openrouter";
-        openRouterModel: string;
-      }
-    | undefined;
+  getTranslationOptions: () => TranslationRequest["options"];
   createTranslationMemoryStats: () => TranslationMemoryStats;
   lookupReusableTranslations: (sourceTexts: string[]) => Promise<Map<string, string>>;
   getTranslationMemoryKey: (sourceText: string) => string;

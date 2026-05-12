@@ -459,12 +459,13 @@ const App: React.FC = () => {
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
   const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
+  const usesDocumentQualityModels = documentKind === 'docx' || documentKind === 'pdf';
   const availableOpenRouterModels = useMemo(
     () =>
-      documentKind === 'docx'
+      usesDocumentQualityModels
         ? Array.from(new Set([...DOCX_MANUAL_OPENROUTER_MODELS, ...openRouterModels]))
         : openRouterModels,
-    [documentKind, openRouterModels]
+    [usesDocumentQualityModels, openRouterModels]
   );
   const [translationModelPreference, setTranslationModelPreference] = useState<string>(
     AUTO_OPENROUTER_MODEL
@@ -482,13 +483,13 @@ const App: React.FC = () => {
   }, []);
   useEffect(() => {
     if (
-      documentKind !== 'docx' &&
+      !usesDocumentQualityModels &&
       translationModelPreference !== AUTO_OPENROUTER_MODEL &&
       !openRouterModels.includes(translationModelPreference)
     ) {
       setTranslationModelPreference(AUTO_OPENROUTER_MODEL);
     }
-  }, [documentKind, openRouterModels, translationModelPreference]);
+  }, [usesDocumentQualityModels, openRouterModels, translationModelPreference]);
   const ruleEngine = useMemo(() => new RuleEngine(), []);
   const multiAIJudge = useMemo(() => new MultiAIJudge(), []);
   const sampleReviewAuditService = useMemo(() => new SampleReviewAuditService(), []);
@@ -542,7 +543,7 @@ const App: React.FC = () => {
     };
   };
 
-  const getDocxTranslationOptions = () => {
+  const getDocumentQualityTranslationOptions = () => {
     if (translationModelPreference !== AUTO_OPENROUTER_MODEL) {
       return {
         model: 'openrouter' as const,
@@ -1971,7 +1972,7 @@ const App: React.FC = () => {
               translatedBatch = await translationHub.translateBatch({
                 records: leaders.map((leader) => ({ content: leader.sanitized })),
                 targetLang,
-                options: getDocxTranslationOptions()
+                options: getDocumentQualityTranslationOptions()
               });
               addLog(`Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
             } else {
@@ -2081,7 +2082,7 @@ const App: React.FC = () => {
       addLog,
       shouldTranslateText: shouldTranslateDocxText,
       dedupeLeadingRepeat,
-      getTranslationOptions,
+      getTranslationOptions: getDocumentQualityTranslationOptions,
       createTranslationMemoryStats,
       lookupReusableTranslations,
       getTranslationMemoryKey,
@@ -2202,7 +2203,7 @@ const App: React.FC = () => {
             translatedBatch = await translationHub.translateBatch({
               records: payload,
               targetLang,
-              options: getDocxTranslationOptions()
+              options: getDocumentQualityTranslationOptions()
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -4454,8 +4455,8 @@ const App: React.FC = () => {
                   disabled={isTranslating}
                 >
                   <option value={AUTO_OPENROUTER_MODEL}>
-                    {documentKind === 'docx'
-                      ? 'Auto DOCX Quality (Qwen → DeepSeek → Gemini 3.1 → OpenAI)'
+                    {usesDocumentQualityModels
+                      ? `Auto ${documentKind.toUpperCase()} Quality (Qwen → DeepSeek → Gemini 3.1 → OpenAI)`
                       : 'Auto (Gemini → Qwen → DeepSeek)'}
                   </option>
                   {availableOpenRouterModels.map((model) => (
@@ -4465,8 +4466,8 @@ const App: React.FC = () => {
                   ))}
                 </select>
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
-                  {documentKind === 'docx'
-                    ? 'DOCX Auto 使用说明书专用提示词与质量模型组；手工选择时只使用当前模型。'
+                  {usesDocumentQualityModels
+                    ? `${documentKind.toUpperCase()} Auto 使用高质量文档提示词与模型组；手工选择时只使用当前模型。`
                     : 'Auto 会按 Gemini → Qwen → DeepSeek 顺序自动切换；手工选择时只使用当前模型。'}
                 </p>
               </div>

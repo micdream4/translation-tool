@@ -65,24 +65,26 @@ const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle, activeView = 'tra
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M4 19.5V5a2 2 0 0 1 2-2h9l5 5v11.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5z"/><path d="M14 3v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/><path d="M8 9h2"/></svg>
           </div>
           <div className="flex flex-col justify-center leading-none">
-	            <h1 className={`text-xl font-bold ${
-	              isLight
-	                ? 'text-slate-950'
-	                : 'bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-blue-400'
-	            }`}>
-	              POCT Document Translator
-	            </h1>
-	            <div className="mt-1.5 flex items-center gap-2">
-	              <p className={`text-xs font-medium tracking-tight ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>AI-Powered 1:1 Medical Data Translation</p>
-	              {version && (
-	                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-	                  isLight ? 'bg-slate-100 text-slate-500' : 'bg-white/[0.07] text-slate-400'
-	                }`}>
-	                  v{version}
-	                </span>
-	              )}
-	            </div>
-	          </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className={`text-xl font-bold ${
+                isLight
+                  ? 'text-slate-950'
+                  : 'bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-blue-400'
+              }`}>
+                POCT Document Translator
+              </h1>
+              {version && (
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold leading-4 ${
+                  isLight
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-indigo-400/30 bg-indigo-400/10 text-indigo-200'
+                }`}>
+                  v{version}
+                </span>
+              )}
+            </div>
+            <p className={`mt-1.5 text-xs font-medium tracking-tight ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>AI-Powered 1:1 Medical Data Translation</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-1 rounded-full border p-1 ${

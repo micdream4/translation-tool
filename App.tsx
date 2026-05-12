@@ -1,5 +1,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import packageJson from './package.json';
 import Header from './components/Header';
 import LogConsole from './components/LogConsole';
 import { parseExcelFile, exportToExcel } from './utils/excel';
@@ -108,7 +109,8 @@ const STRING_TARGET_LANGS: TargetLanguage[] = STRING_RESOURCE_TARGET_LANGS;
 const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
 const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
 const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
-const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || '').trim();
+const PACKAGE_VERSION = String((packageJson as { version?: string }).version || '').trim();
+const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || PACKAGE_VERSION).trim();
 const DEFAULT_OPENROUTER_MODELS = [
   'google/gemini-3-flash-preview',
   'qwen/qwen3.6-plus',

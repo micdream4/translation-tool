@@ -71,6 +71,11 @@ import {
   normalizeOpenRouterModelId
 } from './utils/translationProfiles';
 import {
+  STRING_RESOURCE_TARGET_LANGS,
+  TARGET_LANGUAGE_OPTIONS,
+  getTargetLanguageLabel
+} from './utils/targetLanguage';
+import {
   DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
   DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
   MODEL_REVIEW_STYLE_LABELS,
@@ -99,16 +104,7 @@ const DOCX_BATCH_SIZE = 20;
 const RETRY_BATCH_SIZE = 5;
 const STRING_BATCH_SIZE = 40;
 const SOURCE_LANG_REGEX = /[\u4e00-\u9fff]/;
-const STRING_TARGET_LANGS: TargetLanguage[] = [
-  'English',
-  'Spanish',
-  'French',
-  'German',
-  'Italian',
-  'Turkish',
-  'Russian',
-  'Portuguese'
-];
+const STRING_TARGET_LANGS: TargetLanguage[] = STRING_RESOURCE_TARGET_LANGS;
 const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
 const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
 const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
@@ -472,7 +468,11 @@ const App: React.FC = () => {
     AUTO_OPENROUTER_MODEL
   );
   useEffect(() => {
-    if (!APP_VERSION || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
+    document.title = APP_VERSION
+      ? `POCT Document Translator v${APP_VERSION}`
+      : 'POCT Document Translator';
+    if (!APP_VERSION) return;
     const url = new URL(window.location.href);
     if (url.searchParams.get('v') === APP_VERSION) return;
     url.searchParams.set('v', APP_VERSION);
@@ -4065,7 +4065,7 @@ const App: React.FC = () => {
             </div>
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>Target</p>
-	              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{targetLang}</p>
+	              <p className={`text-sm font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{getTargetLanguageLabel(targetLang)}</p>
 	              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
 	                {MODEL_REVIEW_STYLE_LABELS[effectiveModelReviewStyle]}
 	              </p>
@@ -4382,15 +4382,11 @@ const App: React.FC = () => {
                   onChange={(e) => setTargetLang(e.target.value as TargetLanguage)}
                   disabled={processingState.status === 'processing'}
                 >
-                  <option>Chinese</option>
-                  <option>English</option>
-                  <option>Spanish</option>
-                  <option>French</option>
-                  <option>German</option>
-                  <option>Italian</option>
-                  <option>Turkish</option>
-                  <option>Russian</option>
-                  <option>Portuguese</option>
+                  {TARGET_LANGUAGE_OPTIONS.map((lang) => (
+                    <option key={lang} value={lang}>
+                      {getTargetLanguageLabel(lang)}
+                    </option>
+                  ))}
                 </select>
               </div>
               {documentKind === 'docx' && docxContextRef.current && (
@@ -5085,7 +5081,7 @@ const App: React.FC = () => {
                   <option value={ALL_STRING_TARGETS}>全部语言（{STRING_TARGET_LANGS.length} 种）</option>
                   {STRING_TARGET_LANGS.map((lang) => (
                     <option key={lang} value={lang}>
-                      仅输出 {lang}
+                      仅输出 {getTargetLanguageLabel(lang)}
                     </option>
                   ))}
                 </select>

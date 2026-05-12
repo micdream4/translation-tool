@@ -6,6 +6,7 @@ export interface POCTRecord {
 export type TargetLanguage =
   | 'English'
   | 'Chinese'
+  | 'Traditional Chinese (Taiwan)'
   | 'Spanish'
   | 'French'
   | 'German'

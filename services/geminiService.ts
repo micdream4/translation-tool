@@ -2,6 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { POCTRecord, TargetLanguage } from "../types";
 import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
+import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../utils/targetLanguage";
 
 export class MedicalAIService {
   constructor() {}
@@ -13,12 +14,15 @@ export class MedicalAIService {
     records: POCTRecord[],
     targetLang: TargetLanguage
   ): Promise<POCTRecord[]> {
+    const targetLabel = getTargetLanguageLabel(targetLang);
+    const localeInstruction = getTargetLocaleInstruction(targetLang);
     const prompt = `
       Act as a specific Medical Data Translator.
-      Translate the values in the JSON array to ${targetLang}.
+      Translate the values in the JSON array to ${targetLabel}.
 
       STRICT TRANSLATION RULES:
-      1. **DETECT & TRANSLATE**: Scan every string value. If a value contains ANY words in a language other than ${targetLang} (especially Chinese/Asian characters), YOU MUST TRANSLATE IT.
+      ${localeInstruction}
+      1. **DETECT & TRANSLATE**: Scan every string value. If a value contains ANY words in a language other than ${targetLabel} (especially Chinese/Asian characters), YOU MUST TRANSLATE IT.
       2. **MIXED CONTENT**: If a cell contains a code mixed with text (e.g., "NST#升高" or "WBC High"), KEEP the code/number (e.g., "NST#", "WBC") but TRANSLATE the descriptive text (e.g., "Elevated").
       3. **NUMBERS & IDs**: Do strictly preserve pure IDs (e.g., "A123"), UUIDs, and pure numbers.
       4. **TERMINOLOGY**: Use professional medical terminology (e.g., "Elevated" instead of "High" for blood results, "Positive" for "+").

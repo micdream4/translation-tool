@@ -6,6 +6,7 @@ import type {
   TargetLanguage
 } from "../types";
 import { parseModelJsonObject } from "../utils/jsonRepair";
+import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../utils/targetLanguage";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "google/gemini-3-flash-preview";
@@ -81,14 +82,18 @@ const normalizeReviewResults = (items: unknown): SampleReviewAIResult[] => {
     .filter((item): item is SampleReviewAIResult => Boolean(item));
 };
 
-const buildPrompt = (samples: ReviewSample[], targetLang: TargetLanguage) => `
+const buildPrompt = (samples: ReviewSample[], targetLang: TargetLanguage) => {
+  const targetLabel = getTargetLanguageLabel(targetLang);
+  const localeInstruction = getTargetLocaleInstruction(targetLang);
+  return `
 You are a senior bilingual medical translation reviewer.
-Review each translation pair from Chinese source into ${targetLang}.
+Review each translation pair from Chinese source into ${targetLabel}.
 
 Goals:
 - Detect genuinely risky translation problems.
 - Be conservative for Latin-script languages. Do NOT flag a sentence only because it contains shared medical terms, abbreviations, or familiar Latin words.
 - Focus on meaning accuracy, omission, mistranslation, leftover source language, placeholder leakage, terminology mistakes, and serious fluency issues.
+${localeInstruction}
 
 Output rules:
 - Return only valid JSON object: {"reviews":[...]}
@@ -98,7 +103,7 @@ Output rules:
 - risk must be one of: low, medium, high
 - issueTypes should use short labels from: accuracy, omission, untranslated, placeholder, terminology, fluency, grammar, format
 - comment must be concise Simplified Chinese, for operator reading.
-- suggestion should be empty if the target sentence is acceptable; otherwise provide a corrected ${targetLang} rewrite for the target cell only.
+- suggestion should be empty if the target sentence is acceptable; otherwise provide a corrected ${targetLabel} rewrite for the target cell only.
 
 Judging standard:
 - pass: acceptable for production, maybe minor style differences only.
@@ -108,6 +113,7 @@ Judging standard:
 INPUT:
 ${JSON.stringify(samples)}
 `;
+};
 
 export class SampleReviewAuditService {
   private readonly endpoint = getProxyEndpoint();

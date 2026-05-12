@@ -2,6 +2,7 @@ import { POCTRecord, TargetLanguage } from "../types";
 import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "../utils/glossary";
 import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 import { getSeedGlossaryPrompt } from "../utils/seedTerminology";
+import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../utils/targetLanguage";
 
 const API_URL = "https://api.deepseek.com/v1/chat/completions";
 const DEFAULT_MODEL = "deepseek-chat";
@@ -56,18 +57,21 @@ export class DeepseekService {
     const glossarySection = combinedGlossaryPrompt
       ? `\nTerminology (Chinese => preferred target wording):\n${combinedGlossaryPrompt}\n`
       : "";
+    const targetLabel = getTargetLanguageLabel(targetLang);
+    const localeInstruction = getTargetLocaleInstruction(targetLang);
     const glossaryRule = combinedGlossaryPrompt
       ? "- Follow the terminology list exactly when the source contains those concepts."
-      : `- Translate medical terminology fully into ${targetLang}. Keep only true codes, model numbers, and standard abbreviations (e.g., WBC, RBC, QC) unchanged.`;
+      : `- Translate medical terminology fully into ${targetLabel}. Keep only true codes, model numbers, and standard abbreviations (e.g., WBC, RBC, QC) unchanged.`;
 
     const prompt = `
-You are a senior clinical documentation translator. Translate every string field in the JSON array to ${targetLang} with fluent, professional POCT wording.
+You are a senior clinical documentation translator. Translate every string field in the JSON array to ${targetLabel} with fluent, professional POCT wording.
 ${glossarySection}
 
 Rules:
 ${glossaryRule}
-- Translate any non-${targetLang} natural-language text (including full English sentences) into ${targetLang}.
-- Translate address/common nouns such as "Room", "Building", "Street", "District", "City", "Province" into ${targetLang}; keep only true proper names transliterated or unchanged.
+${localeInstruction}
+- Translate any non-${targetLabel} natural-language text (including full English sentences) into ${targetLabel}.
+- Translate address/common nouns such as "Room", "Building", "Street", "District", "City", "Province" into ${targetLabel}; keep only true proper names transliterated or unchanged.
 - Preserve IDs, numeric values, and codes exactly.
 - If a cell mixes codes with descriptive text, keep the code and only translate the descriptive part.
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark protected IDs, codes, or format placeholders that must stay untouched.

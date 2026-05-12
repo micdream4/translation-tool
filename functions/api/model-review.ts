@@ -16,6 +16,11 @@ import {
   normalizeOpenRouterModelId,
   type TranslationProfile
 } from "../../utils/translationProfiles";
+import {
+  getTargetLanguageLabel,
+  getTargetLocaleInstruction,
+  isTraditionalChineseTaiwanTarget
+} from "../../utils/targetLanguage";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
@@ -253,14 +258,21 @@ const buildJudgePrompt = (
     outputs: candidate.translations
   }));
   const styleGuidance = getReviewStyleGuidance(reviewStyle);
+  const targetLabel = getTargetLanguageLabel(targetLang);
+  const localeInstruction = getTargetLocaleInstruction(targetLang);
+  const taiwanJudgingRule = isTraditionalChineseTaiwanTarget(targetLang)
+    ? "- For Traditional Chinese (Taiwan), penalize Simplified Chinese characters, Mainland phrasing, and non-Taiwan medical wording; reward natural Taiwanese Traditional Chinese usage."
+    : "";
   return `
-Evaluate anonymous Chinese-to-${targetLang} translations for ${styleGuidance.scenario}.
+Evaluate anonymous Chinese-to-${targetLabel} translations for ${styleGuidance.scenario}.
 
 Important:
 - Do not infer or mention model names. Judge only Candidate aliases.
 - Company-name romanization is not a scoring factor unless the source explicitly contains a protected company name and the candidate changes it incorrectly.
 - Preserve clinical meaning, severity, conditions, units, symbols, placeholders, table headers, and UI labels.
 - Penalize literal Chinese syntax, omitted meaning, unsafe interpretation changes, terminology drift, and placeholder/UI-label damage.
+${localeInstruction}
+${taiwanJudgingRule}
 ${styleGuidance.guidance}
 
 Score each candidate 1-10 on:

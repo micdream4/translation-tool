@@ -138,3 +138,27 @@ test("translation memory supports exact reuse and in-file dedupe", async () => {
   assert.match(appSource, /followers\.get\(leader\.memoryKey\)/);
   assert.match(appSource, /Clear TM/);
 });
+
+test("Traditional Chinese Taiwan target has UI, prompt, and quality-check coverage", async () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const languageSource = fs.readFileSync(path.join(repoRoot, "utils/language.ts"), "utf8");
+  const profileSource = fs.readFileSync(path.join(repoRoot, "utils/translationProfiles.ts"), "utf8");
+  const modelReviewSource = fs.readFileSync(path.join(repoRoot, "functions/api/model-review.ts"), "utf8");
+  const { TARGET_LANGUAGE_OPTIONS, STRING_RESOURCE_TARGET_LANGS, getTargetLanguageLabel, getTargetLocaleInstruction } =
+    await transpileTsModule(path.join(repoRoot, "utils/targetLanguage.ts"));
+
+  assert.ok(TARGET_LANGUAGE_OPTIONS.includes("Traditional Chinese (Taiwan)"));
+  assert.ok(STRING_RESOURCE_TARGET_LANGS.includes("Traditional Chinese (Taiwan)"));
+  assert.equal(
+    getTargetLanguageLabel("Traditional Chinese (Taiwan)"),
+    "Traditional Chinese (Taiwan) / 繁體中文（台灣）"
+  );
+  assert.match(getTargetLocaleInstruction("Traditional Chinese (Taiwan)"), /Taiwan/);
+  assert.match(getTargetLocaleInstruction("Traditional Chinese (Taiwan)"), /品質/);
+  assert.match(getTargetLocaleInstruction("Traditional Chinese (Taiwan)"), /Simplified Chinese/);
+  assert.match(appSource, /document\.title = APP_VERSION/);
+  assert.match(languageSource, /hasSimplifiedChineseResidue/);
+  assert.match(languageSource, /isTraditionalChineseTaiwanTarget\(targetLang\) && hasSimplifiedChineseResidue/);
+  assert.match(profileSource, /getTargetLocaleInstruction/);
+  assert.match(modelReviewSource, /penalize Simplified Chinese characters/);
+});

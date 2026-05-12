@@ -1,4 +1,5 @@
 import { POCTRecord, TargetLanguage } from "../types";
+import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
 import { isLikelyIdentifier } from "./translationTokens";
 
 export interface UntranslatedCell {
@@ -17,6 +18,8 @@ const SYMBOL_ONLY_REGEX = /^[\s\-–—=+<>↑↓*·•.()（）【】[\]{}\\/]+
 const CODE_WITH_ARROW_REGEX = /^[A-Z]{1,6}[#%]?[↑↓]?$/
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 const ID_TOKEN_REGEX = /^(id|uuid)$/i;
+const TAIWAN_SIMPLIFIED_RESIDUE_REGEX =
+  /(质量|信息|启用|打印|样本|软件|硬件|默认|设置|数据|检测|检验结果|参数|菜单|窗口|上传|下载|文件|记录|审核|审查|运行|导出|导入|步骤|说明书|说明|错误|异常|提示|当前|完成|开始|暂停|恢复|细胞|白细胞|红细胞|血小板|中性粒|淋巴细胞|血红蛋白|计数|数量|浓度|范围|单位|用户|设备|仪器|厂商|条码|键盘|屏幕|连接|网络|服务器|数据库|登录|注册|密码|权限|质量控制|参考范围|临床|医疗)|[检测数质样设说译语误认读诊请项页风馆马验鱼鸟龙]/;
 
 const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[]> = {
   en: [
@@ -314,6 +317,9 @@ const targetLangToCode = (targetLang: TargetLanguage): LangCode => {
   return "unknown";
 };
 
+export const hasSimplifiedChineseResidue = (text: string) =>
+  TAIWAN_SIMPLIFIED_RESIDUE_REGEX.test(text);
+
 export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage) => {
   const trimmed = text.trim();
   if (!trimmed) return true;
@@ -329,6 +335,7 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   const targetCode = targetLangToCode(targetLang);
   if (targetCode === "zh") {
     if (CYRILLIC_REGEX.test(trimmed)) return false;
+    if (isTraditionalChineseTaiwanTarget(targetLang) && hasSimplifiedChineseResidue(trimmed)) return false;
     return CJK_REGEX.test(trimmed);
   }
   if (targetCode === "ru") {

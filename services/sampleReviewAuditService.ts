@@ -62,7 +62,7 @@ const normalizeRisk = (value: unknown): SampleReviewRisk => {
 const normalizeReviewResults = (items: unknown): SampleReviewAIResult[] => {
   if (!Array.isArray(items)) return [];
   return items
-    .map((item) => {
+    .map<SampleReviewAIResult | null>((item) => {
       if (!item || typeof item !== "object") return null;
       const row = item as Record<string, unknown>;
       const id = String(row.id || "").trim();
@@ -79,7 +79,7 @@ const normalizeReviewResults = (items: unknown): SampleReviewAIResult[] => {
         suggestion: String(row.suggestion || "").trim()
       } satisfies SampleReviewAIResult;
     })
-    .filter((item): item is SampleReviewAIResult => Boolean(item));
+    .filter((item): item is SampleReviewAIResult => item !== null);
 };
 
 const buildPrompt = (samples: ReviewSample[], targetLang: TargetLanguage) => {

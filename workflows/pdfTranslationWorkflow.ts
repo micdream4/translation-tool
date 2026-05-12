@@ -14,6 +14,7 @@ type TranslationMemoryStats = {
 type SetProcessingState = (
   value: ProcessingState | ((previous: ProcessingState) => ProcessingState)
 ) => void;
+type StageResult = "paused" | "completed" | void;
 
 export interface PdfTranslationWorkflowOptions {
   context: PdfContext;
@@ -37,11 +38,11 @@ export interface PdfTranslationWorkflowOptions {
     stats?: TranslationMemoryStats
   ) => Promise<void>;
   logTranslationMemoryStats: (label: string, stats: TranslationMemoryStats) => void;
-  runStage: <T>(
+  runStage: (
     key: WorkflowStageKey,
-    handler: () => Promise<T>,
+    handler: () => Promise<StageResult>,
     options?: { preserveCompleted?: boolean }
-  ) => Promise<T>;
+  ) => Promise<StageResult>;
   setPdfStats: (stats: { pages: number; total: number; translated: number }) => void;
   setTranslationStatus: (status: "idle" | "running" | "paused" | "completed") => void;
   setProcessingState: SetProcessingState;

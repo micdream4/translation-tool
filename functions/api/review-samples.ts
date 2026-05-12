@@ -88,7 +88,7 @@ const normalizeRisk = (value: unknown): SampleReviewRisk => {
 const normalizeReviewResults = (items: unknown): SampleReviewAIResult[] => {
   if (!Array.isArray(items)) return [];
   return items
-    .map((item) => {
+    .map<SampleReviewAIResult | null>((item) => {
       if (!item || typeof item !== "object") return null;
       const row = item as Record<string, unknown>;
       const id = String(row.id || "").trim();
@@ -105,7 +105,7 @@ const normalizeReviewResults = (items: unknown): SampleReviewAIResult[] => {
         suggestion: String(row.suggestion || "").trim()
       } satisfies SampleReviewAIResult;
     })
-    .filter((item): item is SampleReviewAIResult => Boolean(item));
+    .filter((item): item is SampleReviewAIResult => item !== null);
 };
 
 const buildReviewPrompt = (samples: ReviewSample[], targetLang: TargetLanguage) => {
@@ -219,7 +219,7 @@ export const onRequestPost = async (context: any) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${openRouterKey}`,
             "HTTP-Referer": referer,
-            "X-Title": env.OPENROUTER_APP_TITLE || "POCT Medical Translator"
+            "X-Title": String(env.OPENROUTER_APP_TITLE || "POCT Medical Translator")
           },
           body: JSON.stringify({
             model,

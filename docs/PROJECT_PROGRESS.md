@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.39
+
+- 补齐 TypeScript 类型健康基线，新增 `npm run typecheck`，当前 `typecheck / test / build` 均通过。
+- DOCX 覆盖范围从仅 `word/document.xml` 扩展到正文、页眉、页脚、脚注、尾注、批注，并在导入/导出时显示覆盖统计。
+- 增加无网络 mock 回归测试，覆盖 `/api/translate`、`/api/review-samples`、`/api/model-review` 和代理翻译拆半重试流程。
+- 修复代理翻译返回记录数不匹配时未触发拆半重试的问题，现在代理路径与直连路径使用同一套返回长度/对象校验。
+- 增加 Vite 手动分包，将 React、XLSX、DOCX/JSZip、PDF 相关依赖拆成独立 chunk，主入口包从约 2.07 MB 降至约 182 kB。
+
 ## v0.0.38
 
 - PDF 正式翻译模型选择已改为与 DOCX 一致：PDF 上传后显示高质量文档模型组，Auto 使用 Qwen → DeepSeek → Gemini 3.1 → OpenAI → Gemini Flash 的文档质量链路。

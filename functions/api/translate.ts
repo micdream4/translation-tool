@@ -186,7 +186,7 @@ export const onRequestPost = async (context: any) => {
               "Content-Type": "application/json",
               Authorization: `Bearer ${openRouterKey}`,
               "HTTP-Referer": referer,
-              "X-Title": env.OPENROUTER_APP_TITLE || "POCT Medical Translator"
+              "X-Title": String(env.OPENROUTER_APP_TITLE || "POCT Medical Translator")
             },
             body: JSON.stringify({
               model,

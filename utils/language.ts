@@ -290,6 +290,11 @@ const LATIN_TARGET_CODES: Array<Exclude<LangCode, "zh" | "ru" | "unknown">> = [
   "tr"
 ];
 
+const isLatinTargetCode = (
+  code: LangCode
+): code is Exclude<LangCode, "zh" | "ru" | "unknown"> =>
+  LATIN_TARGET_CODES.includes(code as Exclude<LangCode, "zh" | "ru" | "unknown">);
+
 const detectLanguage = (text: string): LangCode => {
   if (CJK_REGEX.test(text)) return "zh";
   if (CYRILLIC_REGEX.test(text)) return "ru";
@@ -352,14 +357,11 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   const best = scores[0] || { lang: "en", score: 0 };
   const second = scores[1] || { lang: "en", score: 0 };
   const targetScore =
-    targetCode !== "unknown" && LATIN_TARGET_CODES.includes(targetCode as any)
+    isLatinTargetCode(targetCode)
       ? scores.find((item) => item.lang === targetCode)?.score || 0
       : 0;
   const targetHasDistinctiveDiacritics =
-    targetCode !== "unknown" &&
-    targetCode !== "zh" &&
-    targetCode !== "ru" &&
-    LANGUAGE_DIACRITICS[targetCode as Exclude<LangCode, "zh" | "ru" | "unknown">].test(trimmed);
+    isLatinTargetCode(targetCode) && LANGUAGE_DIACRITICS[targetCode].test(trimmed);
 
   if (best.score === 0) {
     if (targetCode === "en") {
@@ -373,7 +375,7 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   // For Latin-script target languages, prefer a conservative acceptance policy.
   // Medical prose in French/Spanish/Portuguese/Italian/German/Turkish shares too
   // much vocabulary to treat a small scoring edge as a real language mismatch.
-  if (targetCode !== "unknown" && targetCode !== "zh" && targetCode !== "ru") {
+  if (isLatinTargetCode(targetCode)) {
     if (targetHasDistinctiveDiacritics && targetScore >= 2) return true;
     if (targetScore >= Math.max(3, best.score - 2)) return true;
   }

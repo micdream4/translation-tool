@@ -177,6 +177,17 @@ export class TranslationHub {
         }
       );
       this.lastEngine = this.proxy.getLastEngine();
+      if (!Array.isArray(translated) || translated.length !== req.records.length) {
+        throw new Error(
+          `Translation returned ${Array.isArray(translated) ? translated.length : 0} records (expected ${req.records.length}).`
+        );
+      }
+      const hasInvalidRecord = translated.some(
+        (record) => !record || typeof record !== "object"
+      );
+      if (hasInvalidRecord) {
+        throw new Error("Translation returned invalid record data.");
+      }
       return translated;
     }
 

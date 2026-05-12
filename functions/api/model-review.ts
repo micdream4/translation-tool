@@ -89,7 +89,7 @@ const parseReviewStyle = (value: unknown, profile: TranslationProfile): ModelRev
 const parseSamples = (value: unknown): ModelReviewSample[] => {
   if (!Array.isArray(value)) return [];
   return value
-    .map((item, index) => {
+    .map<ModelReviewSample | null>((item, index) => {
       if (!item || typeof item !== "object") return null;
       const row = item as Record<string, unknown>;
       const sourceText = String(row.sourceText || "").trim();
@@ -106,7 +106,7 @@ const parseSamples = (value: unknown): ModelReviewSample[] => {
           : []
       } satisfies ModelReviewSample;
     })
-    .filter((item): item is ModelReviewSample => Boolean(item))
+    .filter((item): item is ModelReviewSample => item !== null)
     .slice(0, 30);
 };
 

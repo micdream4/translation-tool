@@ -1,13 +1,14 @@
 {
   "name": "copy-of-poct-medical-document-translator",
   "private": true,
-  "version": "0.0.38",
+  "version": "0.0.39",
   "type": "module",
   "scripts": {
     "prepare:terminology": "node scripts/generateTerminologyAssets.mjs",
     "dev": "npm run prepare:terminology && vite",
     "build": "npm run prepare:terminology && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "node --test scripts/regressionSmoke.mjs",
     "deepseek:test": "node scripts/deepseekTest.mjs",
     "docx:translate": "python3 scripts/translate_docx_openrouter.py",

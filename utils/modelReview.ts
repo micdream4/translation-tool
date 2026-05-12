@@ -116,7 +116,7 @@ export const normalizeModelReviewScores = (
 ): ModelReviewScore[] => {
   if (!Array.isArray(scores)) return [];
   return scores
-    .map((item) => {
+    .map<ModelReviewScore | null>((item) => {
       if (!item || typeof item !== "object") return null;
       const row = item as Record<string, unknown>;
       const alias = String(row.alias || row.model || "").trim();
@@ -135,7 +135,7 @@ export const normalizeModelReviewScores = (
         notes: String(row.notes || "").trim()
       } satisfies ModelReviewScore;
     })
-    .filter((item): item is ModelReviewScore => Boolean(item));
+    .filter((item): item is ModelReviewScore => item !== null);
 };
 
 export const buildModelReviewRanking = (

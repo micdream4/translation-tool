@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import * as esbuild from "esbuild";
 import ts from "typescript";
 import * as XLSX from "xlsx";
 
@@ -25,6 +26,72 @@ const transpileTsModule = async (sourcePath) => {
   const mod = await import(pathToFileURL(outputPath).href);
   fs.rmSync(tmpDir, { recursive: true, force: true });
   return mod;
+};
+
+const bundleTsModule = async (sourcePath, options = {}) => {
+  const tmpDir = fs.mkdtempSync(path.join(repoRoot, ".tmp-regression-bundle-"));
+  const outputPath = path.join(tmpDir, `${path.basename(sourcePath, ".ts")}.mjs`);
+  try {
+    await esbuild.build({
+      entryPoints: [sourcePath],
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      target: "node22",
+      outfile: outputPath,
+      logLevel: "silent",
+      external: options.external || []
+    });
+    return await import(`${pathToFileURL(outputPath).href}?t=${Date.now()}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+};
+
+const openRouterResponse = (content, status = 200) =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content
+          }
+        }
+      ]
+    }),
+    {
+      status,
+      headers: { "Content-Type": "application/json" }
+    }
+  );
+
+const functionContext = (body, env = {}) => ({
+  request: new Request("https://poct-translator.local/api/test", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "https://poct-translator.local",
+      "x-user-email": "dev@example.com"
+    },
+    body: JSON.stringify(body)
+  }),
+  env: {
+    ALLOW_LOCAL_WITHOUT_ACCESS: "true",
+    LOCAL_DEV_EMAIL: "dev@example.com",
+    OPENROUTER_API_KEY: "test-openrouter-key",
+    ...env
+  }
+});
+
+const withMockedFetch = async (handler) => {
+  const originalFetch = globalThis.fetch;
+  try {
+    await handler((mock) => {
+      globalThis.fetch = mock;
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 };
 
 test("Excel parser flattens multiple sheets and export writes each row back to its source sheet", async () => {
@@ -100,13 +167,19 @@ test("PDF support is text-first and exports translated content as DOCX", () => {
   assert.match(appSource, /Auto \$\{documentKind\.toUpperCase\(\)\} Quality/);
 });
 
-test("DOCX scope warnings are surfaced for unsupported document parts", () => {
+test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", () => {
   const docxSource = fs.readFileSync(path.join(repoRoot, "utils/docx.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   assert.match(docxSource, /coverageWarnings/);
+  assert.match(docxSource, /formatDocxCoverageSummary/);
   assert.match(docxSource, /header\\d\*\\.xml/);
+  assert.match(docxSource, /footer\\d\*\\.xml/);
   assert.match(docxSource, /footnotes\\.xml/);
-  assert.match(appSource, /DOCX scope note/);
+  assert.match(docxSource, /endnotes\\.xml/);
+  assert.match(docxSource, /comments\\.xml/);
+  assert.match(docxSource, /parts\.forEach\(\(part\) =>/);
+  assert.match(appSource, /DOCX coverage:/);
+  assert.match(appSource, /Docx coverage: 导出覆盖/);
 });
 
 test("production proxy builds do not inject server-side model keys into the browser bundle", () => {
@@ -164,4 +237,219 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   assert.match(languageSource, /isTraditionalChineseTaiwanTarget\(targetLang\) && hasSimplifiedChineseResidue/);
   assert.match(profileSource, /getTargetLocaleInstruction/);
   assert.match(modelReviewSource, /penalize Simplified Chinese characters/);
+});
+
+test("API translate function accepts proxy payload and normalizes OpenRouter records", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const calls = [];
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      calls.push(body);
+      return openRouterResponse(
+        JSON.stringify([
+          {
+            id: "seg-1",
+            content: "Translated IFU sentence."
+          }
+        ])
+      );
+    });
+
+    const response = await onRequestPost(
+      functionContext({
+        records: [{ id: "seg-1", content: "中文说明" }],
+        targetLang: "English",
+        engine: "openrouter",
+        model: "google/gemini-3-flash-preview",
+        profile: "docx-manual"
+      })
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.engine, "openrouter");
+    assert.equal(payload.model, "google/gemini-3-flash-preview");
+    assert.deepEqual(payload.records, [{ id: "seg-1", content: "Translated IFU sentence." }]);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].model, "google/gemini-3-flash-preview");
+    assert.match(calls[0].messages[0].content, /IFU|operator manual/i);
+  });
+});
+
+test("API review-samples function parses anonymous review JSON without network", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/review-samples.ts"));
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      assert.equal(body.model, "judge-model");
+      return openRouterResponse(
+        JSON.stringify({
+          reviews: [
+            {
+              id: "sample-1",
+              verdict: "warning",
+              risk: "medium",
+              issueTypes: ["terminology"],
+              comment: "术语需人工确认",
+              suggestion: "Use the corrected term."
+            }
+          ]
+        })
+      );
+    });
+
+    const response = await onRequestPost(
+      functionContext({
+        samples: [
+          {
+            id: "sample-1",
+            location: "row 1",
+            source: "白细胞升高",
+            target: "White blood cells are high"
+          }
+        ],
+        targetLang: "English",
+        model: "judge-model"
+      })
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.model, "judge-model");
+    assert.equal(payload.reviews[0].verdict, "warning");
+    assert.equal(payload.reviews[0].risk, "medium");
+    assert.deepEqual(payload.reviews[0].issueTypes, ["terminology"]);
+  });
+});
+
+test("API model-review function translates candidates and ranks anonymous judge scores", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/model-review.ts"));
+  const seenModels = [];
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      seenModels.push(body.model);
+      if (body.model === "judge-a") {
+        return openRouterResponse(
+          JSON.stringify({
+            scores: [
+              {
+                alias: "Candidate A",
+                accuracy: 9,
+                fluency: 8,
+                manualStyle: 9,
+                terminology: 8,
+                formatSafety: 10,
+                avoidLiteral: 8,
+                avoidYou: 9,
+                overall: 8.7,
+                notes: "表达自然"
+              },
+              {
+                alias: "Candidate B",
+                accuracy: 7,
+                fluency: 7,
+                manualStyle: 7,
+                terminology: 7,
+                formatSafety: 10,
+                avoidLiteral: 6,
+                avoidYou: 8,
+                overall: 7.2,
+                notes: "略直译"
+              }
+            ]
+          })
+        );
+      }
+      return openRouterResponse(
+        JSON.stringify([
+          {
+            id: "sample-1",
+            content: `${body.model} translated output`
+          }
+        ])
+      );
+    });
+
+    const response = await onRequestPost(
+      functionContext({
+        samples: [
+          {
+            id: "sample-1",
+            location: "DOCX segment 1",
+            sourceText: "请勿触摸探头",
+            contextBefore: ["安全说明"],
+            contextAfter: ["继续操作前关闭电源"]
+          }
+        ],
+        targetLang: "English",
+        translationModels: ["model-a", "model-b"],
+        judgeModels: ["judge-a"],
+        reviewStyle: "ifu-manual",
+        profile: "docx-manual"
+      })
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(seenModels.sort(), ["judge-a", "model-a", "model-b"].sort());
+    assert.equal(payload.candidates.length, 2);
+    assert.equal(payload.judges.length, 1);
+    assert.equal(payload.ranking[0].alias, "Candidate A");
+    assert.equal(payload.ranking[0].model, "model-a");
+    assert.ok(payload.ranking[0].overall > payload.ranking[1].overall);
+  });
+});
+
+test("TranslationHub retry flow splits recoverable proxy batch failures and preserves order", async () => {
+  const { TranslationHub } = await bundleTsModule(path.join(repoRoot, "services/translationHub.ts"), {
+    external: ["@google/genai"]
+  });
+  const originalMode = process.env.VITE_TRANSLATION_MODE;
+  const calls = [];
+
+  try {
+    process.env.VITE_TRANSLATION_MODE = "proxy";
+    await withMockedFetch(async (setFetch) => {
+      setFetch(async (_url, init) => {
+        const body = JSON.parse(String(init.body));
+        calls.push(body.records.map((record) => record.content));
+        if (body.records.length > 1) {
+          return new Response(JSON.stringify({ engine: "openrouter", records: [{ content: "only one" }] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            engine: "openrouter",
+            records: body.records.map((record) => ({
+              ...record,
+              content: `${record.content} translated`
+            }))
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      });
+
+      const hub = new TranslationHub();
+      const result = await hub.translateBatch({
+        records: [{ content: "A" }, { content: "B" }],
+        targetLang: "English",
+        options: { model: "openrouter" }
+      });
+      assert.deepEqual(calls, [["A", "B"], ["A"], ["B"]]);
+      assert.deepEqual(result, [{ content: "A translated" }, { content: "B translated" }]);
+    });
+  } finally {
+    if (originalMode === undefined) {
+      delete process.env.VITE_TRANSLATION_MODE;
+    } else {
+      process.env.VITE_TRANSLATION_MODE = originalMode;
+    }
+  }
 });

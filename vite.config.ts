@@ -113,6 +113,33 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks(id: string) {
+              if (!id.includes('node_modules')) {
+                if (id.includes('/utils/pdf') || id.includes('/workflows/pdfTranslationWorkflow')) {
+                  return 'feature-pdf';
+                }
+                return undefined;
+              }
+              if (id.includes('/react/') || id.includes('/react-dom/')) {
+                return 'vendor-react';
+              }
+              if (id.includes('/pdfjs-dist/')) {
+                return 'vendor-pdf';
+              }
+              if (id.includes('/xlsx/')) {
+                return 'vendor-xlsx';
+              }
+              if (id.includes('/docx/') || id.includes('/jszip/')) {
+                return 'vendor-docx';
+              }
+              return 'vendor-misc';
+            }
+          }
+        }
       }
     };
 });

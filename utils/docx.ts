@@ -10,18 +10,55 @@ export interface DocxSegment {
   id: string;
   original: string;
   nodes: Element[];
+  partPath: string;
+  partLabel: string;
+}
+
+export interface DocxXmlPart {
+  path: string;
+  label: string;
+  xmlDoc: Document;
+  textNodes: DocxTextNode[];
+  segments: DocxSegment[];
+}
+
+export interface DocxPartCoverage {
+  path: string;
+  label: string;
+  textNodes: number;
+  segments: number;
+}
+
+export interface DocxCoverage {
+  parts: DocxPartCoverage[];
+  totalTextNodes: number;
+  totalSegments: number;
 }
 
 export interface DocxContext {
   zip: JSZip;
   xmlDoc: Document;
+  parts: DocxXmlPart[];
   textNodes: DocxTextNode[];
   segments: DocxSegment[];
   fileName: string;
+  coverage: DocxCoverage;
   coverageWarnings: string[];
 }
 
 const DOCUMENT_XML_PATH = "word/document.xml";
+const DOCX_PART_PATTERNS: Array<{
+  label: string;
+  pattern: RegExp;
+  required?: boolean;
+}> = [
+  { label: "正文", pattern: /^word\/document\.xml$/, required: true },
+  { label: "页眉", pattern: /^word\/header\d*\.xml$/ },
+  { label: "页脚", pattern: /^word\/footer\d*\.xml$/ },
+  { label: "脚注", pattern: /^word\/footnotes\.xml$/ },
+  { label: "尾注", pattern: /^word\/endnotes\.xml$/ },
+  { label: "批注", pattern: /^word\/comments\.xml$/ }
+];
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 const ASCII_TOKEN_REGEX = /[A-Za-z][A-Za-z0-9_\-/:+()#.]+/g;
 const UI_MARKED_TOKEN_REGEX =
@@ -120,10 +157,10 @@ const collectUniqueElements = (root: DocxSearchRoot, tagNames: string[]) => {
   return output;
 };
 
-const getDocxTextElements = (root: ParentNode) =>
+const getDocxTextElements = (root: DocxSearchRoot) =>
   collectUniqueElements(root, ["w:t", "t"]);
 
-const getDocxParagraphElements = (root: ParentNode) =>
+const getDocxParagraphElements = (root: DocxSearchRoot) =>
   collectUniqueElements(root, ["w:p", "p"]);
 
 const buildSegmentText = (nodes: Element[]) =>
@@ -131,16 +168,47 @@ const buildSegmentText = (nodes: Element[]) =>
 
 const getDocxCoverageWarnings = (zip: JSZip) => {
   const warnings: string[] = [];
-  if (zip.file(/^word\/header\d*\.xml$/).length || zip.file(/^word\/footer\d*\.xml$/).length) {
-    warnings.push("页眉/页脚文本暂不翻译");
-  }
-  if (zip.file(/^word\/footnotes\.xml$/).length || zip.file(/^word\/endnotes\.xml$/).length) {
-    warnings.push("脚注/尾注文本暂不翻译");
-  }
-  if (zip.file(/^word\/comments\.xml$/).length) {
-    warnings.push("批注文本暂不翻译");
+  if (zip.file(/^word\/glossary\/document\.xml$/).length) {
+    warnings.push("术语表/构建基块文本暂不处理");
   }
   return warnings;
+};
+
+const getDocxPartEntries = (zip: JSZip) =>
+  DOCX_PART_PATTERNS.flatMap(({ label, pattern }) =>
+    zip
+      .file(pattern)
+      .map((file) => ({ label, path: file.name }))
+      .sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }))
+  );
+
+const buildCoverage = (parts: DocxXmlPart[]): DocxCoverage => {
+  const coverageParts = parts.map((part) => ({
+    path: part.path,
+    label: part.label,
+    textNodes: part.textNodes.length,
+    segments: part.segments.length
+  }));
+  return {
+    parts: coverageParts,
+    totalTextNodes: coverageParts.reduce((sum, part) => sum + part.textNodes, 0),
+    totalSegments: coverageParts.reduce((sum, part) => sum + part.segments, 0)
+  };
+};
+
+export const formatDocxCoverageSummary = (coverage: DocxCoverage) => {
+  const grouped = new Map<string, { parts: number; segments: number; textNodes: number }>();
+  coverage.parts.forEach((part) => {
+    const current = grouped.get(part.label) || { parts: 0, segments: 0, textNodes: 0 };
+    current.parts += 1;
+    current.segments += part.segments;
+    current.textNodes += part.textNodes;
+    grouped.set(part.label, current);
+  });
+  const details = Array.from(grouped.entries())
+    .map(([label, stats]) => `${label} ${stats.segments} 段`)
+    .join("，");
+  return `${details || "无可翻译段落"}；共 ${coverage.parts.length} 个 XML 部件，${coverage.totalSegments} 个语义段，${coverage.totalTextNodes} 个文本节点`;
 };
 
 export async function parseDocxFile(file: File): Promise<DocxContext> {
@@ -150,35 +218,61 @@ export async function parseDocxFile(file: File): Promise<DocxContext> {
   if (!docFile) {
     throw new Error("DOCX 文件缺少 word/document.xml，无法解析。");
   }
-  const xmlString = await docFile.async("text");
   const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+  const partEntries = getDocxPartEntries(zip);
+  const parts: DocxXmlPart[] = [];
+  const textNodes: DocxTextNode[] = [];
+  const segments: DocxSegment[] = [];
 
-  const textElements = getDocxTextElements(xmlDoc);
-
-  const textNodes: DocxTextNode[] = textElements.map((node, idx) => ({
-    id: `docx-text-${idx}`,
-    original: node.textContent || "",
-    node
-  }));
-
-  const segments: DocxSegment[] = getDocxParagraphElements(xmlDoc)
-    .map((paragraph, idx) => {
-      const nodes = getDocxTextElements(paragraph);
-      return {
-        id: `docx-segment-${idx}`,
-        original: buildSegmentText(nodes),
-        nodes
+  for (const entry of partEntries) {
+    const xmlString = await zip.file(entry.path)!.async("text");
+    const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+    const partTextNodes = getDocxTextElements(xmlDoc).map((node) => {
+      const textNode = {
+        id: `docx-text-${textNodes.length}`,
+        original: node.textContent || "",
+        node
       };
-    })
-    .filter((segment) => segment.nodes.length > 0);
+      textNodes.push(textNode);
+      return textNode;
+    });
+    const partSegments: DocxSegment[] = [];
+    getDocxParagraphElements(xmlDoc).forEach((paragraph) => {
+      const nodes = getDocxTextElements(paragraph);
+      if (!nodes.length) return;
+      const segment = {
+        id: `docx-segment-${segments.length}`,
+        original: buildSegmentText(nodes),
+        nodes,
+        partPath: entry.path,
+        partLabel: entry.label
+      };
+      segments.push(segment);
+      partSegments.push(segment);
+    });
+    parts.push({
+      path: entry.path,
+      label: entry.label,
+      xmlDoc,
+      textNodes: partTextNodes,
+      segments: partSegments
+    });
+  }
+
+  const mainPart = parts.find((part) => part.path === DOCUMENT_XML_PATH);
+  if (!mainPart) {
+    throw new Error("DOCX 文件缺少 word/document.xml，无法解析。");
+  }
+  const coverage = buildCoverage(parts);
 
   return {
     zip,
-    xmlDoc,
+    xmlDoc: mainPart.xmlDoc,
+    parts,
     textNodes,
     segments,
     fileName: file.name,
+    coverage,
     coverageWarnings: getDocxCoverageWarnings(zip)
   };
 }
@@ -409,9 +503,22 @@ export async function exportDocxFile(
   filename: string
 ): Promise<void> {
   const serializer = new XMLSerializer();
-  normalizeDocxRunSpacing(context.xmlDoc);
-  const payload = serializer.serializeToString(context.xmlDoc);
-  context.zip.file(DOCUMENT_XML_PATH, payload);
+  const parts = context.parts?.length
+    ? context.parts
+    : [
+        {
+          path: DOCUMENT_XML_PATH,
+          label: "正文",
+          xmlDoc: context.xmlDoc,
+          textNodes: context.textNodes,
+          segments: context.segments
+        }
+      ];
+  parts.forEach((part) => {
+    normalizeDocxRunSpacing(part.xmlDoc);
+    const payload = serializer.serializeToString(part.xmlDoc);
+    context.zip.file(part.path, payload);
+  });
   const blob = await context.zip.generateAsync({ type: "blob" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

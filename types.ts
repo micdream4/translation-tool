@@ -111,7 +111,11 @@ export interface UntranslatedSummary {
   cells: number;
   rows: number;
   rowIndices: number[];
-  details?: UntranslatedCell[];
+  details?: Array<{
+    rowIndex: number;
+    columnKey: string;
+    value: string;
+  }>;
 }
 
 export interface ReviewSample {

@@ -9,6 +9,7 @@ import {
   parseDocxFile,
   exportDocxFile,
   DocxContext,
+  formatDocxCoverageSummary,
   getDocxSegmentText,
   setDocxSegmentText
 } from './utils/docx';
@@ -133,6 +134,16 @@ type TranslationMemoryStats = {
   deduped: number;
   stored: number;
 };
+type StageResult = 'paused' | 'completed' | void;
+type SampleReviewAiSummary = {
+  total: number;
+  low: number;
+  medium: number;
+  high: number;
+  pass: number;
+  warning: number;
+  fail: number;
+};
 
 const parseOpenRouterModelOptions = () => {
   const raw =
@@ -152,6 +163,16 @@ const parseRuntimeProtectedTerms = (raw: string) =>
         .filter(Boolean)
     )
   );
+
+const createSampleReviewAiSummary = (): SampleReviewAiSummary => ({
+  total: 0,
+  low: 0,
+  medium: 0,
+  high: 0,
+  pass: 0,
+  warning: 0,
+  fail: 0
+});
 
 const downloadTextFile = (filename: string, content: string) => {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -778,6 +799,7 @@ const App: React.FC = () => {
         });
         updateStageStatus('ingest', 'completed', `DOCX: 检测到 ${context.segments.length} 个语义段`);
         addLog(`Success: Loaded DOCX with ${context.segments.length} semantic segments.`);
+        addLog(`DOCX coverage: ${formatDocxCoverageSummary(context.coverage)}。`);
         if (context.coverageWarnings.length) {
           addLog(`DOCX scope note: ${context.coverageWarnings.join('；')}。`);
         }
@@ -995,10 +1017,10 @@ const App: React.FC = () => {
 
   const refreshTranslationIssues = (records: POCTRecord[]) => {
     const summary = summarizeUntranslated(records, targetLang);
-    const summaryRows = new Set(summary.rowIndices);
-    const refreshedMissing = summary.rowIndices;
+    const refreshedMissing: number[] = [...summary.rowIndices];
+    const summaryRows = new Set<number>(refreshedMissing);
     const mergedRowIndices = [...refreshedMissing];
-    const refreshedWriteFailed = Array.from(new Set(writeFailedRowIndices))
+    const refreshedWriteFailed = Array.from(new Set<number>(writeFailedRowIndices))
       .filter((idx) => idx >= 0 && idx < records.length && summaryRows.has(idx))
       .sort((a, b) => a - b);
     setMissingRowIndices(refreshedMissing);
@@ -2120,7 +2142,9 @@ const App: React.FC = () => {
         `Docx Retry: 已自动聚焦 ${recommended.length} 段高优先级文本，跳过 ${docxIssueDetails.length - recommended.length} 段低优先级项。`
       );
     }
-    const detailByIndex = new Map(docxIssueDetails.map((item) => [item.index, item]));
+    const detailByIndex = new Map<number, DocxIssueDetail>(
+      docxIssueDetails.map((item) => [item.index, item])
+    );
     let targets = targetIndices
       .map(index => context.segments[index])
       .filter(Boolean);
@@ -2580,9 +2604,9 @@ const App: React.FC = () => {
   };
 
   const exportCurrentStringOutput = () => {
-    const availableOutputs = Object.fromEntries(
+    const availableOutputs: Record<string, string> = Object.fromEntries(
       Object.entries(stringOutputs).filter(([, value]) => String(value || '').trim())
-    );
+    ) as Record<string, string>;
     if (!Object.keys(availableOutputs).length) {
       addLog('当前没有字符串翻译结果可导出。');
       return;
@@ -3170,8 +3194,8 @@ const App: React.FC = () => {
       translatedFlags.length === data.length
         ? [...translatedFlags]
         : Array(data.length).fill(false);
-    const missingSet = new Set(missingSummary.rowIndices);
-    const writeFailedSet = new Set(
+    const missingSet = new Set<number>(missingSummary.rowIndices);
+    const writeFailedSet = new Set<number>(
       writeFailedRowIndices.filter((idx) => missingSummary.rowIndices.includes(idx))
     );
 
@@ -3511,7 +3535,7 @@ const App: React.FC = () => {
 
   const runStage = async (
     key: WorkflowStageKey,
-    task: () => Promise<'paused' | 'completed' | void>
+    task: () => Promise<StageResult>
   ) => {
     if (activeStage) {
       addLog(`Stage[${activeStage}] 正在执行，请稍候...`);
@@ -3556,6 +3580,7 @@ const App: React.FC = () => {
       } else {
         addLog('Docx download gate: 审计通过，可导出。');
       }
+      addLog(`Docx coverage: 导出覆盖 ${formatDocxCoverageSummary(context.coverage)}。`);
       const filename = `Translated_${targetLang}_${file?.name || 'Result.docx'}`;
       addLog(`Generating file: ${filename}`);
       exportDocxFile(context, filename);
@@ -3829,22 +3854,14 @@ const App: React.FC = () => {
   }, [qualityReport, currentIssueSummary.details, currentRowsForRetry, data, excelContext]);
   const sampleReviewAiSummary = useMemo(
     () =>
-      Object.values(sampleReviewAiResults).reduce(
+      (Object.values(sampleReviewAiResults) as SampleReviewAIResult[]).reduce<SampleReviewAiSummary>(
         (acc, item) => {
           acc.total += 1;
           acc[item.risk] += 1;
           acc[item.verdict] += 1;
           return acc;
         },
-        {
-          total: 0,
-          low: 0,
-          medium: 0,
-          high: 0,
-          pass: 0,
-          warning: 0,
-          fail: 0
-        }
+        createSampleReviewAiSummary()
       ),
     [sampleReviewAiResults]
   );
@@ -4395,6 +4412,7 @@ const App: React.FC = () => {
               {documentKind === 'docx' && docxContextRef.current && (
                 <div className={`text-xs text-center space-y-1 ${mutedTextClass}`}>
                   <p>DOCX 语义段：{docxStats.total}，本次已翻译 {docxStats.translated}</p>
+                  <p>覆盖范围：{formatDocxCoverageSummary(docxContextRef.current.coverage)}。</p>
                   {docxContextRef.current.coverageWarnings.length > 0 && (
                     <p>范围提示：{docxContextRef.current.coverageWarnings.join('；')}。</p>
                   )}

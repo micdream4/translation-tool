@@ -1,7 +1,7 @@
 {
   "name": "copy-of-poct-medical-document-translator",
   "private": true,
-  "version": "0.0.47",
+  "version": "0.0.48",
   "type": "module",
   "scripts": {
     "prepare:terminology": "node scripts/generateTerminologyAssets.mjs",
@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node --test scripts/regressionSmoke.mjs",
+    "test:real-docs": "node scripts/realDocumentSmoke.mjs",
     "deepseek:test": "node scripts/deepseekTest.mjs",
     "docx:translate": "python3 scripts/translate_docx_openrouter.py",
     "deploy:pages": "npm run build && wrangler pages deploy dist --project-name translation-tool"

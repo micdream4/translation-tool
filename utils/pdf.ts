@@ -757,6 +757,51 @@ const renderTextBlockToPng = async (
   };
 };
 
+const PDF_TEXT_LAYER_SAFE_REGEX = /^[\u0009\u000A\u000D\u0020-\u00FF]+$/;
+
+const drawSelectablePdfText = (
+  output: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxHeight: number,
+  fontSizePoints: number
+) => {
+  if (!PDF_TEXT_LAYER_SAFE_REGEX.test(text)) return false;
+  const horizontalPadding = 3;
+  const verticalPadding = 2;
+  const availableWidth = Math.max(8, maxWidth - horizontalPadding * 2);
+  let fontSize = Math.min(PDF_TEXT_MAX_FONT_SIZE, Math.max(PDF_TEXT_MIN_FONT_SIZE, fontSizePoints));
+  let lines: string[] = [];
+  let lineHeight = fontSize * 1.18;
+
+  output.setFont("helvetica", "normal");
+  while (fontSize >= PDF_TEXT_MIN_FONT_SIZE) {
+    output.setFontSize(fontSize);
+    lines = output.splitTextToSize(text, availableWidth).map((line) => String(line || ""));
+    lineHeight = fontSize * 1.18;
+    if (lines.length * lineHeight + verticalPadding * 2 <= maxHeight || fontSize <= PDF_TEXT_MIN_FONT_SIZE) {
+      break;
+    }
+    fontSize = Math.max(PDF_TEXT_MIN_FONT_SIZE, fontSize - 0.5);
+  }
+
+  const maxLines = Math.max(1, Math.floor((maxHeight - verticalPadding * 2) / lineHeight));
+  const visibleLines = lines.slice(0, maxLines);
+  if (!visibleLines.length) return false;
+  output.setFillColor(255, 255, 255);
+  output.rect(x, y, maxWidth, maxHeight, "F");
+  output.setTextColor(32, 36, 48);
+  output.setFont("helvetica", "normal");
+  output.setFontSize(fontSize);
+  output.text(visibleLines, x + horizontalPadding, y + verticalPadding + fontSize * 0.85, {
+    lineHeightFactor: 1.18,
+    maxWidth: availableWidth
+  });
+  return true;
+};
+
 export async function exportPdfTranslationAsPdf(
   context: PdfContext,
   filename: string
@@ -792,13 +837,20 @@ export async function exportPdfTranslationAsPdf(
       const fontSize = Math.min(PDF_TEXT_MAX_FONT_SIZE, Math.max(PDF_TEXT_MIN_FONT_SIZE, segment.fontSize || 10));
       const maxWidth = Math.max(24, Math.min(pageWidth - segment.x - 8, segment.width || pageWidth - segment.x - 8));
       const maxHeight = Math.max(fontSize * 1.15, segment.height ? segment.height * 1.08 : fontSize * 1.4);
+      const x = Math.max(0, segment.x);
+      const y = Math.max(0, segment.y);
+      const width = Math.min(pageWidth - segment.x, maxWidth);
+      const height = Math.min(pageHeight - segment.y, maxHeight);
+      if (drawSelectablePdfText(output, text, x, y, width, height, fontSize)) {
+        continue;
+      }
       const textImage = await renderTextBlockToPng(text, maxWidth, fontSize, maxHeight);
       if (!textImage) continue;
       output.addImage(
         textImage.dataUrl,
         "PNG",
-        Math.max(0, segment.x),
-        Math.max(0, segment.y),
+        x,
+        y,
         Math.min(pageWidth - segment.x, textImage.widthPoints),
         Math.min(pageHeight - segment.y, textImage.heightPoints)
       );

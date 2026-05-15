@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.48
+
+- 新增 `npm run test:real-docs` 真实文档 smoke：覆盖本地 `local-data` 中的 Excel 解析/导出/Quality Check、俄语 DOCX 残留扫描、PDF 文本抽取与首屏渲染基线。
+- 真实回归结果显示：Excel 结构/导出正常但存在大量 spacing 类质量提示；俄语 DOCX 样本仍有英文残留；现有法语 PDF 译后文件可渲染但不可文本抽取。
+- PDF 直出新增可选择文本层优先路径：Latin-1 可覆盖的目标语言文本（如英文/法语/西语/德语/意大利语/葡语常见字符）优先写为 jsPDF 文本；不支持的字符集继续回退为 PNG 文本块。
+- 版本号更新为 `v0.0.48`。
+
 ## v0.0.47
 
 - 将非敏感 Cloudflare Pages 配置移入 `wrangler.toml` 的 `[vars]`：`VITE_TRANSLATION_MODE=proxy`、`REQUIRE_CF_ACCESS_EMAIL=true`、邮箱白名单和 OpenRouter 模型顺序以后都能在代码里直接查看和修改。

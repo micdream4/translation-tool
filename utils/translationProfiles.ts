@@ -95,6 +95,7 @@ Rules:
 ${glossaryRule}
 ${localeInstruction}
 - Translate any non-${targetLabel} natural-language text into ${targetLabel}.
+- If the input is already partly in ${targetLabel}, still translate residual English/common words into ${targetLabel}; do not leave words such as "List", "Building", "Street", "feces", "service", "reference", "establish", or "uncertain" in the output unless they are true product codes or protected terms.
 - Preserve warning severity, regulatory meaning, UI labels, model names, standards, numbers, units, IDs, and placeholder tokens exactly.
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; do not invent or rename placeholders.
 - Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); do not replace them with straight quotes.

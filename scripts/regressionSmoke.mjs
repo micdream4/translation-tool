@@ -168,7 +168,7 @@ test("PDF support is text-first and exports translated content as DOCX", () => {
   assert.match(appSource, /PDF download blocked/);
   assert.match(pdfSource, /已回填 .* 个可提取图片/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);
-  assert.match(appSource, /PDF 会自动审计并显示 Retry Missing PDF Segments/);
+  assert.match(appSource, /PDF 可运行质量检查并显示 Retry Missing PDF Segments/);
   assert.match(appSource, /Retry Missing PDF Segments/);
   assert.match(appSource, /documentKind === 'docx' \|\| documentKind === 'pdf'/);
   assert.match(appSource, /getTranslationOptions: getDocumentQualityTranslationOptions/);

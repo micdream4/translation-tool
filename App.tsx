@@ -1230,13 +1230,19 @@ const App: React.FC = () => {
       addLog('Quality Report: 当前没有可导出的检查结果。');
       return;
     }
+    const qualityRows = buildDocumentQualityRows() || {
+      sourceRows: data,
+      targetRows: currentRowsForRetry
+    };
     const findings = [
       ...currentIssueSummary.details.map((item) => ({
         type: 'Non-target language',
         location: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: typeof data[item.rowIndex]?.[item.columnKey] === 'string' ? data[item.rowIndex][item.columnKey] : '',
-        translated: typeof currentRowsForRetry[item.rowIndex]?.[item.columnKey] === 'string'
-          ? currentRowsForRetry[item.rowIndex][item.columnKey]
+        original: typeof qualityRows.sourceRows[item.rowIndex]?.[item.columnKey] === 'string'
+          ? qualityRows.sourceRows[item.rowIndex][item.columnKey]
+          : '',
+        translated: typeof qualityRows.targetRows[item.rowIndex]?.[item.columnKey] === 'string'
+          ? qualityRows.targetRows[item.rowIndex][item.columnKey]
           : ''
       })),
       ...qualityReport.issues.emptyTranslations.map((item) => ({
@@ -1482,10 +1488,48 @@ const App: React.FC = () => {
   };
 
   const runQualityCheck = () => {
-    if (documentKind !== 'excel') {
-      addLog('Quality Check: 当前仅支持 Excel 文档。');
+    if (documentKind === 'docx') {
+      const context = docxContextRef.current;
+      if (!context) {
+        addLog('Quality Check: 当前没有可检查的 DOCX。');
+        return;
+      }
+      const { pending, details } = buildDocxIssueDetails(context);
+      setDocxIssueIndices(pending);
+      setDocxIssueDetails(details);
+      syncDocumentIssueSummary(details);
+      const rows = buildDocumentQualityRows();
+      if (rows) {
+        setQualityReport(runQualityChecks(rows.sourceRows, rows.targetRows));
+      }
+      resetSampleReviewState();
+      addLog(
+        `Quality Check DOCX: 检测到 ${details.length} 个异常语义段，建议重译 ${details.filter((item) => !item.lowPriority).length} 段。`
+      );
       return;
     }
+
+    if (documentKind === 'pdf') {
+      const context = pdfContextRef.current;
+      if (!context) {
+        addLog('Quality Check: 当前没有可检查的 PDF。');
+        return;
+      }
+      const { pending, details } = buildPdfIssueDetails(context);
+      setPdfIssueIndices(pending);
+      setPdfIssueDetails(details);
+      syncDocumentIssueSummary(details);
+      const rows = buildDocumentQualityRows();
+      if (rows) {
+        setQualityReport(runQualityChecks(rows.sourceRows, rows.targetRows));
+      }
+      resetSampleReviewState();
+      addLog(
+        `Quality Check PDF: 检测到 ${details.length} 个异常文本段，建议重译 ${details.filter((item) => !item.lowPriority).length} 段。`
+      );
+      return;
+    }
+
     const rawTarget = processedData.length > 0 ? processedData : data;
     const { records: target, fixedCells } = autoRepairExcelPlaceholders(rawTarget, {
       mutateState: processedData.length > 0,
@@ -1888,6 +1932,7 @@ const App: React.FC = () => {
     const { pending, details } = buildDocxIssueDetails(context);
     setDocxIssueIndices(pending);
     setDocxIssueDetails(details);
+    syncDocumentIssueSummary(details);
     if (pending.length === 0) {
       addLog('Docx audit: 所有段落均已通过源语言/占位符/粘词检查。');
     } else {
@@ -1949,6 +1994,7 @@ const App: React.FC = () => {
     const { pending, details } = buildPdfIssueDetails(context);
     setPdfIssueIndices(pending);
     setPdfIssueDetails(details);
+    syncDocumentIssueSummary(details);
     if (pending.length === 0) {
       addLog('PDF audit: 所有文本段均已通过源语言/占位符/粘词检查。');
       return;
@@ -1968,6 +2014,45 @@ const App: React.FC = () => {
     if (preview) {
       addLog(`PDF audit: 示例 -> ${preview}`);
     }
+  };
+
+  const syncDocumentIssueSummary = (details: DocxIssueDetail[]) => {
+    const rowIndices = details.map((item) => item.index);
+    setTranslationIssues({
+      cells: details.length,
+      rows: new Set(rowIndices).size,
+      rowIndices,
+      missingRows: [],
+      details: details.map((item) => ({
+        rowIndex: item.index,
+        columnKey: 'content',
+        value: item.text
+      }))
+    });
+  };
+
+  const buildDocumentQualityRows = () => {
+    if (documentKind === 'docx' && docxContextRef.current) {
+      return {
+        sourceRows: docxContextRef.current.segments.map((segment) => ({
+          content: segment.original
+        })),
+        targetRows: docxContextRef.current.segments.map((segment) => ({
+          content: getDocxSegmentText(segment)
+        }))
+      };
+    }
+    if (documentKind === 'pdf' && pdfContextRef.current) {
+      return {
+        sourceRows: pdfContextRef.current.segments.map((segment) => ({
+          content: segment.original
+        })),
+        targetRows: pdfContextRef.current.segments.map((segment) => ({
+          content: getPdfSegmentText(segment)
+        }))
+      };
+    }
+    return null;
   };
 
   const runDocxTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
@@ -3988,11 +4073,17 @@ const App: React.FC = () => {
       : documentKind === 'pdf'
       ? pdfContextRef.current !== null
       : data.length > 0;
+  const canRunQualityCheck =
+    documentKind === 'docx'
+      ? docxContextRef.current !== null
+      : documentKind === 'pdf'
+      ? pdfContextRef.current !== null
+      : data.length > 0;
   const currentRowsForRetry =
     processedData.length === data.length && processedData.length > 0 ? processedData : data;
   const currentIssueSummary = useMemo(
-    () => (documentKind === 'excel' ? summarizeUntranslated(currentRowsForRetry, targetLang) : createIssueSummary()),
-    [documentKind, currentRowsForRetry, targetLang]
+    () => (documentKind === 'excel' ? summarizeUntranslated(currentRowsForRetry, targetLang) : translationIssues),
+    [documentKind, currentRowsForRetry, targetLang, translationIssues]
   );
   const retryableRowsFromDetails = useMemo(() => {
     const grouped = new Map<number, Set<string>>();
@@ -4093,6 +4184,24 @@ const App: React.FC = () => {
         )
       }
     : null;
+  const qualityRowsForDisplay = useMemo(() => {
+    if (documentKind === 'docx' && docxContextRef.current) {
+      return {
+        sourceRows: docxContextRef.current.segments.map((segment) => ({ content: segment.original })),
+        targetRows: docxContextRef.current.segments.map((segment) => ({ content: getDocxSegmentText(segment) }))
+      };
+    }
+    if (documentKind === 'pdf' && pdfContextRef.current) {
+      return {
+        sourceRows: pdfContextRef.current.segments.map((segment) => ({ content: segment.original })),
+        targetRows: pdfContextRef.current.segments.map((segment) => ({ content: getPdfSegmentText(segment) }))
+      };
+    }
+    return {
+      sourceRows: data,
+      targetRows: currentRowsForRetry
+    };
+  }, [documentKind, data, currentRowsForRetry, docxStats, pdfStats, docxIssueDetails, pdfIssueDetails]);
   const qualityFindings = useMemo<QualityFinding[]>(() => {
     if (!qualityReport) return [];
 
@@ -4105,8 +4214,8 @@ const App: React.FC = () => {
 
     currentIssueSummary.details.forEach((item) => {
       const translated =
-        typeof currentRowsForRetry[item.rowIndex]?.[item.columnKey] === 'string'
-          ? currentRowsForRetry[item.rowIndex][item.columnKey]
+        typeof qualityRowsForDisplay.targetRows[item.rowIndex]?.[item.columnKey] === 'string'
+          ? qualityRowsForDisplay.targetRows[item.rowIndex][item.columnKey]
           : '';
       pushFinding({
         id: `nonTarget-${item.rowIndex}-${item.columnKey}`,
@@ -4114,7 +4223,9 @@ const App: React.FC = () => {
         rowIndex: item.rowIndex,
         columnKey: item.columnKey,
         locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: typeof data[item.rowIndex]?.[item.columnKey] === 'string' ? data[item.rowIndex][item.columnKey] : '',
+        original: typeof qualityRowsForDisplay.sourceRows[item.rowIndex]?.[item.columnKey] === 'string'
+          ? qualityRowsForDisplay.sourceRows[item.rowIndex][item.columnKey]
+          : '',
         translated,
         description: '检测到非目标语言残留'
       });
@@ -4162,7 +4273,7 @@ const App: React.FC = () => {
       if (order[a.category] !== order[b.category]) return order[a.category] - order[b.category];
       return a.columnKey.localeCompare(b.columnKey);
     });
-  }, [qualityReport, currentIssueSummary.details, currentRowsForRetry, data, excelContext]);
+  }, [qualityReport, currentIssueSummary.details, qualityRowsForDisplay, excelContext]);
   const sampleReviewAiSummary = useMemo(
     () =>
       (Object.values(sampleReviewAiResults) as SampleReviewAIResult[]).reduce<SampleReviewAiSummary>(
@@ -5016,19 +5127,19 @@ const App: React.FC = () => {
                 <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Check</h3>
                 {documentKind === 'docx' && (
                   <p className={`text-[11px] ${mutedTextClass}`}>
-                    DOCX 已内置自动审计与 Retry Missing Segments；本区按钮仅用于 Excel。
+                    DOCX 可运行质量检查并显示 Retry Missing Segments。
                   </p>
                 )}
                 {documentKind === 'pdf' && (
                   <p className={`text-[11px] ${mutedTextClass}`}>
-                    PDF 会自动审计并显示 Retry Missing PDF Segments；本区按钮仅用于 Excel。
+                    PDF 可运行质量检查并显示 Retry Missing PDF Segments。
                   </p>
                 )}
                 <button
                   onClick={runQualityCheck}
-                  disabled={documentKind !== 'excel' || data.length === 0}
+                  disabled={!canRunQualityCheck}
                   className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                    documentKind !== 'excel' || data.length === 0
+                    !canRunQualityCheck
                       ? disabledButtonClass
                       : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-[0_12px_26px_rgba(79,70,229,0.22)]'
                   }`}

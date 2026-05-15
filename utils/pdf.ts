@@ -88,6 +88,8 @@ const PDF_TEXT_SAME_LINE_MAX_GAP_MULTIPLIER = 3.5;
 const PDF_BLOCK_X_TOLERANCE = 18;
 const PDF_BLOCK_GAP_MULTIPLIER = 1.45;
 const PDF_TEXT_CANVAS_SCALE = 2;
+const PDF_TEXT_MIN_FONT_SIZE = 4.5;
+const PDF_TEXT_MAX_FONT_SIZE = 18;
 
 type PositionedTextItem = {
   text: string;
@@ -238,7 +240,9 @@ const mergeLinesIntoSegments = (
     const gap = line.y - currentBottom;
     const sameColumn = Math.abs(line.x - current.x) <= PDF_BLOCK_X_TOLERANCE;
     const closeEnough = gap >= -2 && gap <= Math.max(current.fontSize, line.fontSize) * PDF_BLOCK_GAP_MULTIPLIER;
-    if (!sameColumn || !closeEnough) {
+    const fontSimilar =
+      Math.abs(current.fontSize - line.fontSize) <= Math.max(2, Math.min(current.fontSize, line.fontSize) * 0.25);
+    if (!sameColumn || !closeEnough || !fontSimilar) {
       flush();
       current = { ...line, texts: [...line.texts] };
       return;
@@ -250,7 +254,7 @@ const mergeLinesIntoSegments = (
     current.y = Math.min(current.y, line.y);
     current.width = right - current.x;
     current.height = Math.max(currentBottom, line.y + line.height) - current.y;
-    current.fontSize = Math.max(current.fontSize, line.fontSize);
+    current.fontSize = Math.min(current.fontSize, line.fontSize);
   });
   flush();
 
@@ -665,25 +669,72 @@ const wrapCanvasText = (
   return output.length ? output : [text];
 };
 
-const renderTextBlockToPng = async (
+const measureTextBlock = (
   text: string,
-  widthPoints: number,
-  fontSizePoints: number
+  width: number,
+  fontSize: number,
+  horizontalPadding: number,
+  verticalPadding: number
 ) => {
-  const width = Math.max(24, Math.ceil(widthPoints * PDF_TEXT_CANVAS_SCALE));
-  const fontSize = Math.max(7, fontSizePoints) * PDF_TEXT_CANVAS_SCALE;
-  const horizontalPadding = 3 * PDF_TEXT_CANVAS_SCALE;
-  const verticalPadding = 2 * PDF_TEXT_CANVAS_SCALE;
-  const lineHeight = fontSize * 1.22;
   const measureCanvas = document.createElement("canvas");
   const measureCtx = measureCanvas.getContext("2d");
   if (!measureCtx) return null;
   measureCtx.font = `${fontSize}px Arial, Helvetica, sans-serif`;
   const lines = wrapCanvasText(measureCtx, text, Math.max(8, width - horizontalPadding * 2));
+  const lineHeight = fontSize * 1.18;
   const height = Math.max(
     Math.ceil(lines.length * lineHeight + verticalPadding * 2),
     Math.ceil(fontSize + verticalPadding * 2)
   );
+  return { lines, lineHeight, height };
+};
+
+const fitTextFontSize = (
+  text: string,
+  width: number,
+  requestedFontSize: number,
+  maxHeight: number | undefined,
+  horizontalPadding: number,
+  verticalPadding: number
+) => {
+  const minFontSize = PDF_TEXT_MIN_FONT_SIZE * PDF_TEXT_CANVAS_SCALE;
+  const maxFontSize = PDF_TEXT_MAX_FONT_SIZE * PDF_TEXT_CANVAS_SCALE;
+  let fontSize = Math.min(maxFontSize, Math.max(minFontSize, requestedFontSize));
+  let measured = measureTextBlock(text, width, fontSize, horizontalPadding, verticalPadding);
+  if (!maxHeight || !measured) return { fontSize, measured };
+  const targetHeight = Math.max(8, maxHeight * PDF_TEXT_CANVAS_SCALE);
+  while (fontSize > minFontSize && measured.height > targetHeight) {
+    fontSize = Math.max(minFontSize, fontSize - 0.5 * PDF_TEXT_CANVAS_SCALE);
+    measured = measureTextBlock(text, width, fontSize, horizontalPadding, verticalPadding);
+    if (!measured) break;
+  }
+  return { fontSize, measured };
+};
+
+const renderTextBlockToPng = async (
+  text: string,
+  widthPoints: number,
+  fontSizePoints: number,
+  maxHeightPoints?: number
+) => {
+  const width = Math.max(24, Math.ceil(widthPoints * PDF_TEXT_CANVAS_SCALE));
+  const requestedFontSize = Math.max(PDF_TEXT_MIN_FONT_SIZE, fontSizePoints) * PDF_TEXT_CANVAS_SCALE;
+  const horizontalPadding = 3 * PDF_TEXT_CANVAS_SCALE;
+  const verticalPadding = 2 * PDF_TEXT_CANVAS_SCALE;
+  const { fontSize, measured } = fitTextFontSize(
+    text,
+    width,
+    requestedFontSize,
+    maxHeightPoints,
+    horizontalPadding,
+    verticalPadding
+  );
+  if (!measured) return null;
+  const { lines, lineHeight } = measured;
+  const maxHeight = maxHeightPoints ? Math.ceil(maxHeightPoints * PDF_TEXT_CANVAS_SCALE) : 0;
+  const height = maxHeight
+    ? Math.max(Math.ceil(fontSize + verticalPadding * 2), Math.min(measured.height, maxHeight))
+    : measured.height;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -738,9 +789,10 @@ export async function exportPdfTranslationAsPdf(
     for (const segment of pageContext.segments) {
       const text = sanitizePdfText(getPdfSegmentText(segment));
       if (!text) continue;
-      const fontSize = Math.min(28, Math.max(6, segment.fontSize || 10));
+      const fontSize = Math.min(PDF_TEXT_MAX_FONT_SIZE, Math.max(PDF_TEXT_MIN_FONT_SIZE, segment.fontSize || 10));
       const maxWidth = Math.max(24, Math.min(pageWidth - segment.x - 8, segment.width || pageWidth - segment.x - 8));
-      const textImage = await renderTextBlockToPng(text, maxWidth, fontSize);
+      const maxHeight = Math.max(fontSize * 1.15, segment.height ? segment.height * 1.08 : fontSize * 1.4);
+      const textImage = await renderTextBlockToPng(text, maxWidth, fontSize, maxHeight);
       if (!textImage) continue;
       output.addImage(
         textImage.dataUrl,

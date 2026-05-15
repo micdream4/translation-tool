@@ -74,6 +74,19 @@ const EN_EXACT_TOKEN_FIXES: Array<[RegExp, string]> = [
   [/\bCBCTesting\b/g, "CBC Testing"],
   [/\bPLTFocusing\b/g, "PLT Focusing"]
 ];
+const RUSSIAN_RESIDUE_FIXES: Array<[RegExp, string]> = [
+  [/\bList\b/g, "Список"],
+  [/\bBuilding\b/g, "здание"],
+  [/\bStreet\b/g, "улица"],
+  [/\bDistrict\b/g, "район"],
+  [/\bCity\b/g, "город"],
+  [/\bProvince\b/g, "провинция"],
+  [/\bfeces\b/gi, "фекалий"],
+  [/\buncertain\b/gi, "неопределенным"],
+  [/\bestablish\b/gi, "установить"],
+  [/\bWhite Blood Cell Count\b/g, "Количество лейкоцитов"],
+  [/\bСрок\s+service\s+службы\b/gi, "Срок службы"]
+];
 const ANALYZER_PREFIX_WORDS = [
   "after",
   "and",
@@ -295,6 +308,16 @@ const fixEnglishGlueArtifacts = (
   return output;
 };
 
+const fixRussianEnglishResidue = (translated: string, targetLang?: TargetLanguage) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("russian")) return translated;
+  if (!/[\u0400-\u04FF]/.test(translated) || !/[A-Za-z]/.test(translated)) return translated;
+  let output = translated;
+  RUSSIAN_RESIDUE_FIXES.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
+  return output;
+};
+
 const fixBracketArtifacts = (text: string) => {
   if (!text) return text;
   let output = text;
@@ -315,6 +338,7 @@ export const polishTranslation = (
   let refined = fixSpacingArtifacts(translated);
   refined = fixBracketArtifacts(refined);
   refined = fixEnglishGlueArtifacts(original || "", refined, targetLang);
+  refined = fixRussianEnglishResidue(refined, targetLang);
   refined = enforceGlossary(original || "", refined, targetLang);
   refined = enforceSeedTerminology(original || "", refined, targetLang);
   refined = adjustLongFormStatus(refined);

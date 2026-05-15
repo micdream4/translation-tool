@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.40
+
+- 修复俄语 DOCX 目标语言检测：`Home / Orders / Reports / AI analysis` 等英文残留混在俄文中时不再误判为已完成，智能补译会继续处理。
+- DOCX 导出新增 `word/numbering.xml` 编号样式归一化，自动编号中的中文/东亚格式（如 `一、二、三`、`%1、`、`%1．`）会转换为通用数字编号。
+- PDF 翻译导出升级为坐标保留：解析时记录文本段坐标、字号和图片位置，Layout DOCX 按 PDF 页面位置回填，便于复制核对。
+- PDF 新增直出译文 PDF：以原 PDF 页面渲染为背景，覆盖原文本区域并按坐标写入译文，优先保持图片与页面版式。
+- 新增 `jspdf` 依赖用于浏览器端译文 PDF 生成；回归测试已覆盖 PDF 直出、Layout DOCX、DOCX 编号与俄语混合英文残留检测。
+- 版本号更新为 `v0.0.40`，页面 Header、浏览器标题和 URL 参数会显示当前版本。
+
 ## v0.0.39
 
 - 补齐 TypeScript 类型健康基线，新增 `npm run typecheck`，当前 `typecheck / test / build` 均通过。

@@ -1,16 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import {
   Document,
-  FrameAnchorType,
-  FrameWrap,
-  HeightRule,
-  HorizontalPositionRelativeFrom,
   ImageRun,
   Packer,
   Paragraph,
-  TextRun,
-  TextWrappingType,
-  VerticalPositionRelativeFrom
+  TextRun
 } from 'docx';
 import { jsPDF } from 'jspdf';
 
@@ -87,17 +81,13 @@ const IMAGE_OPERATORS = new Set<number>([
   pdfjsLib.OPS.paintImageMaskXObjectRepeat
 ]);
 
-const TWIPS_PER_POINT = 20;
-const EMU_PER_POINT = 12700;
+const PDF_IMAGE_MAX_WIDTH = 420;
 const PX_PER_POINT = 96 / 72;
-const MAX_DOCX_PAGE_WIDTH_TWIPS = 12240;
-const MAX_DOCX_PAGE_HEIGHT_TWIPS = 31680;
 const PDF_TEXT_LINE_Y_TOLERANCE = 4;
 const PDF_TEXT_SAME_LINE_MAX_GAP_MULTIPLIER = 3.5;
 const PDF_BLOCK_X_TOLERANCE = 18;
 const PDF_BLOCK_GAP_MULTIPLIER = 1.45;
-const MIN_FRAME_WIDTH_TWIPS = 720;
-const MIN_FRAME_HEIGHT_TWIPS = 220;
+const PDF_TEXT_CANVAS_SCALE = 2;
 
 type PositionedTextItem = {
   text: string;
@@ -143,19 +133,6 @@ const splitPageText = (items: TextItemLike[]) => {
     .map((line) => line.replace(/[ \t]+\n/g, '\n').trim())
     .filter(Boolean);
 };
-
-const getPageScale = (width: number, height: number) =>
-  Math.min(
-    MAX_DOCX_PAGE_WIDTH_TWIPS / Math.max(1, width * TWIPS_PER_POINT),
-    MAX_DOCX_PAGE_HEIGHT_TWIPS / Math.max(1, height * TWIPS_PER_POINT),
-    1
-  );
-
-const toTwips = (points: number, scale: number) =>
-  Math.max(0, Math.round(points * TWIPS_PER_POINT * scale));
-
-const toEmu = (points: number, scale: number) =>
-  Math.max(0, Math.round(points * EMU_PER_POINT * scale));
 
 const toImagePixels = (points: number, scale: number) =>
   Math.max(1, Math.round(points * PX_PER_POINT * scale));
@@ -499,17 +476,6 @@ const renderPageForImageObjects = async (page: any) => {
   return { canvas, viewport };
 };
 
-const renderPdfPageToCanvas = async (page: any, scale: number = 2) => {
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.ceil(viewport.width));
-  canvas.height = Math.max(1, Math.ceil(viewport.height));
-  const canvasContext = canvas.getContext('2d');
-  if (!canvasContext) return null;
-  await page.render({ canvasContext, viewport }).promise;
-  return { canvas, viewport };
-};
-
 export async function parsePdfFile(file: File): Promise<PdfContext> {
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({ data }).promise;
@@ -596,11 +562,35 @@ export async function exportPdfTranslationAsDocx(
   filename: string,
   targetLang: string
 ) {
-  const sections = context.pages.map((page) => {
-    const scale = getPageScale(page.width, page.height);
-    const children: Paragraph[] = [];
+  const children: Paragraph[] = [
+    new Paragraph({
+      children: [
+        new TextRun({ text: `Translated PDF Review - ${targetLang}`, bold: true, size: 32 })
+      ]
+    }),
+    new Paragraph({
+      children: [new TextRun({ text: context.fileName, italics: true })]
+    })
+  ];
 
+  context.pages.forEach((page) => {
+    children.push(new Paragraph({ children: [new TextRun({ text: `Page ${page.pageNumber}`, bold: true, size: 26 })] }));
+    page.segments.forEach((segment) => {
+      const text = getPdfSegmentText(segment).trim();
+      if (!text) return;
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text })],
+          spacing: { after: 120 }
+        })
+      );
+    });
+
+    if (page.images.length > 0) {
+      children.push(new Paragraph({ children: [new TextRun({ text: 'Source images', bold: true })] }));
+    }
     page.images.forEach((image) => {
+      const scale = image.width > PDF_IMAGE_MAX_WIDTH ? PDF_IMAGE_MAX_WIDTH / image.width : 1;
       children.push(
         new Paragraph({
           children: [
@@ -610,102 +600,18 @@ export async function exportPdfTranslationAsDocx(
               transformation: {
                 width: toImagePixels(image.width, scale),
                 height: toImagePixels(image.height, scale)
-              },
-              floating: {
-                horizontalPosition: {
-                  relative: HorizontalPositionRelativeFrom.PAGE,
-                  offset: toEmu(image.x, scale)
-                },
-                verticalPosition: {
-                  relative: VerticalPositionRelativeFrom.PAGE,
-                  offset: toEmu(image.y, scale)
-                },
-                allowOverlap: true,
-                behindDocument: false,
-                wrap: {
-                  type: TextWrappingType.NONE
-                },
-                zIndex: 1
               }
             })
           ]
         })
       );
     });
-
-    page.segments.forEach((segment) => {
-      const text = getPdfSegmentText(segment).trim();
-      if (!text) return;
-      const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-      const fontSize = Math.min(32, Math.max(10, Math.round(segment.fontSize * scale * 2)));
-      const frameHeight = Math.max(
-        MIN_FRAME_HEIGHT_TWIPS,
-        toTwips(segment.height + segment.fontSize * lines.length * 1.4, scale)
-      );
-      children.push(
-        new Paragraph({
-          children: lines.map((line, index) =>
-            new TextRun({
-              text: line,
-              size: fontSize,
-              break: index === 0 ? 0 : 1
-            })
-          ),
-          frame: {
-            type: 'absolute',
-            position: {
-              x: toTwips(segment.x, scale),
-              y: toTwips(segment.y, scale)
-            },
-            width: Math.max(MIN_FRAME_WIDTH_TWIPS, toTwips(segment.width, scale)),
-            height: frameHeight,
-            anchor: {
-              horizontal: FrameAnchorType.PAGE,
-              vertical: FrameAnchorType.PAGE
-            },
-            wrap: FrameWrap.NONE,
-            rule: HeightRule.ATLEAST
-          },
-          spacing: {
-            before: 0,
-            after: 0,
-            line: Math.max(120, Math.round(fontSize * 120)),
-            lineRule: 'auto'
-          }
-        })
-      );
-    });
-
-    if (!children.length) {
-      children.push(new Paragraph({ text: '' }));
-    }
-
-    return {
-      properties: {
-        page: {
-          size: {
-            width: Math.max(1, toTwips(page.width, scale)),
-            height: Math.max(1, toTwips(page.height, scale))
-          },
-          margin: {
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            header: 0,
-            footer: 0,
-            gutter: 0
-          }
-        }
-      },
-      children
-    };
   });
 
   const doc = new Document({
     creator: 'POCT Document Translator',
-    description: `PDF layout translation for ${context.fileName} to ${targetLang}`,
-    sections
+    description: `PDF translation review document for ${context.fileName} to ${targetLang}`,
+    sections: [{ properties: {}, children }]
   });
   const blob = await Packer.toBlob(doc);
   const url = URL.createObjectURL(blob);
@@ -724,21 +630,80 @@ const sanitizePdfText = (value: string) =>
     .replace(/\u0000/g, "")
     .trim();
 
+const wrapCanvasText = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+) => {
+  const output: string[] = [];
+  const paragraphs = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  paragraphs.forEach((paragraph) => {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    let current = "";
+    words.forEach((word) => {
+      const candidate = current ? `${current} ${word}` : word;
+      if (ctx.measureText(candidate).width <= maxWidth || !current) {
+        current = candidate;
+        return;
+      }
+      output.push(current);
+      current = word;
+    });
+    if (current) output.push(current);
+  });
+  return output.length ? output : [text];
+};
+
+const renderTextBlockToPng = async (
+  text: string,
+  widthPoints: number,
+  fontSizePoints: number
+) => {
+  const width = Math.max(24, Math.ceil(widthPoints * PDF_TEXT_CANVAS_SCALE));
+  const fontSize = Math.max(7, fontSizePoints) * PDF_TEXT_CANVAS_SCALE;
+  const horizontalPadding = 3 * PDF_TEXT_CANVAS_SCALE;
+  const verticalPadding = 2 * PDF_TEXT_CANVAS_SCALE;
+  const lineHeight = fontSize * 1.22;
+  const measureCanvas = document.createElement("canvas");
+  const measureCtx = measureCanvas.getContext("2d");
+  if (!measureCtx) return null;
+  measureCtx.font = `${fontSize}px Arial, Helvetica, sans-serif`;
+  const lines = wrapCanvasText(measureCtx, text, Math.max(8, width - horizontalPadding * 2));
+  const height = Math.max(
+    Math.ceil(lines.length * lineHeight + verticalPadding * 2),
+    Math.ceil(fontSize + verticalPadding * 2)
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.font = `${fontSize}px Arial, Helvetica, sans-serif`;
+  ctx.fillStyle = "#202430";
+  ctx.textBaseline = "top";
+  lines.forEach((line, index) => {
+    ctx.fillText(line, horizontalPadding, verticalPadding + index * lineHeight);
+  });
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) return null;
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    widthPoints: canvas.width / PDF_TEXT_CANVAS_SCALE,
+    heightPoints: canvas.height / PDF_TEXT_CANVAS_SCALE
+  };
+};
+
 export async function exportPdfTranslationAsPdf(
   context: PdfContext,
   filename: string
 ) {
-  const pdf = await pdfjsLib.getDocument({ data: context.sourceData.slice() }).promise;
   let output: jsPDF | null = null;
 
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const sourcePage = await pdf.getPage(pageNumber);
-    const viewport = sourcePage.getViewport({ scale: 1 });
-    const rendered = await renderPdfPageToCanvas(sourcePage, 2);
-    if (!rendered) continue;
-    const imageData = rendered.canvas.toDataURL("image/jpeg", 0.92);
-    const pageWidth = viewport.width;
-    const pageHeight = viewport.height;
+  for (const pageContext of context.pages) {
+    const pageWidth = pageContext.width;
+    const pageHeight = pageContext.height;
 
     if (!output) {
       output = new jsPDF({
@@ -751,35 +716,31 @@ export async function exportPdfTranslationAsPdf(
       output.addPage([pageWidth, pageHeight], pageWidth > pageHeight ? "landscape" : "portrait");
     }
 
-    output.addImage(imageData, "JPEG", 0, 0, pageWidth, pageHeight);
-    const pageContext = context.pages.find((page) => page.pageNumber === pageNumber);
-    if (!pageContext) continue;
+    output.setFillColor(255, 255, 255);
+    output.rect(0, 0, pageWidth, pageHeight, "F");
 
-    pageContext.segments.forEach((segment) => {
-      const text = sanitizePdfText(getPdfSegmentText(segment));
-      if (!text) return;
-      const fontSize = Math.min(28, Math.max(6, segment.fontSize || 10));
-      const lineHeight = fontSize * 1.22;
-      const maxWidth = Math.max(24, Math.min(pageWidth - segment.x - 8, segment.width || pageWidth - segment.x - 8));
-      output!.setFont("helvetica", "normal");
-      output!.setFontSize(fontSize);
-      const lines = output!.splitTextToSize(text, maxWidth) as string[];
-      const boxHeight = Math.max(segment.height + 4, lines.length * lineHeight + 4);
-      output!.setFillColor(255, 255, 255);
-      output!.rect(
-        Math.max(0, segment.x - 1),
-        Math.max(0, segment.y - 1),
-        Math.min(pageWidth - segment.x + 1, maxWidth + 3),
-        Math.min(pageHeight - segment.y + 1, boxHeight),
-        "F"
-      );
-      output!.setTextColor(32, 36, 48);
-      output!.text(lines, segment.x, segment.y + fontSize, {
-        baseline: "alphabetic",
-        lineHeightFactor: 1.22,
-        maxWidth
-      });
+    pageContext.images.forEach((image) => {
+      const bytes = Array.from(image.data, (byte) => String.fromCharCode(byte)).join("");
+      const dataUrl = `data:image/png;base64,${btoa(bytes)}`;
+      output!.addImage(dataUrl, "PNG", image.x, image.y, image.width, image.height);
     });
+
+    for (const segment of pageContext.segments) {
+      const text = sanitizePdfText(getPdfSegmentText(segment));
+      if (!text) continue;
+      const fontSize = Math.min(28, Math.max(6, segment.fontSize || 10));
+      const maxWidth = Math.max(24, Math.min(pageWidth - segment.x - 8, segment.width || pageWidth - segment.x - 8));
+      const textImage = await renderTextBlockToPng(text, maxWidth, fontSize);
+      if (!textImage) continue;
+      output.addImage(
+        textImage.dataUrl,
+        "PNG",
+        Math.max(0, segment.x),
+        Math.max(0, segment.y),
+        Math.min(pageWidth - segment.x, textImage.widthPoints),
+        Math.min(pageHeight - segment.y, textImage.heightPoints)
+      );
+    }
   }
 
   if (!output) {

@@ -160,14 +160,12 @@ test("PDF support is text-first and exports translated content as DOCX", () => {
   assert.match(pdfSource, /exportPdfTranslationAsPdf/);
   assert.match(pdfSource, /Packer\.toBlob/);
   assert.match(pdfSource, /jsPDF/);
-  assert.match(pdfSource, /sourceData/);
   assert.match(appSource, /Download Translated PDF/);
-  assert.match(appSource, /Download Layout DOCX/);
+  assert.match(appSource, /Download Review DOCX/);
   assert.match(pdfSource, /ImageRun/);
   assert.match(pdfSource, /getPositionedPageSegments/);
-  assert.match(pdfSource, /FrameAnchorType\.PAGE/);
-  assert.match(pdfSource, /HorizontalPositionRelativeFrom\.PAGE/);
-  assert.match(pdfSource, /MAX_DOCX_PAGE_WIDTH_TWIPS/);
+  assert.match(pdfSource, /renderTextBlockToPng/);
+  assert.match(appSource, /PDF download blocked/);
   assert.match(pdfSource, /已回填 .* 个可提取图片/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);
   assert.match(appSource, /PDF 可直出保留页面位置的译文 PDF/);

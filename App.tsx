@@ -3594,8 +3594,14 @@ const App: React.FC = () => {
       const untranslatedCount = context.segments.filter((segment) =>
         shouldTranslateDocxText(getPdfSegmentText(segment) || segment.original)
       ).length;
+      const translatedCount = context.segments.filter((segment) => segment.translated.trim()).length;
+      if (translatedCount === 0) {
+        addLog('PDF download blocked: 当前 PDF 还没有译文，请先运行翻译。');
+        return;
+      }
       if (untranslatedCount > 0) {
-        addLog(`PDF download warning: 仍有 ${untranslatedCount} 个文本段可能未翻译，建议先继续翻译再导出。`);
+        addLog(`PDF download blocked: 仍有 ${untranslatedCount} 个文本段可能未翻译，请先继续翻译再导出。`);
+        return;
       }
       const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
       const filename = `Translated_${targetLang}_${baseName}.pdf`;
@@ -3625,9 +3631,14 @@ const App: React.FC = () => {
     }
     const context = pdfContextRef.current;
     if (!context) return;
+    const translatedCount = context.segments.filter((segment) => segment.translated.trim()).length;
+    if (translatedCount === 0) {
+      addLog('PDF review DOCX blocked: 当前 PDF 还没有译文，请先运行翻译。');
+      return;
+    }
     const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
-    const filename = `Translated_${targetLang}_${baseName}_layout.docx`;
-    addLog(`Generating layout DOCX: ${filename}`);
+    const filename = `Translated_${targetLang}_${baseName}_review.docx`;
+    addLog(`Generating review DOCX: ${filename}`);
     void exportPdfTranslationAsDocx(context, filename, targetLang);
   };
 
@@ -4625,7 +4636,7 @@ const App: React.FC = () => {
                               : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600'
                         }`}
                       >
-                        Download Layout DOCX
+                        Download Review DOCX
                       </button>
                     )}
                     {documentKind === 'docx' && docxBlockingIssueCount > 0 && translationStatus !== 'running' && (
@@ -4704,7 +4715,7 @@ const App: React.FC = () => {
                 )}
                 {documentKind === 'pdf' && (
                   <p className={`text-[11px] ${mutedTextClass}`}>
-                    PDF 可直出保留页面位置的译文 PDF，也可导出 Layout DOCX 便于复制核对；本区按钮仅用于 Excel。
+                    PDF 可直出保留页面位置的译文 PDF，也可导出 Review DOCX 便于复制核对；本区按钮仅用于 Excel。
                   </p>
                 )}
                 <button

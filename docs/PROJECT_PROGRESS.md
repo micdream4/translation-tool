@@ -1,5 +1,11 @@
 # 项目进度
 
+## v0.0.47
+
+- 将非敏感 Cloudflare Pages 配置移入 `wrangler.toml` 的 `[vars]`：`VITE_TRANSLATION_MODE=proxy`、`REQUIRE_CF_ACCESS_EMAIL=true`、邮箱白名单和 OpenRouter 模型顺序以后都能在代码里直接查看和修改。
+- 计划删除 Dashboard 中同名 encrypted Secret，避免邮箱白名单被隐藏；`OPENROUTER_API_KEY` 仍保留 Secret，不写入仓库。
+- 版本号更新为 `v0.0.47`。
+
 ## v0.0.46
 
 - 抽出 Cloudflare Pages Functions 共享认证层：`/api/translate`、`/api/review-samples`、`/api/model-review` 统一使用邮箱白名单、Cloudflare Access Header、本地调试邮箱和按用户 OpenRouter Key 解析。

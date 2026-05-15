@@ -20,16 +20,16 @@ upload `.xlsx` / `.docx` / text-based `.pdf` -> translate -> download. Excel `.x
 Set these in Cloudflare Pages project -> `Settings` -> `Environment variables`.
 
 Required:
-- `VITE_TRANSLATION_MODE=proxy`
-- `OPENROUTER_API_KEY=<your_key>`
+- `OPENROUTER_API_KEY=<your_key>` as an encrypted Secret.
 
-Recommended for controlled sharing:
-- `ALLOWED_USER_EMAILS=user1@company.com,user2@company.com`
+Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[vars]`, so it remains readable and editable in git:
+- `VITE_TRANSLATION_MODE=proxy`
+- `ALLOWED_USER_EMAILS=...`
+- `OPENROUTER_MODELS=...`
+- `REQUIRE_CF_ACCESS_EMAIL=true`
+
+Optional encrypted Secret:
 - `OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}`
-- `OPENROUTER_MODEL=google/gemini-3-flash-preview`
-- `OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v4-pro`
-- `ALLOW_LOCAL_WITHOUT_ACCESS=false`
-- `REQUIRE_CF_ACCESS_EMAIL=true`（仅当你已配置 Cloudflare Access 并希望强制登录邮箱身份时开启）
 
 说明：
 - Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.

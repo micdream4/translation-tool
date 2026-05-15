@@ -3606,7 +3606,11 @@ const App: React.FC = () => {
       const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
       const filename = `Translated_${targetLang}_${baseName}.pdf`;
       addLog(`Generating file: ${filename}`);
-      void exportPdfTranslationAsPdf(context, filename);
+      void exportPdfTranslationAsPdf(context, filename)
+        .then(() => addLog(`PDF export completed: ${filename}`))
+        .catch((error) => {
+          addLog(`PDF export failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
       return;
     }
 
@@ -3639,7 +3643,11 @@ const App: React.FC = () => {
     const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
     const filename = `Translated_${targetLang}_${baseName}_review.docx`;
     addLog(`Generating review DOCX: ${filename}`);
-    void exportPdfTranslationAsDocx(context, filename, targetLang);
+    void exportPdfTranslationAsDocx(context, filename, targetLang)
+      .then(() => addLog(`PDF review DOCX export completed: ${filename}`))
+      .catch((error) => {
+        addLog(`PDF review DOCX export failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
   };
 
   const handlePause = () => {
@@ -3699,11 +3707,12 @@ const App: React.FC = () => {
     () => docxIssueDetails.filter((item) => isSevereDocxIssue(item)).length,
     [docxIssueDetails]
   );
+  const pdfHasTranslatedContent = documentKind === 'pdf' && pdfStats.translated > 0;
   const canDownload =
     documentKind === 'docx'
       ? docxContextRef.current !== null && translationStatus !== 'running'
       : documentKind === 'pdf'
-      ? pdfContextRef.current !== null && translationStatus !== 'running'
+      ? pdfContextRef.current !== null && translationStatus !== 'running' && pdfHasTranslatedContent
       : processedData.length > 0 && translationStatus !== 'running';
   const canRunTranslation =
     documentKind === 'docx'

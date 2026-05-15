@@ -630,6 +630,17 @@ const sanitizePdfText = (value: string) =>
     .replace(/\u0000/g, "")
     .trim();
 
+const blobToDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read blob."));
+    reader.readAsDataURL(blob);
+  });
+
+const bytesToPngDataUrl = (data: Uint8Array) =>
+  blobToDataUrl(new Blob([data], { type: "image/png" }));
+
 const wrapCanvasText = (
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -719,11 +730,10 @@ export async function exportPdfTranslationAsPdf(
     output.setFillColor(255, 255, 255);
     output.rect(0, 0, pageWidth, pageHeight, "F");
 
-    pageContext.images.forEach((image) => {
-      const bytes = Array.from(image.data, (byte) => String.fromCharCode(byte)).join("");
-      const dataUrl = `data:image/png;base64,${btoa(bytes)}`;
-      output!.addImage(dataUrl, "PNG", image.x, image.y, image.width, image.height);
-    });
+    for (const image of pageContext.images) {
+      const dataUrl = await bytesToPngDataUrl(image.data);
+      output.addImage(dataUrl, "PNG", image.x, image.y, image.width, image.height);
+    }
 
     for (const segment of pageContext.segments) {
       const text = sanitizePdfText(getPdfSegmentText(segment));

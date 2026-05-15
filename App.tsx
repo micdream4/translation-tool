@@ -18,6 +18,7 @@ import {
   exportPdfTranslationAsDocx,
   exportPdfTranslationAsPdf,
   getPdfSegmentText,
+  setPdfSegmentText,
   type PdfContext
 } from './utils/pdf';
 import { TranslationHub } from './services/translationHub';
@@ -475,6 +476,8 @@ const App: React.FC = () => {
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const [docxIssueIndices, setDocxIssueIndices] = useState<number[]>([]);
   const [docxIssueDetails, setDocxIssueDetails] = useState<DocxIssueDetail[]>([]);
+  const [pdfIssueIndices, setPdfIssueIndices] = useState<number[]>([]);
+  const [pdfIssueDetails, setPdfIssueDetails] = useState<DocxIssueDetail[]>([]);
   const [docxStats, setDocxStats] = useState<{ total: number; translated: number }>({ total: 0, translated: 0 });
   const [pdfStats, setPdfStats] = useState<{ pages: number; total: number; translated: number }>({ pages: 0, total: 0, translated: 0 });
   const pauseRequestedRef = useRef(false);
@@ -777,6 +780,8 @@ const App: React.FC = () => {
       docxPlaceholderStore.current.clear();
       setDocxIssueIndices([]);
       setDocxIssueDetails([]);
+      setPdfIssueIndices([]);
+      setPdfIssueDetails([]);
       setData([]);
       setProcessedData([]);
       setRules([]);
@@ -795,6 +800,8 @@ const App: React.FC = () => {
         setDocxStats({ total: context.segments.length, translated: 0 });
         setDocxIssueIndices([]);
         setDocxIssueDetails([]);
+        setPdfIssueIndices([]);
+        setPdfIssueDetails([]);
         setProcessingState({
           status: 'idle',
           progress: 0,
@@ -823,6 +830,8 @@ const App: React.FC = () => {
       docxPlaceholderStore.current.clear();
       setDocxIssueIndices([]);
       setDocxIssueDetails([]);
+      setPdfIssueIndices([]);
+      setPdfIssueDetails([]);
       setData([]);
       setProcessedData([]);
       setRules([]);
@@ -839,6 +848,8 @@ const App: React.FC = () => {
         const context = await parsePdfFile(uploadedFile);
         pdfContextRef.current = context;
         setPdfStats({ pages: context.pageCount, total: context.segments.length, translated: 0 });
+        setPdfIssueIndices([]);
+        setPdfIssueDetails([]);
         setProcessingState({
           status: 'idle',
           progress: 0,
@@ -863,6 +874,8 @@ const App: React.FC = () => {
     pdfContextRef.current = null;
     setDocxIssueIndices([]);
     setDocxIssueDetails([]);
+    setPdfIssueIndices([]);
+    setPdfIssueDetails([]);
     setExcelContext(null);
       setDocxStats({ total: 0, translated: 0 });
       setPdfStats({ pages: 0, total: 0, translated: 0 });
@@ -1896,6 +1909,67 @@ const App: React.FC = () => {
     }
   };
 
+  const buildPdfIssueDetails = (context: PdfContext) => {
+    const pending: number[] = [];
+    const details: DocxIssueDetail[] = [];
+    context.segments.forEach((segment, idx) => {
+      const translated = String(segment.translated || '').trim();
+      const original = String(segment.original || '').trim();
+      const text = translated || original;
+      if (!text) return;
+      const stripped = stripProtectedTerms(text).trim();
+      if (!stripped) return;
+      if (isNeutralToken(stripped) || isLikelyIdentifier(stripped)) return;
+      const hasEmptyTranslation = Boolean(original) && !translated;
+      const hasSourceLanguage = hasEmptyTranslation || !isLikelyTargetLanguage(stripped, targetLang);
+      const hasPlaceholderLeak =
+        PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text);
+      const hasGlueLeak =
+        String(targetLang || '').toLowerCase().includes('english') && hasGlueIssue(text);
+      if (!hasSourceLanguage && !hasPlaceholderLeak && !hasGlueLeak) return;
+      pending.push(idx);
+      details.push({
+        index: idx,
+        id: segment.id,
+        text,
+        snippet: toDocxSnippet(text),
+        chineseChars: countChineseChars(stripped),
+        lowPriority: hasPlaceholderLeak || hasGlueLeak || hasEmptyTranslation
+          ? false
+          : isLowPriorityDocxIssue(text),
+        issueType: hasPlaceholderLeak ? 'placeholder' : hasGlueLeak ? 'glue' : 'source'
+      });
+    });
+    return { pending, details };
+  };
+
+  const auditPdfTranslation = () => {
+    const context = pdfContextRef.current;
+    if (!context) return;
+    const { pending, details } = buildPdfIssueDetails(context);
+    setPdfIssueIndices(pending);
+    setPdfIssueDetails(details);
+    if (pending.length === 0) {
+      addLog('PDF audit: 所有文本段均已通过源语言/占位符/粘词检查。');
+      return;
+    }
+    const retryable = details.filter((item) => !item.lowPriority).length;
+    const lowPriority = details.length - retryable;
+    const placeholderCount = details.filter((item) => item.issueType === 'placeholder').length;
+    const glueCount = details.filter((item) => item.issueType === 'glue').length;
+    const sourceCount = details.filter((item) => item.issueType === 'source').length;
+    addLog(
+      `PDF audit: 检测到 ${pending.length} 段异常文本；源语言/空译文 ${sourceCount}，占位符 ${placeholderCount}，粘词 ${glueCount}。建议重译/修复 ${retryable} 段，低优先级 ${lowPriority} 段。`
+    );
+    const preview = details
+      .slice(0, 6)
+      .map((item) => `#${item.index + 1}[${item.issueType}]: ${item.snippet}`)
+      .join(' | ');
+    if (preview) {
+      addLog(`PDF audit: 示例 -> ${preview}`);
+    }
+  };
+
   const runDocxTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
     const context = docxContextRef.current;
     if (!context) {
@@ -2119,6 +2193,7 @@ const App: React.FC = () => {
       setTranslationStatus,
       setProcessingState
     });
+    auditPdfTranslation();
   };
 
   const retryDocxSegments = async () => {
@@ -2297,6 +2372,187 @@ const App: React.FC = () => {
       addLog(
         `Docx Retry Failed: ${error instanceof Error ? error.message : String(error)}`
       );
+      setProcessingState(prev => ({ ...prev, status: 'error' }));
+    }
+  };
+
+  const retryPdfSegments = async () => {
+    const context = pdfContextRef.current;
+    if (!context) return;
+    let pendingIndices = pdfIssueIndices;
+    let detailsSnapshot = pdfIssueDetails;
+    if (pendingIndices.length === 0) {
+      const { pending, details } = buildPdfIssueDetails(context);
+      setPdfIssueIndices(pending);
+      setPdfIssueDetails(details);
+      pendingIndices = pending;
+      detailsSnapshot = details;
+    }
+    if (pendingIndices.length === 0) {
+      addLog('PDF: 当前没有需要重译的文本段。');
+      return;
+    }
+    const recommended = detailsSnapshot
+      .filter((item) => !item.lowPriority)
+      .map((item) => item.index);
+    const targetIndices = recommended.length > 0 ? recommended : pendingIndices;
+    if (recommended.length === 0 && detailsSnapshot.length > 0) {
+      addLog('PDF Retry: 当前剩余问题均为低优先级短文本，将尝试重译全部剩余问题段。');
+    } else if (detailsSnapshot.length > recommended.length) {
+      addLog(
+        `PDF Retry: 已自动聚焦 ${recommended.length} 段高优先级文本，跳过 ${detailsSnapshot.length - recommended.length} 段低优先级项。`
+      );
+    }
+
+    let targets = targetIndices
+      .map(index => context.segments[index])
+      .filter(Boolean);
+    if (!targets.length) return;
+
+    let locallyFixed = 0;
+    targets.forEach((segment) => {
+      const rawText = getPdfSegmentText(segment) || segment.original;
+      if (!PLACEHOLDER_REGEX.test(rawText) && !DOCX_PLACEHOLDER_VARIANT_REGEX.test(rawText)) return;
+      const placeholders = docxPlaceholderStore.current.get(segment.id);
+      if (!placeholders) return;
+      const restored = restoreTranslationTokens(rawText, placeholders);
+      if (restored === rawText) return;
+      const polished = dedupeLeadingRepeat(
+        rawText || '',
+        polishTranslation(rawText || '', restored, targetLang)
+      );
+      setPdfSegmentText(segment, polished);
+      locallyFixed += 1;
+    });
+
+    if (locallyFixed > 0) {
+      addLog(`PDF Retry: 已本地修复 ${locallyFixed} 段占位符问题（无需调用模型）。`);
+      const { pending, details } = buildPdfIssueDetails(context);
+      setPdfIssueIndices(pending);
+      setPdfIssueDetails(details);
+      targets = targetIndices
+        .map(index => context.segments[index])
+        .filter(Boolean)
+        .filter((segment) => {
+          const text = getPdfSegmentText(segment) || segment.original;
+          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(stripProtectedTerms(text), targetLang);
+        });
+      if (targets.length === 0) {
+        addLog('PDF Retry: 占位符问题已清零。');
+        setPdfStats({
+          pages: context.pageCount,
+          total: context.segments.length,
+          translated: context.segments.filter((segment) => segment.translated.trim()).length
+        });
+        setTranslationStatus('completed');
+        auditPdfTranslation();
+        return;
+      }
+    }
+
+    pauseRequestedRef.current = false;
+    setTranslationStatus('running');
+    setProcessingState({
+      status: 'processing',
+      progress: 0,
+      total: targets.length,
+      currentBatch: 0
+    });
+
+    try {
+      const result = await runStage('translate', async () => {
+        let completed = 0;
+        let paused = false;
+        const totalBatches = Math.ceil(targets.length / DOCX_BATCH_SIZE);
+        for (let i = 0; i < targets.length; i += DOCX_BATCH_SIZE) {
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`PDF retry paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
+            break;
+          }
+          const chunk = targets.slice(i, i + DOCX_BATCH_SIZE);
+          const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
+          addLog(`PDF Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段`);
+          let translatedBatch: POCTRecord[];
+          try {
+            const payload = chunk.map((segment) => {
+              const rawText = getPdfSegmentText(segment) || segment.original;
+              const { sanitized, placeholders } = guardTranslationTokens(rawText);
+              if (placeholders) {
+                docxPlaceholderStore.current.set(segment.id, placeholders);
+              }
+              return {
+                content: sanitized
+              };
+            });
+            translatedBatch = await translationHub.translateBatch({
+              records: payload,
+              targetLang,
+              options: getDocumentQualityTranslationOptions()
+            });
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            addLog(`PDF Retry Batch ${batchNum} 失败：${errMsg}`);
+            continue;
+          }
+
+          chunk.forEach((segment, index) => {
+            const translatedRecord = translatedBatch[index] || {};
+            const rawText = getPdfSegmentText(segment) || segment.original;
+            const placeholders = docxPlaceholderStore.current.get(segment.id);
+            const sanitizedResult =
+              typeof translatedRecord.content === 'string'
+                ? translatedRecord.content
+                : rawText;
+            const restored = restoreTranslationTokens(sanitizedResult, placeholders);
+            const polished = dedupeLeadingRepeat(
+              rawText || '',
+              polishTranslation(rawText || '', restored, targetLang)
+            );
+            setPdfSegmentText(segment, polished);
+          });
+
+          completed += chunk.length;
+          setPdfStats({
+            pages: context.pageCount,
+            total: context.segments.length,
+            translated: context.segments.filter((segment) => segment.translated.trim()).length
+          });
+          const progress = Math.round((completed / targets.length) * 100);
+          setProcessingState(prev => ({
+            ...prev,
+            progress,
+            currentBatch: batchNum
+          }));
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          if (pauseRequestedRef.current) {
+            paused = true;
+            addLog(`PDF retry paused after batch ${batchNum}.`);
+            break;
+          }
+        }
+
+        if (paused) {
+          setProcessingState(prev => ({ ...prev, status: 'idle' }));
+          setTranslationStatus('paused');
+          return 'paused';
+        }
+
+        setProcessingState(prev => ({
+          ...prev,
+          status: 'completed',
+          progress: 100
+        }));
+        addLog(`PDF 重译完成：${completed}/${targets.length} 个文本段。`);
+        return 'completed';
+      });
+      if (result !== 'paused') {
+        setTranslationStatus('completed');
+      }
+      auditPdfTranslation();
+    } catch (error) {
+      setTranslationStatus('idle');
+      addLog(`PDF Retry Failed: ${error instanceof Error ? error.message : String(error)}`);
       setProcessingState(prev => ({ ...prev, status: 'error' }));
     }
   };
@@ -3711,6 +3967,14 @@ const App: React.FC = () => {
     () => docxIssueDetails.filter((item) => isSevereDocxIssue(item)).length,
     [docxIssueDetails]
   );
+  const pdfLowPriorityCount = useMemo(
+    () => pdfIssueDetails.filter((item) => item.lowPriority).length,
+    [pdfIssueDetails]
+  );
+  const pdfHighPriorityCount = useMemo(
+    () => pdfIssueDetails.filter((item) => !item.lowPriority).length,
+    [pdfIssueDetails]
+  );
   const pdfHasTranslatedContent = documentKind === 'pdf' && pdfStats.translated > 0;
   const canDownload =
     documentKind === 'docx'
@@ -3787,6 +4051,14 @@ const App: React.FC = () => {
         .join(' | '),
     [docxIssueDetails]
   );
+  const pdfIssuePreview = useMemo(
+    () =>
+      pdfIssueDetails
+        .slice(0, 5)
+        .map((item) => `#${item.index + 1}: ${item.snippet}`)
+        .join(' | '),
+    [pdfIssueDetails]
+  );
   const runtimeProtectedTermsCount = useMemo(
     () => parseRuntimeProtectedTerms(runtimeProtectedTermsRaw).length,
     [runtimeProtectedTermsRaw]
@@ -3795,6 +4067,7 @@ const App: React.FC = () => {
   const retryCandidates = [...retryableRowsFromDetails];
   const hasTranslationAlerts = (currentIssueSummary.rows > 0 || writeFailedRowIndices.length > 0) && documentKind === 'excel';
   const hasDocxIssues = documentKind === 'docx' && docxIssueDetails.length > 0;
+  const hasPdfIssues = documentKind === 'pdf' && pdfIssueDetails.length > 0;
   const writeFailedRowPreview = formatRowRanges(writeFailedRowIndices);
   const isStringTranslating = stringStatus === 'running';
   const hasStringOutputs = Object.keys(stringOutputs).length > 0;
@@ -4718,6 +4991,26 @@ const App: React.FC = () => {
                   </button>
                 </div>
               )}
+              {hasPdfIssues && (
+                <div className={`text-xs text-center space-y-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
+                  <p>PDF 审计：仍有 {pdfIssueDetails.length} 个文本段存在异常。</p>
+                  <p className={`text-[11px] ${headingMutedClass}`}>
+                    建议重译 {pdfHighPriorityCount} 段；低优先级短文本 {pdfLowPriorityCount} 段。
+                  </p>
+                  {pdfIssuePreview && (
+                    <p className={`text-[11px] ${headingMutedClass}`}>
+                      示例：{pdfIssuePreview}
+                    </p>
+                  )}
+                  <button
+                    onClick={retryPdfSegments}
+                    className="w-full py-2 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-xl font-semibold transition-all shadow-[0_12px_26px_rgba(217,119,6,0.18)]"
+                    disabled={translationStatus === 'running'}
+                  >
+                    Retry Missing PDF Segments
+                  </button>
+                </div>
+              )}
 
               <div className={`space-y-2 pt-3 border-t ${sectionDividerClass}`}>
                 <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Check</h3>
@@ -4728,7 +5021,7 @@ const App: React.FC = () => {
                 )}
                 {documentKind === 'pdf' && (
                   <p className={`text-[11px] ${mutedTextClass}`}>
-                    PDF 可直出保留页面位置的译文 PDF，也可导出 Review DOCX 便于复制核对；本区按钮仅用于 Excel。
+                    PDF 会自动审计并显示 Retry Missing PDF Segments；本区按钮仅用于 Excel。
                   </p>
                 )}
                 <button

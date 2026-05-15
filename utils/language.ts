@@ -1,6 +1,6 @@
 import { POCTRecord, TargetLanguage } from "../types";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
-import { isLikelyIdentifier } from "./translationTokens";
+import { isLikelyIdentifier, isProtectedTerm } from "./translationTokens";
 
 export interface UntranslatedCell {
   rowIndex: number;
@@ -13,6 +13,7 @@ type LangCode = "zh" | "en" | "es" | "fr" | "de" | "it" | "pt" | "tr" | "ru" | "
 const CJK_REGEX = /[\u4e00-\u9fff]/;
 const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
 const LATIN_WORD_REGEX = /[A-Za-z\u00C0-\u024F]/;
+const LATIN_TOKEN_REGEX = /\b[A-Za-z][A-Za-z0-9'-]{1,}\b/g;
 const SHORT_CODE_REGEX = /^[A-Z0-9#%+_.\-\/]+$/;
 const SYMBOL_ONLY_REGEX = /^[\s\-–—=+<>↑↓*·•.()（）【】[\]{}\\/]+$/;
 const CODE_WITH_ARROW_REGEX = /^[A-Z]{1,6}[#%]?[↑↓]?$/
@@ -241,6 +242,57 @@ const LANGUAGE_DIACRITICS: Record<
   tr: /[çğıöşü]/i
 };
 
+const ALLOWED_NON_LATIN_TARGET_LATIN_TOKENS = new Set([
+  "ai",
+  "api",
+  "csv",
+  "dna",
+  "doc",
+  "docx",
+  "html",
+  "id",
+  "ivd",
+  "json",
+  "lcd",
+  "led",
+  "pdf",
+  "poct",
+  "qc",
+  "rna",
+  "ui",
+  "url",
+  "usb",
+  "xml",
+  "zip",
+  "cm",
+  "dl",
+  "fl",
+  "g",
+  "gb",
+  "ghz",
+  "hz",
+  "kg",
+  "kb",
+  "l",
+  "m",
+  "mb",
+  "mcg",
+  "mg",
+  "mhz",
+  "min",
+  "ml",
+  "mm",
+  "mmol",
+  "ng",
+  "pg",
+  "rpm",
+  "s",
+  "sec",
+  "ul",
+  "v",
+  "w"
+]);
+
 const normalizeLatin = (text: string) =>
   text
     .toLowerCase()
@@ -325,6 +377,22 @@ const targetLangToCode = (targetLang: TargetLanguage): LangCode => {
 export const hasSimplifiedChineseResidue = (text: string) =>
   TAIWAN_SIMPLIFIED_RESIDUE_REGEX.test(text);
 
+const isAllowedLatinTokenInNonLatinTarget = (token: string) => {
+  const normalized = normalizeLatin(token);
+  if (!normalized) return true;
+  if (ALLOWED_NON_LATIN_TARGET_LATIN_TOKENS.has(normalized)) return true;
+  if (isProtectedTerm(token) || isLikelyIdentifier(token)) return true;
+  if (/^[A-Z]{2,8}s?$/.test(token)) return true;
+  if (/^(?=.*\d)[A-Za-z0-9-]{2,}$/.test(token)) return true;
+  if (/^[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*$/.test(token)) return true;
+  return false;
+};
+
+const hasDisallowedLatinResidue = (text: string) => {
+  const tokens = text.match(LATIN_TOKEN_REGEX) || [];
+  return tokens.some((token) => !isAllowedLatinTokenInNonLatinTarget(token));
+};
+
 export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage) => {
   const trimmed = text.trim();
   if (!trimmed) return true;
@@ -345,7 +413,8 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   }
   if (targetCode === "ru") {
     if (CJK_REGEX.test(trimmed)) return false;
-    return CYRILLIC_REGEX.test(trimmed);
+    if (!CYRILLIC_REGEX.test(trimmed)) return false;
+    return !hasDisallowedLatinResidue(trimmed);
   }
 
   // For non-Chinese / non-Russian targets, any residual CJK/Cyrillic means not fully translated.

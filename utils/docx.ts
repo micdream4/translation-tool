@@ -53,6 +53,7 @@ const DOCX_PART_PATTERNS: Array<{
   required?: boolean;
 }> = [
   { label: "正文", pattern: /^word\/document\.xml$/, required: true },
+  { label: "编号", pattern: /^word\/numbering\.xml$/ },
   { label: "页眉", pattern: /^word\/header\d*\.xml$/ },
   { label: "页脚", pattern: /^word\/footer\d*\.xml$/ },
   { label: "脚注", pattern: /^word\/footnotes\.xml$/ },
@@ -75,6 +76,10 @@ const WORDISH_TAIL_REGEX = /([A-Za-z0-9][A-Za-z0-9_\-/:+().#]*)$/;
 const WORDISH_HEAD_REGEX = /^([A-Za-z0-9][A-Za-z0-9_\-/:+().#]*)/;
 const NO_SPACE_LEFT_SUFFIX_REGEX = /[-\/([{'"“‘]$/;
 const NO_SPACE_RIGHT_PREFIX_REGEX = /^[,.;:!?%)\]}'"”’\/]/;
+const CJK_NUMBER_FORMAT_REGEX = /(chinese|japanese|korean|taiwanese|ideograph)/i;
+const CJK_NUMBER_LITERAL_REGEX = /^[一二三四五六七八九十百千万零〇]+[、。．.]?$/;
+const CJK_NUMBER_SEPARATOR_REGEX = /[、。．]/;
+const CJK_NUMBER_SEPARATOR_GLOBAL_REGEX = /[、。．]/g;
 const ANALYZER_LEFT_BOUNDARY_WORDS = new Set([
   "after",
   "and",
@@ -162,6 +167,9 @@ const getDocxTextElements = (root: DocxSearchRoot) =>
 
 const getDocxParagraphElements = (root: DocxSearchRoot) =>
   collectUniqueElements(root, ["w:p", "p"]);
+
+const getDocxNumberingLevelElements = (root: DocxSearchRoot) =>
+  collectUniqueElements(root, ["w:lvl", "lvl"]);
 
 const buildSegmentText = (nodes: Element[]) =>
   nodes.map((node) => node.textContent || "").join("");
@@ -498,6 +506,46 @@ const normalizeDocxRunSpacing = (xmlDoc: Document) => {
   });
 };
 
+const findDirectChildElement = (parent: Element, names: string[]) => {
+  const expected = new Set(names);
+  return Array.from(parent.children).find((child) => expected.has(child.tagName)) || null;
+};
+
+const getValAttribute = (node: Element | null) =>
+  node?.getAttribute("w:val") ?? node?.getAttribute("val") ?? "";
+
+const setValAttribute = (node: Element, value: string) => {
+  if (node.hasAttribute("w:val")) {
+    node.setAttribute("w:val", value);
+    return;
+  }
+  node.setAttribute("val", value);
+};
+
+const normalizeCjkNumberingText = (value: string) => {
+  const normalized = value.replace(CJK_NUMBER_SEPARATOR_GLOBAL_REGEX, ".");
+  if (CJK_NUMBER_LITERAL_REGEX.test(normalized)) return "1.";
+  if (/%\d+$/.test(normalized)) return `${normalized}.`;
+  return normalized;
+};
+
+const normalizeDocxNumbering = (xmlDoc: Document) => {
+  getDocxNumberingLevelElements(xmlDoc).forEach((level) => {
+    const numFmt = findDirectChildElement(level, ["w:numFmt", "numFmt"]);
+    const lvlText = findDirectChildElement(level, ["w:lvlText", "lvlText"]);
+    const format = getValAttribute(numFmt);
+    const marker = getValAttribute(lvlText);
+    const usesCjkNumbering =
+      CJK_NUMBER_FORMAT_REGEX.test(format) ||
+      CJK_NUMBER_SEPARATOR_REGEX.test(marker) ||
+      CJK_NUMBER_LITERAL_REGEX.test(marker);
+    if (!usesCjkNumbering || !numFmt || !lvlText) return;
+
+    setValAttribute(numFmt, "decimal");
+    setValAttribute(lvlText, normalizeCjkNumberingText(marker));
+  });
+};
+
 export async function exportDocxFile(
   context: DocxContext,
   filename: string
@@ -515,6 +563,7 @@ export async function exportDocxFile(
         }
       ];
   parts.forEach((part) => {
+    normalizeDocxNumbering(part.xmlDoc);
     normalizeDocxRunSpacing(part.xmlDoc);
     const payload = serializer.serializeToString(part.xmlDoc);
     context.zip.file(part.path, payload);

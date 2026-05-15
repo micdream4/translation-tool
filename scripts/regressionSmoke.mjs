@@ -157,11 +157,20 @@ test("PDF support is text-first and exports translated content as DOCX", () => {
   assert.match(pdfSource, /getTextContent\(\)/);
   assert.match(pdfSource, /getOperatorList\(\)/);
   assert.match(pdfSource, /exportPdfTranslationAsDocx/);
+  assert.match(pdfSource, /exportPdfTranslationAsPdf/);
   assert.match(pdfSource, /Packer\.toBlob/);
+  assert.match(pdfSource, /jsPDF/);
+  assert.match(pdfSource, /sourceData/);
+  assert.match(appSource, /Download Translated PDF/);
+  assert.match(appSource, /Download Layout DOCX/);
   assert.match(pdfSource, /ImageRun/);
+  assert.match(pdfSource, /getPositionedPageSegments/);
+  assert.match(pdfSource, /FrameAnchorType\.PAGE/);
+  assert.match(pdfSource, /HorizontalPositionRelativeFrom\.PAGE/);
+  assert.match(pdfSource, /MAX_DOCX_PAGE_WIDTH_TWIPS/);
   assert.match(pdfSource, /已回填 .* 个可提取图片/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);
-  assert.match(appSource, /PDF 第一阶段导出为 Word 译文/);
+  assert.match(appSource, /PDF 可直出保留页面位置的译文 PDF/);
   assert.match(appSource, /documentKind === 'docx' \|\| documentKind === 'pdf'/);
   assert.match(appSource, /getTranslationOptions: getDocumentQualityTranslationOptions/);
   assert.match(appSource, /Auto \$\{documentKind\.toUpperCase\(\)\} Quality/);
@@ -172,6 +181,9 @@ test("DOCX parser covers body, headers, footers, footnotes, endnotes, and commen
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   assert.match(docxSource, /coverageWarnings/);
   assert.match(docxSource, /formatDocxCoverageSummary/);
+  assert.match(docxSource, /numbering\\.xml/);
+  assert.match(docxSource, /normalizeDocxNumbering/);
+  assert.match(docxSource, /CJK_NUMBER_FORMAT_REGEX/);
   assert.match(docxSource, /header\\d\*\\.xml/);
   assert.match(docxSource, /footer\\d\*\\.xml/);
   assert.match(docxSource, /footnotes\\.xml/);
@@ -237,6 +249,33 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   assert.match(languageSource, /isTraditionalChineseTaiwanTarget\(targetLang\) && hasSimplifiedChineseResidue/);
   assert.match(profileSource, /getTargetLocaleInstruction/);
   assert.match(modelReviewSource, /penalize Simplified Chinese characters/);
+});
+
+test("Russian target detection flags mixed English table-of-contents labels", async () => {
+  const { isLikelyTargetLanguage, detectUntranslatedCells } = await bundleTsModule(
+    path.join(repoRoot, "utils/language.ts")
+  );
+
+  assert.equal(isLikelyTargetLanguage("Описание продукта", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Home: Главная страница", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("Orders: Заказы на исследование", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("Reports: Отчеты об исследовании", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("AI analysis: Анализ отчета AI", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("OpenDx: руководство пользователя", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("POCT QC: контроль качества", "Russian"), true);
+
+  const issues = detectUntranslatedCells(
+    [
+      { content: "Описание продукта" },
+      { content: "Home: Главная страница" },
+      { content: "POCT QC: контроль качества" }
+    ],
+    "Russian"
+  );
+  assert.deepEqual(
+    issues.map((issue) => issue.value),
+    ["Home: Главная страница"]
+  );
 });
 
 test("API translate function accepts proxy payload and normalizes OpenRouter records", async () => {

@@ -16,6 +16,7 @@ import {
 import {
   parsePdfFile,
   exportPdfTranslationAsDocx,
+  exportPdfTranslationAsPdf,
   getPdfSegmentText,
   type PdfContext
 } from './utils/pdf';
@@ -3597,9 +3598,9 @@ const App: React.FC = () => {
         addLog(`PDF download warning: 仍有 ${untranslatedCount} 个文本段可能未翻译，建议先继续翻译再导出。`);
       }
       const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
-      const filename = `Translated_${targetLang}_${baseName}.docx`;
+      const filename = `Translated_${targetLang}_${baseName}.pdf`;
       addLog(`Generating file: ${filename}`);
-      void exportPdfTranslationAsDocx(context, filename, targetLang);
+      void exportPdfTranslationAsPdf(context, filename);
       return;
     }
 
@@ -3615,6 +3616,19 @@ const App: React.FC = () => {
     if (stats?.overwrittenFormulas) {
       addLog(`已覆盖 ${stats.overwrittenFormulas} 个公式单元格以写入翻译结果。`);
     }
+  };
+
+  const handleDownloadPdfDocx = () => {
+    if (translationStatus === 'running') {
+      addLog('当前仍在翻译中，请先暂停或等待完成再导出。');
+      return;
+    }
+    const context = pdfContextRef.current;
+    if (!context) return;
+    const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
+    const filename = `Translated_${targetLang}_${baseName}_layout.docx`;
+    addLog(`Generating layout DOCX: ${filename}`);
+    void exportPdfTranslationAsDocx(context, filename, targetLang);
   };
 
   const handlePause = () => {
@@ -4593,8 +4607,27 @@ const App: React.FC = () => {
                           : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white active:scale-[0.99] shadow-[0_14px_28px_rgba(5,150,105,0.20)]'
                       }`}
                     >
-                      {translationStatus === 'running' ? 'Wait for Translation...' : 'Download Translated Document'}
+                      {translationStatus === 'running'
+                        ? 'Wait for Translation...'
+                        : documentKind === 'pdf'
+                          ? 'Download Translated PDF'
+                          : 'Download Translated Document'}
                     </button>
+                    {documentKind === 'pdf' && (
+                      <button
+                        onClick={handleDownloadPdfDocx}
+                        disabled={!canDownload}
+                        className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                          !canDownload
+                            ? disabledButtonClass
+                            : isLight
+                              ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600'
+                        }`}
+                      >
+                        Download Layout DOCX
+                      </button>
+                    )}
                     {documentKind === 'docx' && docxBlockingIssueCount > 0 && translationStatus !== 'running' && (
                       <p className={`text-[11px] text-center ${isLight ? 'text-rose-600' : 'text-rose-300'}`}>
                         检测到 {docxBlockingIssueCount} 段严重问题（源语言残留/占位符），建议先重译后再下载。
@@ -4671,7 +4704,7 @@ const App: React.FC = () => {
                 )}
                 {documentKind === 'pdf' && (
                   <p className={`text-[11px] ${mutedTextClass}`}>
-                    PDF 第一阶段导出为 Word 译文；本区按钮仅用于 Excel。
+                    PDF 可直出保留页面位置的译文 PDF，也可导出 Layout DOCX 便于复制核对；本区按钮仅用于 Excel。
                   </p>
                 )}
                 <button

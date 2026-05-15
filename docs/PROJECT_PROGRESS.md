@@ -1,5 +1,11 @@
 # 项目进度
 
+## v0.0.43
+
+- 修复 PDF 译文已处理完成后仍被下载前检查误判为“可能未翻译”的问题：现在仅在完全没有译文时阻止导出，部分段落缺译时提示 warning 并继续导出。
+- 模型下拉中的 DOCX/PDF Auto 文案改为从实际模型链路生成，当前顺序显示为 Gemini Flash → DeepSeek → Qwen → Gemini 3.1 Pro → GPT-5.3。
+- 版本号更新为 `v0.0.43`。
+
 ## v0.0.42
 
 - 按最新策略调整 DOCX/PDF Auto 文档模型顺序：Gemini Flash → DeepSeek → Qwen → Gemini 3.1 Pro → GPT-5.3。

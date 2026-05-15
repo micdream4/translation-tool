@@ -127,6 +127,9 @@ const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'deepseek/deepseek-v4-pro': 'DeepSeek V4 Pro',
   'openai/gpt-5.3-chat': 'OpenAI GPT-5.3 Chat'
 };
+const getModelLabel = (model: string) => OPENROUTER_MODEL_LABELS[model] || model;
+const formatModelChainLabel = (models: readonly string[]) =>
+  models.map(getModelLabel).join(' -> ');
 type ThemeMode = 'light' | 'dark';
 type AppView = 'translator' | 'modelReview';
 type ModelReviewStyleSelection = 'recommended' | ModelReviewStyle;
@@ -3591,17 +3594,18 @@ const App: React.FC = () => {
     if (documentKind === 'pdf') {
       const context = pdfContextRef.current;
       if (!context) return;
-      const untranslatedCount = context.segments.filter((segment) =>
-        shouldTranslateDocxText(getPdfSegmentText(segment) || segment.original)
-      ).length;
       const translatedCount = context.segments.filter((segment) => segment.translated.trim()).length;
+      const untranslatedCount = context.segments.filter((segment) => {
+        const source = String(segment.original || '').trim();
+        const translated = String(segment.translated || '').trim();
+        return Boolean(source) && !translated;
+      }).length;
       if (translatedCount === 0) {
         addLog('PDF download blocked: 当前 PDF 还没有译文，请先运行翻译。');
         return;
       }
       if (untranslatedCount > 0) {
-        addLog(`PDF download blocked: 仍有 ${untranslatedCount} 个文本段可能未翻译，请先继续翻译再导出。`);
-        return;
+        addLog(`PDF download warning: 仍有 ${untranslatedCount} 个文本段没有译文，将先用原文占位导出。`);
       }
       const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
       const filename = `Translated_${targetLang}_${baseName}.pdf`;
@@ -4508,18 +4512,18 @@ const App: React.FC = () => {
                 >
                   <option value={AUTO_OPENROUTER_MODEL}>
                     {usesDocumentQualityModels
-                      ? `Auto ${documentKind.toUpperCase()} Quality (Qwen → DeepSeek → Gemini 3.1 → OpenAI)`
+                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)})`
                       : 'Auto (Gemini → Qwen → DeepSeek)'}
                   </option>
                   {availableOpenRouterModels.map((model) => (
                     <option key={model} value={model}>
-                      {OPENROUTER_MODEL_LABELS[model] || model}
+                      {getModelLabel(model)}
                     </option>
                   ))}
                 </select>
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   {usesDocumentQualityModels
-                    ? `${documentKind.toUpperCase()} Auto 使用高质量文档提示词与模型组；手工选择时只使用当前模型。`
+                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)}；手工选择时只使用当前模型。`
                     : 'Auto 会按 Gemini → Qwen → DeepSeek 顺序自动切换；手工选择时只使用当前模型。'}
                 </p>
               </div>

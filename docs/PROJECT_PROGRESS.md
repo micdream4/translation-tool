@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.46
+
+- 抽出 Cloudflare Pages Functions 共享认证层：`/api/translate`、`/api/review-samples`、`/api/model-review` 统一使用邮箱白名单、Cloudflare Access Header、本地调试邮箱和按用户 OpenRouter Key 解析。
+- 新增 `/api/me` 身份探测接口，前端 Header 会显示当前访问状态（登录邮箱、Guest、Blocked、Checking），为对外开放使用和后续额度/审计打基础。
+- 明确下一阶段架构方向：语言规则应拆成“基础规则 + 目标语言 profile 覆盖”，Quality Check 应抽成 Excel/DOCX/PDF 共用核心，再由各文档 adapter 提供检查单元。
+- 版本号更新为 `v0.0.46`。
+
 ## v0.0.45
 
 - DOCX/PDF 的 `Run Quality Check` 接入主质量报告，不再只支持 Excel；DOCX/PDF 会把非目标语言残留、空译文、占位符和格式问题同步到 Quality Report。

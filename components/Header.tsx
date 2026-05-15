@@ -9,12 +9,30 @@ interface HeaderProps {
   activeView?: 'translator' | 'modelReview';
   onNavigate?: (view: 'translator' | 'modelReview') => void;
   version?: string;
+  authStatus?: 'checking' | 'authenticated' | 'anonymous' | 'blocked';
+  userEmail?: string;
 }
 
-const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle, activeView = 'translator', onNavigate, version }) => {
+const Header: React.FC<HeaderProps> = ({
+  theme,
+  onThemeToggle,
+  activeView = 'translator',
+  onNavigate,
+  version,
+  authStatus = 'anonymous',
+  userEmail
+}) => {
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const guideRef = useRef<HTMLDivElement>(null);
   const isLight = theme === 'light';
+  const authLabel =
+    authStatus === 'checking'
+      ? 'Checking'
+      : authStatus === 'blocked'
+        ? 'Blocked'
+        : authStatus === 'authenticated'
+          ? userEmail || 'Signed in'
+          : 'Guest';
 
   useEffect(() => {
     if (!isGuideOpen) return;
@@ -122,6 +140,31 @@ const Header: React.FC<HeaderProps> = ({ theme, onThemeToggle, activeView = 'tra
               <span className="hidden sm:inline">Multi-AI Review Lab</span>
               <span className="sm:hidden">Review</span>
             </button>
+          </div>
+          <div
+            className={`hidden lg:inline-flex max-w-[220px] items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+              authStatus === 'blocked'
+                ? isLight
+                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border-rose-400/25 bg-rose-500/10 text-rose-200'
+                : isLight
+                  ? 'border-slate-200 bg-white/75 text-slate-600'
+                  : 'border-white/[0.08] bg-white/[0.05] text-slate-300'
+            }`}
+            title={userEmail || authLabel}
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                authStatus === 'authenticated'
+                  ? 'bg-emerald-500'
+                  : authStatus === 'blocked'
+                    ? 'bg-rose-500'
+                    : authStatus === 'checking'
+                      ? 'bg-amber-400'
+                      : 'bg-slate-400'
+              }`}
+            ></span>
+            <span className="truncate">{authLabel}</span>
           </div>
           <div className="relative" ref={guideRef}>
             <button

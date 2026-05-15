@@ -134,6 +134,13 @@ const formatModelChainLabel = (models: readonly string[]) =>
 type ThemeMode = 'light' | 'dark';
 type AppView = 'translator' | 'modelReview';
 type ModelReviewStyleSelection = 'recommended' | ModelReviewStyle;
+type AuthStatus = 'checking' | 'authenticated' | 'anonymous' | 'blocked';
+type AuthState = {
+  status: AuthStatus;
+  email?: string;
+  message?: string;
+  localBypass?: boolean;
+};
 type TranslationMemoryStats = {
   hits: number;
   deduped: number;
@@ -417,6 +424,7 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<AppView>('translator');
   const [excelContext, setExcelContext] = useState<ExcelContext | null>(null);
   const [targetLang, setTargetLang] = useState<TargetLanguage>('English');
+  const [authState, setAuthState] = useState<AuthState>({ status: 'checking' });
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === 'undefined') return 'light';
     return window.localStorage.getItem(UI_THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
@@ -508,6 +516,38 @@ const App: React.FC = () => {
     if (url.searchParams.get('v') === APP_VERSION) return;
     url.searchParams.set('v', APP_VERSION);
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    fetch('/api/me', { credentials: 'same-origin' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (response.ok && payload?.authenticated) {
+          setAuthState({
+            status: 'authenticated',
+            email: String(payload.email || '').trim(),
+            localBypass: Boolean(payload.localBypass)
+          });
+          return;
+        }
+        if (response.status === 401 || response.status === 403) {
+          setAuthState({
+            status: 'blocked',
+            email: String(payload?.email || '').trim(),
+            message: payload?.error || 'Access denied'
+          });
+          return;
+        }
+        setAuthState({ status: 'anonymous' });
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState({ status: 'anonymous' });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   useEffect(() => {
     if (
@@ -4460,6 +4500,8 @@ const App: React.FC = () => {
         activeView={activeView}
         onNavigate={setActiveView}
         version={APP_VERSION}
+        authStatus={authState.status}
+        userEmail={authState.email}
         onThemeToggle={() => setTheme((current) => (current === 'light' ? 'dark' : 'light'))}
       />
 

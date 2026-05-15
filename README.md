@@ -90,6 +90,7 @@
    ```
    当配置了 `ALLOWED_USER_EMAILS` 或开启 `REQUIRE_CF_ACCESS_EMAIL=true` 时，代码会读取
    `CF-Access-Authenticated-User-Email` 并执行访问控制。
+   前端会调用 `/api/me` 显示当前访问状态；翻译、抽样审核和 Multi-AI Review API 使用同一套认证规则。
 
 4. 在 OpenRouter 给每把 Key 设置额度  
    给每个人那把 Key 设置 `limit` + `limit_reset=monthly`，即可限制每人每月花费。

@@ -7,48 +7,9 @@ import type {
 } from "../../types";
 import { parseModelJsonObject } from "../../utils/jsonRepair";
 import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../../utils/targetLanguage";
+import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const TRUTHY = new Set(["1", "true", "yes", "on"]);
-
-const normalizeEmail = (value: unknown) => String(value || "").trim().toLowerCase();
-
-const parseAllowedEmails = (raw: unknown) =>
-  new Set(
-    String(raw || "")
-      .split(/[,\n;]+/)
-      .map((item) => normalizeEmail(item))
-      .filter(Boolean)
-  );
-
-const parseUserKeyMap = (raw: unknown) => {
-  if (!raw) return {} as Record<string, string>;
-  try {
-    const parsed = JSON.parse(String(raw));
-    if (!parsed || typeof parsed !== "object") return {} as Record<string, string>;
-    const out: Record<string, string> = {};
-    Object.entries(parsed as Record<string, unknown>).forEach(([email, key]) => {
-      const normalizedEmail = normalizeEmail(email);
-      const normalizedKey = String(key || "").trim();
-      if (!normalizedEmail || !normalizedKey) return;
-      out[normalizedEmail] = normalizedKey;
-    });
-    return out;
-  } catch (error) {
-    console.warn("Failed to parse OPENROUTER_KEYS_BY_EMAIL JSON.", error);
-    return {} as Record<string, string>;
-  }
-};
-
-const getAccessEmail = (request: Request) =>
-  normalizeEmail(
-    request.headers.get("CF-Access-Authenticated-User-Email") ||
-      request.headers.get("Cf-Access-Authenticated-User-Email") ||
-      request.headers.get("cf-access-authenticated-user-email")
-  );
-
-const getLocalBypassEmail = (request: Request, env: Record<string, unknown>) =>
-  normalizeEmail(request.headers.get("x-user-email") || env.LOCAL_DEV_EMAIL);
 
 const parseOpenRouterModels = (env: Record<string, unknown>) => {
   const rawList = String(
@@ -141,12 +102,6 @@ ${JSON.stringify(samples)}
 `;
 };
 
-const json = (data: unknown, status = 200) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  });
-
 export const onRequestPost = async (context: any) => {
   try {
     const payload = await context.request.json();
@@ -155,53 +110,14 @@ export const onRequestPost = async (context: any) => {
     const requestedModel = parseRequestedModel(payload?.model);
 
     if (!Array.isArray(samples) || !targetLang) {
-      return json({ error: "Invalid payload." }, 400);
+      return jsonResponse({ error: "Invalid payload." }, 400);
     }
 
     const env = (context.env || {}) as Record<string, unknown>;
-    const allowLocalWithoutAccess = TRUTHY.has(
-      String(env.ALLOW_LOCAL_WITHOUT_ACCESS || "").trim().toLowerCase()
-    );
-    const requireAccessEmail = TRUTHY.has(
-      String(env.REQUIRE_CF_ACCESS_EMAIL || "").trim().toLowerCase()
-    );
-    const accessEmail = getAccessEmail(context.request);
-    const localBypassEmail = allowLocalWithoutAccess ? getLocalBypassEmail(context.request, env) : "";
-    const userEmail = accessEmail || localBypassEmail;
-
-    const allowedEmails = parseAllowedEmails(env.ALLOWED_USER_EMAILS || env.ALLOWED_EMAILS);
-
-    if (allowedEmails.size > 0 && !userEmail) {
-      const hint = allowLocalWithoutAccess
-        ? " Set LOCAL_DEV_EMAIL or send x-user-email for local testing."
-        : "";
-      return json(
-        {
-          error: `Unauthorized: missing user email for whitelist check.${hint}`
-        },
-        401
-      );
-    }
-
-    if (!userEmail && requireAccessEmail) {
-      const hint = allowLocalWithoutAccess
-        ? " Set LOCAL_DEV_EMAIL or send x-user-email for local testing."
-        : "";
-      return json({ error: `Unauthorized: missing Cloudflare Access user email.${hint}` }, 401);
-    }
-
-    if (allowedEmails.size > 0 && !allowedEmails.has(userEmail)) {
-      return json({ error: "Forbidden: user not in whitelist." }, 403);
-    }
-
-    const userKeyMap = parseUserKeyMap(
-      env.OPENROUTER_KEYS_BY_EMAIL || env.OPENROUTER_KEY_BY_EMAIL
-    );
-    const defaultOpenRouterKey = String(
-      env.OPENROUTER_API_KEY || env.Openrouter_API_KEY || env.VITE_OPENROUTER_API_KEY || ""
-    ).trim();
-    const openRouterKey = String(userKeyMap[userEmail] || defaultOpenRouterKey || "").trim();
-    if (!openRouterKey) return json({ error: "OpenRouter key missing." }, 400);
+    const authResult = enforceRequestAuth(context.request, env);
+    if (!authResult.ok) return authResult.response;
+    const openRouterKey = getOpenRouterKeyForUser(env, authResult.auth.userEmail);
+    if (!openRouterKey) return jsonResponse({ error: "OpenRouter key missing." }, 400);
 
     const models = requestedModel ? [requestedModel] : parseOpenRouterModels(env);
     const referer =
@@ -250,19 +166,19 @@ export const onRequestPost = async (context: any) => {
         }
         const parsed = parseModelJsonObject<{ reviews?: unknown }>(String(content || ""));
         const reviews = normalizeReviewResults(parsed.reviews);
-        return json({ engine: "openrouter", model, reviews });
+        return jsonResponse({ engine: "openrouter", model, reviews });
       } catch (error) {
         errors.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
-    return json(
+    return jsonResponse(
       {
         error: `All OpenRouter models failed. ${errors.join(" | ").slice(0, 1500)}`
       },
       500
     );
   } catch (error: any) {
-    return json({ error: error?.message || "Unhandled error" }, 500);
+    return jsonResponse({ error: error?.message || "Unhandled error" }, 500);
   }
 };

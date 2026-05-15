@@ -47,6 +47,7 @@ Use Cloudflare Zero Trust Access policy:
 - allow only your team emails
 
 The server reads `CF-Access-Authenticated-User-Email` and rejects non-whitelisted users.
+The frontend reads `/api/me` to show the current user or blocked/guest state in the header. Use the same Access policy for the whole site if you want the UI itself hidden before login; use `/api/*` protection only if public viewing is acceptable but model calls must be gated.
 
 ## 5. Deploy
 If deploying from local CLI:

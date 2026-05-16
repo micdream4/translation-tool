@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.68
+
+- 真实文档回归库第一版落地：新增 `fixtures/real-document-regression.json`，把本地 Excel / DOCX / PDF 样本、目标语言和验证预期从脚本中抽成可版本化 manifest。
+- `npm run test:real-docs` 改为 manifest 驱动，输出 `caseId`、检查状态、真实文件质量统计、DOCX 已知残留命中和 PDF legacy image-only 基线。
+- 真实文档仍只保存在 `local-data/`，仓库只记录相对路径和检查规则，避免把敏感文件提交到 git。
+- 普通回归测试新增 manifest 结构断言，确保真实回归样本覆盖 Excel / DOCX / PDF，且 `local-data/` 继续被忽略。
+- 版本号更新为 `v0.0.68`。
+
 ## v0.0.67
 
 - 问题样本资产化继续落地：新增 `utils/issueAssets.ts`，可把本地 issue cases 转成 Translation Memory 句对、术语候选和 QA rule candidates。

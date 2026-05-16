@@ -11,12 +11,40 @@ const require = createRequire(import.meta.url);
 const XLSX = require("xlsx");
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
+const manifestPath = path.join(repoRoot, "fixtures/real-document-regression.json");
 
 const realPath = (...parts) => path.join(repoRoot, ...parts);
 
 const exists = (filePath) => fs.existsSync(filePath);
 
 const firstExisting = (candidates) => candidates.find((candidate) => candidate && exists(candidate)) || null;
+
+const loadManifest = () => {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  if (manifest.schema !== "poct.real_document_regression.v1") {
+    throw new Error(`Unsupported real document regression schema: ${manifest.schema}`);
+  }
+  return manifest;
+};
+
+const manifest = loadManifest();
+
+const findCase = (id) => {
+  const item = manifest.cases.find((entry) => entry.id === id);
+  if (!item) throw new Error(`Missing real document regression case: ${id}`);
+  return item;
+};
+
+const resolveLocalPath = (relativePath) => path.join(repoRoot, relativePath);
+
+const resolveLocalCandidates = (relativePaths = []) => relativePaths.map(resolveLocalPath);
+
+const check = (name, passed, details = {}) => ({ name, passed: Boolean(passed), ...details });
+
+const summarizeChecks = (checks = []) => {
+  if (checks.length === 0) return "not-checked";
+  return checks.every((item) => item.passed) ? "passed" : "warning";
+};
 
 const listPdfFiles = (dirPath) => {
   if (!exists(dirPath)) return [];
@@ -122,16 +150,17 @@ const renderPdfFirstPage = (filePath) => {
 };
 
 const runExcelSmoke = async () => {
-  const sourcePath = realPath("local-data/excel/source/BA512-AI版-兽-白细胞全-20250107.xlsx");
-  const translatedPath = realPath("local-data/excel/translated/Translated_English_BA512-AI版-兽-白细胞全-20250107 (7).xlsx");
+  const caseConfig = findCase("excel-ba512-english-smoke");
+  const sourcePath = resolveLocalPath(caseConfig.localPaths.source);
+  const translatedPath = resolveLocalPath(caseConfig.localPaths.translated);
   if (!sourcePath || !translatedPath || !exists(sourcePath) || !exists(translatedPath)) {
-    return { skipped: true, reason: "Excel sample files not found." };
+    return { caseId: caseConfig.id, skipped: true, status: "skipped", reason: "Excel sample files not found." };
   }
   const { parseExcelWorkbook, exportToExcel } = await bundleTsModule(realPath("utils/excel.ts"));
   const { runQualityChecks } = await bundleTsModule(realPath("utils/quality.ts"));
   const source = parseExcelWorkbook(XLSX.readFile(sourcePath, { cellStyles: true }));
   const translated = parseExcelWorkbook(XLSX.readFile(translatedPath, { cellStyles: true }));
-  const report = runQualityChecks(source.records, translated.records);
+  const report = runQualityChecks(source.records, translated.records, { targetLang: caseConfig.targetLang });
   const outPath = path.join(os.tmpdir(), `poct-real-excel-${Date.now()}.xlsx`);
   const exportStats = exportToExcel(translated.records, outPath, source.context, {
     overwriteFormulas: true
@@ -139,23 +168,52 @@ const runExcelSmoke = async () => {
   const exported = XLSX.readFile(outPath, { cellStyles: true });
   const exportedSheets = exported.SheetNames.length;
   fs.rmSync(outPath, { force: true });
+  const expectations = caseConfig.expectations || {};
+  const checks = [
+    check("source rows meet baseline", source.records.length >= (expectations.minSourceRows || 0), {
+      actual: source.records.length,
+      expected: expectations.minSourceRows || 0
+    }),
+    check("exported sheet count matches source", !expectations.exportedSheetsMustMatchSource || exportedSheets === source.context.sheets.length, {
+      actual: exportedSheets,
+      expected: source.context.sheets.length
+    }),
+    check("Chinese residue cells within baseline", report.totals.chineseCells <= (expectations.maxChineseCells ?? Number.POSITIVE_INFINITY), {
+      actual: report.totals.chineseCells,
+      expectedMax: expectations.maxChineseCells
+    }),
+    check("placeholder issue cells within baseline", report.totals.placeholderCells <= (expectations.maxPlaceholderCells ?? Number.POSITIVE_INFINITY), {
+      actual: report.totals.placeholderCells,
+      expectedMax: expectations.maxPlaceholderCells
+    }),
+    check("empty translations within baseline", report.totals.emptyTranslations <= (expectations.maxEmptyTranslations ?? Number.POSITIVE_INFINITY), {
+      actual: report.totals.emptyTranslations,
+      expectedMax: expectations.maxEmptyTranslations
+    }),
+    check("structure mismatches within baseline", report.totals.structureMismatches <= (expectations.maxStructureMismatches ?? Number.POSITIVE_INFINITY), {
+      actual: report.totals.structureMismatches,
+      expectedMax: expectations.maxStructureMismatches
+    })
+  ];
   return {
+    caseId: caseConfig.id,
     skipped: false,
+    status: summarizeChecks(checks),
     sourceRows: source.records.length,
     translatedRows: translated.records.length,
     sheets: source.context.sheets.length,
     exportedSheets,
     quality: report.totals,
-    exportStats
+    exportStats,
+    checks
   };
 };
 
 const runDocxSmoke = async () => {
-  const russianPath = realPath(
-    "local-data/docx/russia/Translated_Russian_DRS-BA532-04 Y6.06.08.003.A1 BA532兽用多功能分析仪 说明书A01-20260403使用环境增加了海拔要求(2).docx"
-  );
+  const caseConfig = findCase("docx-russian-residual-baseline");
+  const russianPath = resolveLocalPath(caseConfig.localPaths.translated);
   if (!exists(russianPath)) {
-    return { skipped: true, reason: "DOCX Russian sample file not found." };
+    return { caseId: caseConfig.id, skipped: true, status: "skipped", reason: "DOCX Russian sample file not found." };
   }
   const { isLikelyTargetLanguage } = await bundleTsModule(realPath("utils/language.ts"));
   const paragraphs = await extractDocxParagraphs(russianPath);
@@ -164,47 +222,106 @@ const runDocxSmoke = async () => {
     /\b(?:List|Building|Street|District|City|Province|feces|service|reference|establish|uncertain|White Blood Cell Count)\b/i.test(item.text)
   );
   const numbering = await inspectDocxNumbering(russianPath);
+  const expectations = caseConfig.expectations || {};
+  const knownResidualTerms = expectations.knownResidualTerms || [];
+  const knownResidualHits = knownResidualTerms
+    .map((term) => ({
+      term,
+      hits: paragraphs.filter((item) => item.text.toLowerCase().includes(String(term).toLowerCase())).length
+    }))
+    .filter((item) => item.hits > 0);
+  const checks = [
+    check("paragraph count meets baseline", paragraphs.length >= (expectations.minParagraphs || 0), {
+      actual: paragraphs.length,
+      expected: expectations.minParagraphs || 0
+    }),
+    check("CJK numbering formats within baseline", numbering.cjkFormats <= (expectations.maxCjkNumberingFormats ?? Number.POSITIVE_INFINITY), {
+      actual: numbering.cjkFormats,
+      expectedMax: expectations.maxCjkNumberingFormats
+    }),
+    check("CJK numbering separators within baseline", numbering.cjkSeparators <= (expectations.maxCjkNumberingSeparators ?? Number.POSITIVE_INFINITY), {
+      actual: numbering.cjkSeparators,
+      expectedMax: expectations.maxCjkNumberingSeparators
+    })
+  ];
   return {
+    caseId: caseConfig.id,
     skipped: false,
+    status: summarizeChecks(checks),
     paragraphs: paragraphs.length,
     nonTargetParagraphs: issueParagraphs.length,
     commonEnglishResiduals: commonEnglishResiduals.length,
+    knownResidualHits,
     examples: issueParagraphs.slice(0, 8).map((item) => item.text.slice(0, 160)),
-    numbering
+    numbering,
+    checks
   };
 };
 
 const runPdfSmoke = () => {
+  const caseConfig = findCase("pdf-detection-tutorial-french-text-layer");
   const pdfDir = realPath("local-data/pdf");
   const pdfFiles = listPdfFiles(pdfDir);
-  const sourcePath = firstExisting([
-    realPath("local-data/pdf/检测教程-202英文 (1).pdf"),
-    realPath("local-data/pdf/检测教程-202英文.pdf")
-  ]) || pdfFiles.find((filePath) => !/^Translated_/i.test(path.basename(filePath))) || null;
-  const translatedPath = firstExisting([
-    realPath("local-data/pdf/Translated_French_检测教程-202英文.pdf")
-  ]) || pdfFiles.find((filePath) => /^Translated_/i.test(path.basename(filePath))) || null;
-  if (!exists(sourcePath) || !exists(translatedPath)) {
-    return { skipped: true, reason: "PDF sample files not found." };
+  const sourcePath = firstExisting(resolveLocalCandidates(caseConfig.localPaths.sourceCandidates)) ||
+    pdfFiles.find((filePath) => !/^Translated_/i.test(path.basename(filePath))) ||
+    null;
+  const translatedPath = firstExisting(resolveLocalCandidates(caseConfig.localPaths.translatedCandidates)) ||
+    pdfFiles.find((filePath) => /^Translated_/i.test(path.basename(filePath))) ||
+    null;
+  if (!sourcePath || !translatedPath || !exists(sourcePath) || !exists(translatedPath)) {
+    return { caseId: caseConfig.id, skipped: true, status: "skipped", reason: "PDF sample files not found." };
   }
+  const source = {
+    ...pdfInfo(sourcePath),
+    text: pdfTextLength(sourcePath),
+    renderBytes: renderPdfFirstPage(sourcePath)
+  };
+  const translated = {
+    ...pdfInfo(translatedPath),
+    text: pdfTextLength(translatedPath),
+    renderBytes: renderPdfFirstPage(translatedPath)
+  };
+  const expectations = caseConfig.expectations || {};
+  const translatedTextLayerCheck = expectations.translatedLegacyImageOnlyAllowed
+    ? check("legacy translated PDF may be image-only", true, {
+        actualTextChars: translated.text.chars,
+        note: translated.text.chars === 0 ? "legacy image-only artifact tracked" : "translated PDF has extractable text"
+      })
+    : check("translated PDF has extractable text", translated.text.chars > 0, { actualTextChars: translated.text.chars });
+  const checks = [
+    check("source PDF text extraction meets baseline", source.text.chars >= (expectations.sourceMinTextChars || 0), {
+      actual: source.text.chars,
+      expectedMin: expectations.sourceMinTextChars || 0
+    }),
+    check("source PDF render meets baseline", source.renderBytes >= (expectations.sourceMinRenderBytes || 0), {
+      actual: source.renderBytes,
+      expectedMin: expectations.sourceMinRenderBytes || 0
+    }),
+    check("translated PDF render meets baseline", translated.renderBytes >= (expectations.translatedMinRenderBytes || 0), {
+      actual: translated.renderBytes,
+      expectedMin: expectations.translatedMinRenderBytes || 0
+    }),
+    translatedTextLayerCheck
+  ];
   return {
+    caseId: caseConfig.id,
     skipped: false,
-    source: {
-      ...pdfInfo(sourcePath),
-      text: pdfTextLength(sourcePath),
-      renderBytes: renderPdfFirstPage(sourcePath)
-    },
-    translated: {
-      ...pdfInfo(translatedPath),
-      text: pdfTextLength(translatedPath),
-      renderBytes: renderPdfFirstPage(translatedPath)
-    }
+    status: summarizeChecks(checks),
+    source,
+    translated,
+    checks
   };
 };
 
 const main = async () => {
   const result = {
+    schema: "poct.real_document_smoke_result.v1",
     createdAt: new Date().toISOString(),
+    manifest: {
+      schema: manifest.schema,
+      caseCount: manifest.cases.length,
+      caseIds: manifest.cases.map((item) => item.id)
+    },
     excel: await runExcelSmoke(),
     docx: await runDocxSmoke(),
     pdf: runPdfSmoke()

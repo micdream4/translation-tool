@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.67`。
+当前版本：`v0.0.68`。
 
 稳定地址：
 
@@ -85,14 +85,15 @@ https://translation-tool-917.pages.dev
 35. PDF 下载前会记录文本层统计：可复制文本层段数、总段数和图片文本回退段数。
 36. `utils/issueAssets.ts` 已新增问题样本资产转换层，可从 issue cases 生成 TM 句对、术语候选和 QA rule candidates。
 37. Quality Loop 面板已提供 `Promote TM` 和 `Asset JSON`，人工修正样本可以批量写入 Translation Memory 或导出资产候选包。
+38. 真实文档回归样本已抽成 `fixtures/real-document-regression.json`，`npm run test:real-docs` 按 manifest 跑本地 Excel / DOCX / PDF 样本，并输出每个 `caseId` 的检查状态。
 
 ## 真实回归基线
 
 最近一次 `npm run test:real-docs` 结果摘要：
 
 - Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；统一 Quality Core 统计正常，仍有大量 spacing 类提示，需要后续分级优化。
-- DOCX 俄语：旧译文仍有英文残留，1195 段中 182 段被判非目标语言，35 段命中常见英文残留；Russian profile 已扩大词表和后处理，下一步继续通过真实 Issue/Debug Package 转规则。
-- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但文本层为空。新导出的法语 PDF 已改为先写规范化文本层，并在下载日志暴露文本层覆盖率。
+- DOCX 俄语：旧译文仍有英文残留，真实回归 manifest 会持续跟踪非目标语言段落、常见残留词和自动编号是否还带 CJK 格式。
+- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但可能文本层为空。新导出的法语 PDF 已改为先写规范化文本层，并在下载日志暴露文本层覆盖率。
 
 ## 当前主要待办
 

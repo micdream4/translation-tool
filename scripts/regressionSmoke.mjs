@@ -214,6 +214,31 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(appSource, /Auto \$\{documentKind\.toUpperCase\(\)\} Quality/);
 });
 
+test("real document smoke uses a local-only regression manifest", () => {
+  const manifestPath = path.join(repoRoot, "fixtures/real-document-regression.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const smokeSource = fs.readFileSync(path.join(repoRoot, "scripts/realDocumentSmoke.mjs"), "utf8");
+  const gitignoreSource = fs.readFileSync(path.join(repoRoot, ".gitignore"), "utf8");
+
+  assert.equal(manifest.schema, "poct.real_document_regression.v1");
+  assert.deepEqual(
+    manifest.cases.map((item) => item.documentKind).sort(),
+    ["docx", "excel", "pdf"]
+  );
+  assert.ok(manifest.cases.every((item) => item.id && item.description && item.expectations));
+  assert.ok(
+    manifest.cases.some((item) =>
+      JSON.stringify(item).includes("local-data/docx/russia/")
+    )
+  );
+  assert.match(smokeSource, /real-document-regression\.json/);
+  assert.match(smokeSource, /poct\.real_document_regression\.v1/);
+  assert.match(smokeSource, /caseId: caseConfig\.id/);
+  assert.match(smokeSource, /knownResidualHits/);
+  assert.match(smokeSource, /legacy image-only artifact tracked/);
+  assert.match(gitignoreSource, /^local-data\/$/m);
+});
+
 test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", () => {
   const docxSource = fs.readFileSync(path.join(repoRoot, "utils/docx.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");

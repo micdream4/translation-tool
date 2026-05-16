@@ -1,0 +1,67 @@
+{
+  "schema": "poct.real_document_regression.v1",
+  "description": "Local-only real document regression manifest. The files live under local-data and must stay out of git.",
+  "cases": [
+    {
+      "id": "excel-ba512-english-smoke",
+      "documentKind": "excel",
+      "targetLang": "English",
+      "description": "Real multi-sheet Excel baseline: parse, quality-check, export, and preserve sheet count.",
+      "localPaths": {
+        "source": "local-data/excel/source/BA512-AI版-兽-白细胞全-20250107.xlsx",
+        "translated": "local-data/excel/translated/Translated_English_BA512-AI版-兽-白细胞全-20250107 (7).xlsx"
+      },
+      "expectations": {
+        "minSourceRows": 1,
+        "maxChineseCells": 0,
+        "maxPlaceholderCells": 0,
+        "maxEmptyTranslations": 0,
+        "maxStructureMismatches": 0,
+        "exportedSheetsMustMatchSource": true
+      }
+    },
+    {
+      "id": "docx-russian-residual-baseline",
+      "documentKind": "docx",
+      "targetLang": "Russian",
+      "description": "Known Russian DOCX residual baseline: track English residue and CJK numbering formats from the real translated file.",
+      "localPaths": {
+        "translated": "local-data/docx/russia/Translated_Russian_DRS-BA532-04 Y6.06.08.003.A1 BA532兽用多功能分析仪 说明书A01-20260403使用环境增加了海拔要求(2).docx"
+      },
+      "expectations": {
+        "minParagraphs": 1,
+        "maxCjkNumberingFormats": 0,
+        "maxCjkNumberingSeparators": 0,
+        "trackNonTargetParagraphs": true,
+        "knownResidualTerms": [
+          "List",
+          "ref",
+          "reference",
+          "service",
+          "1-year"
+        ]
+      }
+    },
+    {
+      "id": "pdf-detection-tutorial-french-text-layer",
+      "documentKind": "pdf",
+      "targetLang": "French",
+      "description": "Real text-based PDF baseline: source should be text-extractable; legacy translated PDF may still be image-only, while new browser exports must expose text-layer stats.",
+      "localPaths": {
+        "sourceCandidates": [
+          "local-data/pdf/检测教程-202英文 (1).pdf",
+          "local-data/pdf/检测教程-202英文.pdf"
+        ],
+        "translatedCandidates": [
+          "local-data/pdf/Translated_French_检测教程-202英文.pdf"
+        ]
+      },
+      "expectations": {
+        "sourceMinTextChars": 1000,
+        "sourceMinRenderBytes": 1000,
+        "translatedMinRenderBytes": 1000,
+        "translatedLegacyImageOnlyAllowed": true
+      }
+    }
+  ]
+}

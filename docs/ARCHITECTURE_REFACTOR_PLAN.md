@@ -58,6 +58,7 @@
 - Quality Report 面板已新增 `Issue Draft`，可导出 GitHub Issue Markdown 草稿。
 - 已新增 `utils/regressionAssets.ts`、`fixtures/translation-issue-regression.jsonl` 和 `scripts/debugPackageToRegression.mjs`，支持从 Issue Case / Debug Package 生成回归测试资产。
 - 已新增 `.github/workflows/quality-gate.yml` 和 `npm run test:quality-gate`。
+- 已新增 `fixtures/real-document-regression.json`，将本地真实 Excel / DOCX / PDF 样本路径和质量预期从 smoke 脚本中抽成 manifest；真实文档继续留在 `local-data/`，只提交规则和相对路径。
 - `quality/checks.ts` 已接收 `targetLang`，并把非目标语言残留沉淀为 `QualityReport.issues.nonTargetLanguage` 与 `nonTargetCells/nonTargetRows` 统计；Excel/DOCX/PDF 的 Quality Check 均已传入目标语言。
 - 已新增 `quality/report.ts` 和 `quality/retryTargets.ts` 入口，后续新代码优先从 `quality/` 命名空间调用报告与补译目标逻辑，`utils/` 保留兼容层。
 - 下一步优先做 Russian/French profile 真实化、PDF 文本层专项和问题样本到规则候选的自动沉淀。

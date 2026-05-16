@@ -31,6 +31,11 @@
 
 原则：Excel、DOCX、PDF 不再各自写一套残留识别和 issue summary。
 
+当前进度：
+
+- 已新增 `utils/qualityReport.ts`，先抽出 Quality Report finding 构建、报告文本导出和 issue type 映射。
+- 下一步再抽 `quality/types.ts` 和文档 adapter，避免一次性改动质量检查、补译和 UI 三条链路。
+
 ### 3. App.tsx 拆分
 
 第一阶段保持行为不变，只拆边界：

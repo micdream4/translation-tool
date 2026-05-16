@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.51
+
+- 继续拆分 `App.tsx`：新增 `utils/qualityReport.ts`，把 Quality Report finding 构建、导出文本生成、finding 到 issue case 类型映射从主组件抽成纯逻辑模块。
+- `App.tsx` 质量报告相关代码减少约 150 行，后续拆 `QualityReportPanel` 时可直接复用 `buildQualityFindings`、`buildQualityReportText` 和 `mapQualityFindingToIssueType`。
+- 回归测试扩展到新的质量报告模块，覆盖 finding 排序、Issue 类型映射和 Quality Report 文本导出。
+- 版本号更新为 `v0.0.51`。
+
 ## v0.0.50
 
 - 新增 GitHub Issue 表单 `.github/ISSUE_TEMPLATE/translation-bug.yml`，公司电脑发现翻译、格式、导出、补译、质量检查问题时可直接提交结构化问题和脱敏截图。

@@ -50,8 +50,7 @@ import {
   countTranslationIssueCases,
   loadTranslationIssueCases,
   saveTranslationIssueCase,
-  serializeTranslationIssueCasesJsonl,
-  type TranslationIssueType
+  serializeTranslationIssueCasesJsonl
 } from './utils/issueCases';
 import { normalizeTerminology } from './utils/terminology';
 import { polishTranslation, fixSpacingArtifacts } from './utils/postprocess';
@@ -97,6 +96,12 @@ import {
   type ModelReviewStyle
 } from './utils/modelReview';
 import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
+import {
+  buildQualityFindings,
+  buildQualityReportText,
+  mapQualityFindingToIssueType,
+  type QualityFinding
+} from './utils/qualityReport';
 import {
   ClinicalRule,
   CrossCheckResult,
@@ -264,18 +269,6 @@ type DocxIssueDetail = {
   chineseChars: number;
   lowPriority: boolean;
   issueType: 'source' | 'placeholder' | 'glue';
-};
-
-type QualityFinding = {
-  id: string;
-  category: 'nonTarget' | 'chinese' | 'emptyTranslation' | 'placeholder' | 'idMismatch' | 'spacing' | 'structureMismatch';
-  rowIndex: number;
-  columnKey: string;
-  locationLabel: string;
-  original: string;
-  translated: string;
-  description: string;
-  severity?: QualitySeverity;
 };
 
 type SampleReviewItem = {
@@ -1288,82 +1281,17 @@ const App: React.FC = () => {
       sourceRows: data,
       targetRows: currentRowsForRetry
     };
-    const findings = [
-      ...currentIssueSummary.details.map((item) => ({
-        type: 'Non-target language',
-        location: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: typeof qualityRows.sourceRows[item.rowIndex]?.[item.columnKey] === 'string'
-          ? qualityRows.sourceRows[item.rowIndex][item.columnKey]
-          : '',
-        translated: typeof qualityRows.targetRows[item.rowIndex]?.[item.columnKey] === 'string'
-          ? qualityRows.targetRows[item.rowIndex][item.columnKey]
-          : ''
-      })),
-      ...qualityReport.issues.emptyTranslations.map((item) => ({
-        type: 'Empty translation',
-        location: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: item.original || '',
-        translated: item.value || ''
-      })),
-      ...qualityReport.issues.structureMismatches.map((item) => ({
-        type: 'Structure mismatch',
-        location: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: item.original || '',
-        translated: item.value || ''
-      })),
-      ...qualityReport.issues.placeholders.map((item) => ({
-        type: 'Placeholder',
-        location: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: item.original || '',
-        translated: item.value || ''
-      })),
-      ...qualityReport.issues.idMismatch.map((item) => ({
-        type: 'ID mismatch',
-        location: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: item.original || '',
-        translated: item.value || ''
-      })),
-      ...qualityReport.issues.spacing.map((item) => ({
-        type: 'Spacing issue',
-        severity: item.severity || 'medium',
-        location: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: item.original || '',
-        translated: item.value || ''
-      }))
-    ];
-
-    const lines = [
-      'POCT Translation Quality Report',
-      `Generated: ${new Date().toLocaleString()}`,
-      `Target language: ${targetLang}`,
-      '',
-      'Overview',
-      `- Rows scanned: ${qualityReport.totals.rowsScanned}`,
-      `- Cells scanned: ${qualityReport.totals.cellsScanned}`,
-      `- Non-target residual: ${currentIssueSummary.cells} cells / ${currentIssueSummary.rows} rows`,
-      `- Chinese residue: ${qualityReport.totals.chineseCells} cells / ${qualityReport.totals.chineseRows} rows`,
-      `- Empty translations: ${qualityReport.totals.emptyTranslations} cells / ${qualityReport.totals.emptyTranslationRows} rows`,
-      `- Placeholders: ${qualityReport.totals.placeholderCells} cells / ${qualityReport.totals.placeholderRows} rows`,
-      `- ID mismatch: ${qualityReport.totals.idMismatches} cells / ${qualityReport.totals.idMismatchRows} rows`,
-      `- Spacing issues: ${qualityReport.totals.spacingIssues} cells / ${qualityReport.totals.spacingRows} rows`,
-      `  - High: ${qualityReport.totals.spacingHigh}`,
-      `  - Medium: ${qualityReport.totals.spacingMedium}`,
-      `  - Low: ${qualityReport.totals.spacingLow}`,
-      `- Structure mismatch: ${qualityReport.totals.structureMismatches} cells / ${qualityReport.totals.structureMismatchRows} rows`,
-      '',
-      'Findings'
-    ];
-
-    findings.slice(0, 200).forEach((item, index) => {
-      lines.push(
-        `${index + 1}. [${item.type}${item.severity ? ` / ${String(item.severity).toUpperCase()}` : ''}] ${item.location}`,
-        `   Source: ${String(item.original || '').replace(/\s+/g, ' ').trim() || '(empty)'}`,
-        `   Target: ${String(item.translated || '').replace(/\s+/g, ' ').trim() || '(empty)'}`
-      );
-    });
-
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadTextFile(`Quality_Report_${targetLang}_${stamp}.txt`, lines.join('\n'));
+    downloadTextFile(
+      `Quality_Report_${targetLang}_${stamp}.txt`,
+      buildQualityReportText({
+        qualityReport,
+        nonTargetDetails: currentIssueSummary.details,
+        qualityRows,
+        targetLang,
+        formatLocationLabel
+      })
+    );
     addLog('Quality Report: 已导出当前检查报告。');
   };
 
@@ -1372,24 +1300,6 @@ const App: React.FC = () => {
     resetSampleReviewState();
     setPreviewFocus(null);
     addLog('Quality Report: 已清除当前检查结果。');
-  };
-
-  const mapQualityFindingToIssueType = (finding: QualityFinding): TranslationIssueType => {
-    switch (finding.category) {
-      case 'nonTarget':
-      case 'chinese':
-        return 'non-target-residual';
-      case 'placeholder':
-      case 'idMismatch':
-        return 'placeholder';
-      case 'spacing':
-        return 'number-unit-format';
-      case 'structureMismatch':
-        return 'layout';
-      case 'emptyTranslation':
-      default:
-        return 'accuracy';
-    }
   };
 
   const saveQualityFindingCorrection = async (finding: QualityFinding) => {
@@ -4341,75 +4251,11 @@ const App: React.FC = () => {
     };
   }, [documentKind, data, currentRowsForRetry, docxStats, pdfStats, docxIssueDetails, pdfIssueDetails]);
   const qualityFindings = useMemo<QualityFinding[]>(() => {
-    if (!qualityReport) return [];
-
-    const findingMap = new Map<string, QualityFinding>();
-    const pushFinding = (finding: QualityFinding) => {
-      if (!findingMap.has(finding.id)) {
-        findingMap.set(finding.id, finding);
-      }
-    };
-
-    currentIssueSummary.details.forEach((item) => {
-      const translated =
-        typeof qualityRowsForDisplay.targetRows[item.rowIndex]?.[item.columnKey] === 'string'
-          ? qualityRowsForDisplay.targetRows[item.rowIndex][item.columnKey]
-          : '';
-      pushFinding({
-        id: `nonTarget-${item.rowIndex}-${item.columnKey}`,
-        category: 'nonTarget',
-        rowIndex: item.rowIndex,
-        columnKey: item.columnKey,
-        locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
-        original: typeof qualityRowsForDisplay.sourceRows[item.rowIndex]?.[item.columnKey] === 'string'
-          ? qualityRowsForDisplay.sourceRows[item.rowIndex][item.columnKey]
-          : '',
-        translated,
-        description: '检测到非目标语言残留'
-      });
-    });
-
-    const appendQualityIssues = (
-      category: QualityFinding['category'],
-      list: Array<{ rowIndex: number; columnKey: string; original?: string; value: string; severity?: QualitySeverity }>,
-      description: string
-    ) => {
-      list.forEach((item) => {
-        pushFinding({
-          id: `${category}-${item.rowIndex}-${item.columnKey}`,
-          category,
-          rowIndex: item.rowIndex,
-          columnKey: item.columnKey,
-          locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
-          original: item.original || '',
-          translated: item.value || '',
-          description,
-          severity: item.severity
-        });
-      });
-    };
-
-    appendQualityIssues('chinese', qualityReport.issues.chinese, '仍有中文残留');
-    appendQualityIssues('emptyTranslation', qualityReport.issues.emptyTranslations, '原文可译，但目标单元格为空');
-    appendQualityIssues('placeholder', qualityReport.issues.placeholders, '占位符泄漏');
-    appendQualityIssues('idMismatch', qualityReport.issues.idMismatch, '锁定字段与原文不一致');
-    appendQualityIssues('spacing', qualityReport.issues.spacing, '格式或空格异常');
-    appendQualityIssues('structureMismatch', qualityReport.issues.structureMismatches, '表结构与原文不一致');
-
-    const order: Record<QualityFinding['category'], number> = {
-      nonTarget: 0,
-      emptyTranslation: 1,
-      structureMismatch: 2,
-      placeholder: 3,
-      idMismatch: 4,
-      chinese: 5,
-      spacing: 6
-    };
-
-    return [...findingMap.values()].sort((a, b) => {
-      if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
-      if (order[a.category] !== order[b.category]) return order[a.category] - order[b.category];
-      return a.columnKey.localeCompare(b.columnKey);
+    return buildQualityFindings({
+      qualityReport,
+      nonTargetDetails: currentIssueSummary.details,
+      qualityRows: qualityRowsForDisplay,
+      formatLocationLabel
     });
   }, [qualityReport, currentIssueSummary.details, qualityRowsForDisplay, excelContext]);
   const sampleReviewAiSummary = useMemo(

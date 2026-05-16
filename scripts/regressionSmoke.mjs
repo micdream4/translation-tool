@@ -231,8 +231,12 @@ test("translation memory supports exact reuse and in-file dedupe", async () => {
 test("quality issue cases can be saved and exported from quality findings", async () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const issueCaseSource = fs.readFileSync(path.join(repoRoot, "utils/issueCases.ts"), "utf8");
+  const qualityReportSource = fs.readFileSync(path.join(repoRoot, "utils/qualityReport.ts"), "utf8");
   const { buildTranslationIssueCase, serializeTranslationIssueCasesJsonl } = await transpileTsModule(
     path.join(repoRoot, "utils/issueCases.ts")
+  );
+  const { buildQualityFindings, buildQualityReportText, mapQualityFindingToIssueType } = await transpileTsModule(
+    path.join(repoRoot, "utils/qualityReport.ts")
   );
 
   const issueCase = buildTranslationIssueCase(
@@ -268,6 +272,69 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(appSource, /Export Cases/);
   assert.match(appSource, /saveTranslationIssueCase/);
   assert.match(appSource, /rememberTranslationPairs/);
+  assert.match(appSource, /buildQualityFindings/);
+  assert.match(appSource, /buildQualityReportText/);
+  assert.match(qualityReportSource, /mapQualityFindingToIssueType/);
+
+  const qualityReport = {
+    totals: {
+      cellsScanned: 3,
+      rowsScanned: 2,
+      chineseCells: 0,
+      chineseRows: 0,
+      placeholderCells: 1,
+      placeholderRows: 1,
+      idMismatches: 0,
+      idMismatchRows: 0,
+      spacingIssues: 1,
+      spacingRows: 1,
+      spacingHigh: 0,
+      spacingMedium: 1,
+      spacingLow: 0,
+      emptyTranslations: 0,
+      emptyTranslationRows: 0,
+      structureMismatches: 0,
+      structureMismatchRows: 0
+    },
+    issues: {
+      chinese: [],
+      placeholders: [{ rowIndex: 1, columnKey: "content", value: "__TKN_1__", original: "%s", type: "placeholder" }],
+      idMismatch: [],
+      spacing: [{ rowIndex: 0, columnKey: "content", value: "2 - 8 °C", original: "2-8°C", type: "spacing", severity: "medium" }],
+      emptyTranslations: [],
+      structureMismatches: []
+    }
+  };
+  const findings = buildQualityFindings({
+    qualityReport,
+    nonTargetDetails: [{ rowIndex: 0, columnKey: "content", value: "List контрольных образцов" }],
+    qualityRows: {
+      sourceRows: [{ content: "List of control samples" }, { content: "%s" }],
+      targetRows: [{ content: "List контрольных образцов" }, { content: "__TKN_1__" }]
+    },
+    formatLocationLabel: (rowIndex, columnKey) => `R${rowIndex + 1}/${columnKey}`
+  });
+
+  assert.deepEqual(
+    findings.map((finding) => finding.category),
+    ["nonTarget", "spacing", "placeholder"]
+  );
+  assert.equal(mapQualityFindingToIssueType(findings[0]), "non-target-residual");
+  assert.equal(mapQualityFindingToIssueType(findings[1]), "number-unit-format");
+  const reportText = buildQualityReportText({
+    qualityReport,
+    nonTargetDetails: [{ rowIndex: 0, columnKey: "content", value: "List контрольных образцов" }],
+    qualityRows: {
+      sourceRows: [{ content: "List of control samples" }, { content: "%s" }],
+      targetRows: [{ content: "List контрольных образцов" }, { content: "__TKN_1__" }]
+    },
+    targetLang: "Russian",
+    formatLocationLabel: (rowIndex, columnKey) => `R${rowIndex + 1}/${columnKey}`,
+    generatedAt: new Date("2026-01-01T00:00:00.000Z")
+  });
+  assert.match(reportText, /Target language: Russian/);
+  assert.match(reportText, /Non-target residual: 1 cells \/ 1 rows/);
+  assert.match(reportText, /\[Placeholder\] R2\/content/);
 });
 
 test("Traditional Chinese Taiwan target has UI, prompt, and quality-check coverage", async () => {

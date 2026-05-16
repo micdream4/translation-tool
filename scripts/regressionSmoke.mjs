@@ -175,9 +175,11 @@ test("GitHub issue template captures debug packages with available labels", () =
   assert.match(templateSource, /Debug Package/);
 });
 
-test("PDF support is text-first and exports translated content as DOCX", () => {
+test("PDF support is text-first and exports translated content as DOCX", async () => {
   const pdfSource = fs.readFileSync(path.join(repoRoot, "utils/pdf.ts"), "utf8");
+  const pdfTextLayerSource = fs.readFileSync(path.join(repoRoot, "utils/pdfTextLayer.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const { canDrawSelectablePdfText, normalizePdfTextLayerText } = await bundleTsModule(path.join(repoRoot, "utils/pdfTextLayer.ts"));
   assert.match(pdfSource, /getDocument\(\{ data \}\)/);
   assert.match(pdfSource, /getTextContent\(\)/);
   assert.match(pdfSource, /getOperatorList\(\)/);
@@ -191,7 +193,17 @@ test("PDF support is text-first and exports translated content as DOCX", () => {
   assert.match(pdfSource, /getPositionedPageSegments/);
   assert.match(pdfSource, /renderTextBlockToPng/);
   assert.match(pdfSource, /drawSelectablePdfText/);
-  assert.match(pdfSource, /PDF_TEXT_LAYER_SAFE_REGEX/);
+  assert.match(pdfTextLayerSource, /PDF_TEXT_LAYER_SAFE_REGEX/);
+  assert.match(pdfTextLayerSource, /normalizePdfTextLayerText/);
+  assert.match(pdfSource, /from '.\/pdfTextLayer'/);
+  assert.match(pdfSource, /getPdfTextLayerStats/);
+  assert.match(appSource, /PDF text layer:/);
+  assert.equal(
+    normalizePdfTextLayerText("L\u2019\u00E9chantillon \u0153st pr\u00EAt \u2013 2\u202F\u00B5l"),
+    "L'\u00E9chantillon oest pr\u00EAt - 2 ul"
+  );
+  assert.equal(canDrawSelectablePdfText("L\u2019\u00E9chantillon est pr\u00EAt \u2013 2\u202F\u00B5l"), true);
+  assert.equal(canDrawSelectablePdfText("Подготовка образца"), false);
   assert.match(appSource, /PDF download blocked/);
   assert.match(pdfSource, /已回填 .* 个可提取图片/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);

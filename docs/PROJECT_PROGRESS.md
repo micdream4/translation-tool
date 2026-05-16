@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.66
+
+- PDF 文本层专项修复：新增 `utils/pdfTextLayer.ts`，把 PDF 可复制文本层规范化逻辑从 `pdf.ts` 拆出，便于独立测试。
+- PDF 直出对法语等 Latin 目标语言不再因 `’`、`œ`、窄空格、长横线、`µ` 等字符整段回退 PNG；会先规范化为 Helvetica/Latin-1 可写文本层，再必要时回退图片文本。
+- 新增 `getPdfTextLayerStats`，下载译文 PDF 前日志会显示“可复制文本层段数 / 总段数 / 图片回退段数”，方便判断导出的 PDF 是否适合复制核对。
+- 回归测试覆盖 `normalizePdfTextLayerText` 与 `canDrawSelectablePdfText`，确认法语文本可进入文本层，俄语等非 Latin-1 文本仍回退图片文本。
+- 版本号更新为 `v0.0.66`。
+
 ## v0.0.65
 
 - 目标语言 profile 继续做实：`utils/languageProfiles.ts` 新增 French 高置信英文残留词/短语规则，`Quickly squeeze`、`The blue button is lifted` 等 PDF 操作标签可被法语目标检测拦截。

@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.65`。
+当前版本：`v0.0.66`。
 
 稳定地址：
 
@@ -81,6 +81,8 @@ https://translation-tool-917.pages.dev
 31. 已新增 `quality/report.ts` 和 `quality/retryTargets.ts` 入口，新的质量报告/补译目标代码优先从 `quality/` 引入，旧 `utils/` 入口保留兼容。
 32. Russian/French profile 已进入可执行规则阶段：French 能检测 `Quickly squeeze`、`The blue button is lifted` 等英文标签残留，Russian 增加 `ref/year/reference/service/sample/result` 等真实 DOCX 残留词和轻量后处理。
 33. Issue regression fixture 已扩到 5 条，新增法语 PDF 英文标签残留和俄语 `1-year` 残留样本。
+34. PDF 文本层规范化已拆到 `utils/pdfTextLayer.ts`，法语 `’/œ/窄空格/长横线/µ` 等字符会先转成可复制文本层，不再整段退回 PNG。
+35. PDF 下载前会记录文本层统计：可复制文本层段数、总段数和图片文本回退段数。
 
 ## 真实回归基线
 
@@ -88,7 +90,7 @@ https://translation-tool-917.pages.dev
 
 - Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；统一 Quality Core 统计正常，仍有大量 spacing 类提示，需要后续分级优化。
 - DOCX 俄语：旧译文仍有英文残留，1195 段中 182 段被判非目标语言，35 段命中常见英文残留；Russian profile 已扩大词表和后处理，下一步继续通过真实 Issue/Debug Package 转规则。
-- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但文本层为空，French profile 已能拦截图片标签周边的高置信英文残留，下一步进入 PDF 文本层专项。
+- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但文本层为空。新导出的法语 PDF 已改为先写规范化文本层，并在下载日志暴露文本层覆盖率。
 
 ## 当前主要待办
 

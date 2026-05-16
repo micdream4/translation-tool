@@ -1,7 +1,7 @@
 {
   "name": "copy-of-poct-medical-document-translator",
   "private": true,
-  "version": "0.0.65",
+  "version": "0.0.66",
   "type": "module",
   "scripts": {
     "prepare:terminology": "node scripts/generateTerminologyAssets.mjs",

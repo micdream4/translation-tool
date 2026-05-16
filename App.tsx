@@ -22,6 +22,7 @@ import {
   exportPdfTranslationAsDocx,
   exportPdfTranslationAsPdf,
   getPdfSegmentText,
+  getPdfTextLayerStats,
   setPdfSegmentText,
   type PdfContext,
   type PdfSegment
@@ -3541,6 +3542,10 @@ const App: React.FC = () => {
       }
       const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
       const filename = `Translated_${targetLang}_${baseName}.pdf`;
+      const textLayerStats = getPdfTextLayerStats(context);
+      addLog(
+        `PDF text layer: ${textLayerStats.selectableSegments}/${textLayerStats.totalSegments} 段将写入可复制文本层，${textLayerStats.imageFallbackSegments} 段回退为图片文本。`
+      );
       addLog(`Generating file: ${filename}`);
       void exportPdfTranslationAsPdf(context, filename)
         .then(() => addLog(`PDF export completed: ${filename}`))

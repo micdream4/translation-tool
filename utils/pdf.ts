@@ -7,6 +7,12 @@ import {
   TextRun
 } from 'docx';
 import { jsPDF } from 'jspdf';
+import {
+  canDrawSelectablePdfText,
+  hasUsefulPdfTextLayer,
+  normalizePdfTextLayerText,
+  PDF_TEXT_LAYER_SAFE_REGEX
+} from './pdfTextLayer';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -757,7 +763,15 @@ const renderTextBlockToPng = async (
   };
 };
 
-const PDF_TEXT_LAYER_SAFE_REGEX = /^[\u0009\u000A\u000D\u0020-\u00FF]+$/;
+export const getPdfTextLayerStats = (context: PdfContext) => {
+  const textSegments = context.segments.filter((segment) => sanitizePdfText(getPdfSegmentText(segment)));
+  const selectableSegments = textSegments.filter((segment) => canDrawSelectablePdfText(getPdfSegmentText(segment)));
+  return {
+    totalSegments: textSegments.length,
+    selectableSegments: selectableSegments.length,
+    imageFallbackSegments: Math.max(0, textSegments.length - selectableSegments.length)
+  };
+};
 
 const drawSelectablePdfText = (
   output: jsPDF,
@@ -768,7 +782,9 @@ const drawSelectablePdfText = (
   maxHeight: number,
   fontSizePoints: number
 ) => {
-  if (!PDF_TEXT_LAYER_SAFE_REGEX.test(text)) return false;
+  const textLayerText = normalizePdfTextLayerText(text);
+  if (!PDF_TEXT_LAYER_SAFE_REGEX.test(textLayerText)) return false;
+  if (!hasUsefulPdfTextLayer(text, textLayerText)) return false;
   const horizontalPadding = 3;
   const verticalPadding = 2;
   const availableWidth = Math.max(8, maxWidth - horizontalPadding * 2);
@@ -779,7 +795,7 @@ const drawSelectablePdfText = (
   output.setFont("helvetica", "normal");
   while (fontSize >= PDF_TEXT_MIN_FONT_SIZE) {
     output.setFontSize(fontSize);
-    lines = output.splitTextToSize(text, availableWidth).map((line) => String(line || ""));
+    lines = output.splitTextToSize(textLayerText, availableWidth).map((line) => String(line || ""));
     lineHeight = fontSize * 1.18;
     if (lines.length * lineHeight + verticalPadding * 2 <= maxHeight || fontSize <= PDF_TEXT_MIN_FONT_SIZE) {
       break;

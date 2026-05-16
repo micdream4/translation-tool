@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.71
+
+- 修复 Quality Report finding 的 Source / Target 展示策略：所有 finding 和导出报告优先从 `qualityRows.sourceRows/targetRows` 读取原文与译文，避免 DOCX/PDF 报告把译文误显示为原文。
+- 针对 DOCX 英文译俄语的真实问题建立本地 issue 包：`local-data/issues/2026-05-16-docx-russian-quality-source-target-mismatch/`，包含 Debug Package、Quality Report 和复核说明。
+- 回归测试覆盖“issue.original 不可靠时仍使用 qualityRows 原文/译文”的情况，防止后续质量报告再次显示同源同译。
+- 版本号更新为 `v0.0.71`。
+
 ## v0.0.70
 
 - 将 `local-data/README.md` 改成中文目录规则，明确 `inbox`、`done`、`failed`、`issues`、`debug-packages`、`regression-jsonl`、`issue-assets`、`screenshots` 分别放什么。

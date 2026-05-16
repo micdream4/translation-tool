@@ -451,6 +451,82 @@ test("quality issue cases can be saved and exported from quality findings", asyn
     findings.map((finding) => finding.category),
     ["nonTarget", "spacing", "placeholder"]
   );
+  const sourceTargetFindings = buildQualityFindings({
+    qualityReport: {
+      totals: qualityReport.totals,
+      issues: {
+        chinese: [],
+        placeholders: [],
+        idMismatch: [],
+        spacing: [
+          {
+            rowIndex: 0,
+            columnKey: "content",
+            locationLabel: "DOCX segment 1",
+            value: "На данный анализатор предоставляется стандартная гарантия сроком 1-year.",
+            original: "На данный анализатор предоставляется стандартная гарантия сроком 1-year.",
+            type: "spacing",
+            severity: "medium"
+          }
+        ],
+        emptyTranslations: [],
+        structureMismatches: [],
+        nonTargetLanguage: [
+          {
+            rowIndex: 0,
+            columnKey: "content",
+            locationLabel: "DOCX segment 1",
+            value: "На данный анализатор предоставляется стандартная гарантия сроком 1-year.",
+            original: "На данный анализатор предоставляется стандартная гарантия сроком 1-year.",
+            type: "nonTargetLanguage"
+          }
+        ]
+      }
+    },
+    nonTargetDetails: [],
+    qualityRows: {
+      sourceRows: [{ content: "This analyzer comes with a standard 1-year warranty." }],
+      targetRows: [{ content: "На данный анализатор предоставляется стандартная гарантия сроком 1-year." }]
+    },
+    formatLocationLabel: (rowIndex, columnKey) => `R${rowIndex + 1}/${columnKey}`
+  });
+  assert.equal(sourceTargetFindings[0].original, "This analyzer comes with a standard 1-year warranty.");
+  assert.equal(sourceTargetFindings[0].translated, "На данный анализатор предоставляется стандартная гарантия сроком 1-year.");
+  assert.equal(sourceTargetFindings[1].original, "This analyzer comes with a standard 1-year warranty.");
+  const sourceTargetReportText = buildQualityReportText({
+    qualityReport: {
+      totals: qualityReport.totals,
+      issues: {
+        chinese: [],
+        placeholders: [],
+        idMismatch: [],
+        spacing: sourceTargetFindings
+          .filter((finding) => finding.category === "spacing")
+          .map((finding) => ({
+            rowIndex: finding.rowIndex,
+            columnKey: finding.columnKey,
+            locationLabel: finding.locationLabel,
+            value: finding.translated,
+            original: finding.translated,
+            type: "spacing",
+            severity: "medium"
+          })),
+        emptyTranslations: [],
+        structureMismatches: [],
+        nonTargetLanguage: []
+      }
+    },
+    nonTargetDetails: [],
+    qualityRows: {
+      sourceRows: [{ content: "This analyzer comes with a standard 1-year warranty." }],
+      targetRows: [{ content: "На данный анализатор предоставляется стандартная гарантия сроком 1-year." }]
+    },
+    targetLang: "Russian",
+    formatLocationLabel: (rowIndex, columnKey) => `R${rowIndex + 1}/${columnKey}`,
+    generatedAt: new Date("2026-01-01T00:00:00.000Z")
+  });
+  assert.match(sourceTargetReportText, /Source: This analyzer comes with a standard 1-year warranty\./);
+  assert.match(sourceTargetReportText, /Target: На данный анализатор предоставляется стандартная гарантия сроком 1-year\./);
   assert.equal(mapQualityFindingToIssueType(findings[0]), "non-target-residual");
   assert.equal(mapQualityFindingToIssueType(findings[1]), "number-unit-format");
   const reportText = buildQualityReportText({

@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.54
+
+- DOCX/PDF 的 `Run Quality Check` 执行路径改为直接使用 `segmentsToQualityUnits -> runQualityChecksOnUnits`，不再先转成临时 rows 后再检查。
+- `buildDocumentQualityRows` 仍保留给 Quality Report 导出和 finding 展示使用，避免 UI 行为变化；检查核心已先迁到统一 `QualityUnit`。
+- 回归测试补充断言，确保 App 已接入 `runQualityChecksOnUnits` 和 `segmentsToQualityUnits`。
+- 版本号更新为 `v0.0.54`。
+
 ## v0.0.53
 
 - 继续推进 Quality Check Core adapter：新增 `segmentsToQualityRows` / `segmentsToQualityUnits`，将 DOCX/PDF 文本段转换为统一质量检查 rows/units。

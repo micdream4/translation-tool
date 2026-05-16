@@ -29,7 +29,7 @@ import { MultiAIJudge } from './services/multiAIJudge';
 import { SampleReviewAuditService } from './services/sampleReviewAuditService';
 import { ModelReviewService } from './services/modelReviewService';
 import { runPdfTranslationWorkflow } from './workflows/pdfTranslationWorkflow';
-import { segmentsToQualityRows } from './quality/adapters';
+import { segmentsToQualityRows, segmentsToQualityUnits } from './quality/adapters';
 import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
 import type { UntranslatedCell } from './utils/language';
 import { summarizeUntranslated } from './utils/untranslated';
@@ -98,7 +98,7 @@ import {
   type ModelReviewSample,
   type ModelReviewStyle
 } from './utils/modelReview';
-import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, PLACEHOLDER_REGEX, type QualityReport, type QualitySeverity } from './utils/quality';
+import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, runQualityChecksOnUnits, PLACEHOLDER_REGEX, type QualityReport, type QualitySeverity } from './utils/quality';
 import {
   buildQualityFindings,
   buildQualityReportText,
@@ -1549,9 +1549,9 @@ const App: React.FC = () => {
       setDocxIssueIndices(pending);
       setDocxIssueDetails(details);
       syncDocumentIssueSummary(details);
-      const rows = buildDocumentQualityRows();
-      if (rows) {
-        setQualityReport(runQualityChecks(rows.sourceRows, rows.targetRows));
+      const qualityInput = buildDocumentQualityInput();
+      if (qualityInput) {
+        setQualityReport(runQualityChecksOnUnits(qualityInput));
       }
       resetSampleReviewState();
       addLog(
@@ -1570,9 +1570,9 @@ const App: React.FC = () => {
       setPdfIssueIndices(pending);
       setPdfIssueDetails(details);
       syncDocumentIssueSummary(details);
-      const rows = buildDocumentQualityRows();
-      if (rows) {
-        setQualityReport(runQualityChecks(rows.sourceRows, rows.targetRows));
+      const qualityInput = buildDocumentQualityInput();
+      if (qualityInput) {
+        setQualityReport(runQualityChecksOnUnits(qualityInput));
       }
       resetSampleReviewState();
       addLog(
@@ -2092,6 +2092,24 @@ const App: React.FC = () => {
     if (documentKind === 'pdf' && pdfContextRef.current) {
       return segmentsToQualityRows<PdfSegment>(
         pdfContextRef.current.segments,
+        (segment) => getPdfSegmentText(segment)
+      );
+    }
+    return null;
+  };
+
+  const buildDocumentQualityInput = () => {
+    if (documentKind === 'docx' && docxContextRef.current) {
+      return segmentsToQualityUnits<DocxSegment>(
+        docxContextRef.current.segments,
+        'docx',
+        (segment) => getDocxSegmentText(segment)
+      );
+    }
+    if (documentKind === 'pdf' && pdfContextRef.current) {
+      return segmentsToQualityUnits<PdfSegment>(
+        pdfContextRef.current.segments,
+        'pdf',
         (segment) => getPdfSegmentText(segment)
       );
     }

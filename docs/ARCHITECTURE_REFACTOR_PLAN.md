@@ -38,7 +38,8 @@
 - 已新增 `quality/adapters.ts`，支持 row-based 数据转 `QualityUnit[]`。
 - `utils/quality.ts` 已新增 `runQualityChecksOnUnits`，旧 `runQualityChecks` API 保持不变并复用 adapter。
 - `quality/adapters.ts` 已新增 `segmentsToQualityRows` / `segmentsToQualityUnits`，DOCX/PDF Quality Report 的文本段 rows 映射已从 `App.tsx` 迁出。
-- 下一步把 Retry Missing target 生成迁入统一 issue 层，并让 DOCX/PDF 直接基于 `QualityUnit` 运行检查。
+- DOCX/PDF 的 `Run Quality Check` 执行路径已直接基于 `QualityUnit`，rows 中间层只用于报告展示和导出。
+- 下一步把 Retry Missing target 生成迁入统一 issue 层，并逐步让报告展示也读取 `QualityUnit` 的 location/metadata。
 
 ### 3. App.tsx 拆分
 

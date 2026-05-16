@@ -274,6 +274,8 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(appSource, /rememberTranslationPairs/);
   assert.match(appSource, /buildQualityFindings/);
   assert.match(appSource, /buildQualityReportText/);
+  assert.match(appSource, /runQualityChecksOnUnits/);
+  assert.match(appSource, /segmentsToQualityUnits/);
   assert.match(qualityReportSource, /mapQualityFindingToIssueType/);
 
   const qualityReport = {

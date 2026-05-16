@@ -1,4 +1,4 @@
-import type { POCTRecord } from '../types';
+import type { POCTRecord, TargetLanguage } from '../types';
 
 export type QualityDocumentKind = 'excel' | 'docx' | 'pdf' | 'string-resource' | 'generic';
 
@@ -8,7 +8,8 @@ export type QualityIssueType =
   | 'idMismatch'
   | 'spacing'
   | 'emptyTranslation'
-  | 'structureMismatch';
+  | 'structureMismatch'
+  | 'nonTargetLanguage';
 
 export type QualitySeverity = 'high' | 'medium' | 'low';
 
@@ -35,6 +36,10 @@ export interface QualityUnit {
 export interface QualityCheckInput {
   units: QualityUnit[];
   rowsScanned: number;
+}
+
+export interface QualityCheckOptions {
+  targetLang?: TargetLanguage;
 }
 
 export interface QualityIssue {
@@ -66,6 +71,8 @@ export interface QualityReport {
     emptyTranslationRows: number;
     structureMismatches: number;
     structureMismatchRows: number;
+    nonTargetCells: number;
+    nonTargetRows: number;
   };
   issues: {
     chinese: QualityIssue[];
@@ -74,5 +81,6 @@ export interface QualityReport {
     spacing: QualityIssue[];
     emptyTranslations: QualityIssue[];
     structureMismatches: QualityIssue[];
+    nonTargetLanguage: QualityIssue[];
   };
 }

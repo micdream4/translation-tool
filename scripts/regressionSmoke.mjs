@@ -327,7 +327,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(qualityHookSource, /SampleReviewAuditService/);
   assert.match(qualityHookSource, /const runQualityCheck/);
   assert.match(qualityHookSource, /runQualityChecksOnUnits/);
-  assert.match(qualityHookSource, /runQualityChecks\(data, target\)/);
+  assert.match(qualityHookSource, /runQualityChecks\(data, target, \{ targetLang \}\)/);
   assert.doesNotMatch(appSource, /const runQualityCheck =/);
   assert.match(appSource, /segmentsToQualityUnits/);
   assert.match(qualityReportSource, /mapQualityFindingToIssueType/);
@@ -354,7 +354,9 @@ test("quality issue cases can be saved and exported from quality findings", asyn
       emptyTranslations: 0,
       emptyTranslationRows: 0,
       structureMismatches: 0,
-      structureMismatchRows: 0
+      structureMismatchRows: 0,
+      nonTargetCells: 0,
+      nonTargetRows: 0
     },
     issues: {
       chinese: [],
@@ -362,7 +364,8 @@ test("quality issue cases can be saved and exported from quality findings", asyn
       idMismatch: [],
       spacing: [{ rowIndex: 0, columnKey: "content", locationLabel: "DOCX segment 1", value: "2 - 8 °C", original: "2-8°C", type: "spacing", severity: "medium" }],
       emptyTranslations: [],
-      structureMismatches: []
+      structureMismatches: [],
+      nonTargetLanguage: []
     }
   };
   const findings = buildQualityFindings({
@@ -472,6 +475,7 @@ test("quality core adapters preserve existing row-based quality checks", async (
   const checksSource = fs.readFileSync(path.join(repoRoot, "quality/checks.ts"), "utf8");
   const compatibilitySource = fs.readFileSync(path.join(repoRoot, "utils/quality.ts"), "utf8");
   assert.match(checksSource, /runQualityChecksOnUnits/);
+  assert.match(checksSource, /isLikelyTargetLanguage/);
   assert.match(compatibilitySource, /from '..\/quality\/checks'/);
 
   const sourceRows = [
@@ -488,6 +492,10 @@ test("quality core adapters preserve existing row-based quality checks", async (
   assert.equal(input.rowsScanned, 3);
   assert.ok(input.units.some((unit) => unit.documentKind === "excel" && unit.columnKey === "__ROW__"));
   assert.deepEqual(runQualityChecksOnUnits(input), runQualityChecks(sourceRows, targetRows));
+  assert.equal(
+    runQualityChecksOnUnits(input, { targetLang: "Russian" }).issues.nonTargetLanguage.some((issue) => issue.value === "White blood cell"),
+    true
+  );
   assert.deepEqual(
     qualityRowsToUnits({ sourceRows, targetRows }, "docx").units.map((unit) => unit.documentKind).every((kind) => kind === "docx"),
     true

@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.63`。
+当前版本：`v0.0.64`。
 
 稳定地址：
 
@@ -77,14 +77,16 @@ https://translation-tool-917.pages.dev
 27. `scripts/debugPackageToRegression.mjs` 可把页面导出的 Debug Package JSON 转成回归测试 JSONL。
 28. `quality/checks.ts` 已成为统一 Quality Check Core；`utils/quality.ts` 只做兼容导出。
 29. `.github/workflows/quality-gate.yml` 和 `npm run test:quality-gate` 已建立质量闸门。
+30. `QualityReport` 已把非目标语言残留纳入统一 core，`runQualityChecks` / `runQualityChecksOnUnits` 支持 `targetLang`，Excel/DOCX/PDF 的残留 finding、debug package 和 issue case 可以走同一份报告。
+31. 已新增 `quality/report.ts` 和 `quality/retryTargets.ts` 入口，新的质量报告/补译目标代码优先从 `quality/` 引入，旧 `utils/` 入口保留兼容。
 
 ## 真实回归基线
 
 最近一次 `npm run test:real-docs` 结果摘要：
 
-- Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；仍有大量 spacing 类提示，需要后续分级优化。
-- DOCX 俄语：旧译文仍有英文残留，1195 段中 182 段被判非目标语言，35 段命中常见英文残留。
-- PDF：真实样本查找已兼容当前 `local-data/pdf/检测教程-202英文.pdf` 文件名；源 PDF 可抽取文本，旧法语译后 PDF 可渲染但不可文本抽取。
+- Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；统一 Quality Core 统计正常，仍有大量 spacing 类提示，需要后续分级优化。
+- DOCX 俄语：旧译文仍有英文残留，1195 段中 182 段被判非目标语言，35 段命中常见英文残留；下一步优先用 Russian profile 做实修复。
+- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但文本层为空，下一步进入 PDF 文本层和质量检查专项。
 
 ## 当前主要待办
 
@@ -127,6 +129,7 @@ docs/issue-report-workflow.md
 - Quality Report 状态、动作和 `runQualityCheck` 执行入口已抽到 `hooks/useQualityWorkflow.ts`，App 通过 hook 接收 `qualityReport`、`setQualityReport`、finding、issue case、Sample Review 和 Quality Check 操作。
 - Retry target 生成已抽到 `utils/retryTargets.ts`，Excel 的可补译行/单元格统计和 DOCX/PDF 的高优先级 segment 选择复用同一层纯函数。
 - Debug package 生成已抽到 `utils/debugPackage.ts`，先本地下载 JSON，不自动上传外部系统。
+- 非目标语言残留已纳入 `QualityReport`，`quality/checks.ts` 统一负责 `targetLang` 语言检查，Excel/DOCX/PDF 不应再各自维护独立残留统计作为唯一来源。
 
 参考文档：
 

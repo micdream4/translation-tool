@@ -39,7 +39,7 @@ import {
   buildExcelRetryTargets,
   buildRetryableExcelSummary,
   buildTextSegmentRetryPlan
-} from './utils/retryTargets';
+} from './quality/retryTargets';
 import {
   loadTranslationProgress,
   saveTranslationProgress,
@@ -1235,7 +1235,7 @@ const App: React.FC = () => {
     setProcessedData(fixed);
     setTranslatedFlags(flags);
     persistProgress(fixed, flags, refreshedMissing, refreshedWriteFailed);
-    setQualityReport(runQualityChecks(data, fixed));
+    setQualityReport(runQualityChecks(data, fixed, { targetLang }));
     resetSampleReviewState();
     addLog('Quality Fix: 已应用常见格式与 ID 修复。');
   };
@@ -3419,7 +3419,7 @@ const App: React.FC = () => {
     setTranslatedFlags([...updatedFlags]);
     const { refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(synced);
     persistProgress(synced, [...updatedFlags], refreshedMissing, refreshedWriteFailed);
-    setQualityReport(runQualityChecks(data, synced));
+    setQualityReport(runQualityChecks(data, synced, { targetLang }));
     resetSampleReviewState();
     if (keyedRetryAutoFixed > 0) {
       addLog(`${label}: 已自动恢复 ${keyedRetryAutoFixed} 个坏 token。`);

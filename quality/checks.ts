@@ -1,9 +1,26 @@
 import { POCTRecord } from '../types';
 import { rowsToQualityUnits } from './adapters';
-import type { QualityCheckInput, QualityIssue, QualityIssueType, QualityReport, QualitySeverity, QualityUnit } from './types';
+import type {
+  QualityCheckInput,
+  QualityCheckOptions,
+  QualityIssue,
+  QualityIssueType,
+  QualityReport,
+  QualitySeverity,
+  QualityUnit
+} from './types';
+import { isLikelyTargetLanguage } from '../utils/language';
 import { isLikelyIdentifier } from '../utils/translationTokens';
 
-export type { QualityCheckInput, QualityIssue, QualityIssueType, QualityReport, QualitySeverity, QualityUnit } from './types';
+export type {
+  QualityCheckInput,
+  QualityCheckOptions,
+  QualityIssue,
+  QualityIssueType,
+  QualityReport,
+  QualitySeverity,
+  QualityUnit
+} from './types';
 
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 export const PLACEHOLDER_REGEX =
@@ -55,7 +72,9 @@ const createQualityTotals = (rowsScanned: number): QualityReport['totals'] => ({
   emptyTranslations: 0,
   emptyTranslationRows: 0,
   structureMismatches: 0,
-  structureMismatchRows: 0
+  structureMismatchRows: 0,
+  nonTargetCells: 0,
+  nonTargetRows: 0
 });
 
 const createQualityIssues = (): QualityReport['issues'] => ({
@@ -64,7 +83,8 @@ const createQualityIssues = (): QualityReport['issues'] => ({
   idMismatch: [],
   spacing: [],
   emptyTranslations: [],
-  structureMismatches: []
+  structureMismatches: [],
+  nonTargetLanguage: []
 });
 
 export const hasSpacingIssue = (value: string) => {
@@ -105,7 +125,18 @@ export const hasGlueIssue = (value: string) => {
   );
 };
 
-export const runQualityChecksOnUnits = (input: QualityCheckInput): QualityReport => {
+const shouldCheckTargetLanguage = (unit: QualityUnit) => {
+  if (typeof unit.translatedValue !== 'string') return false;
+  const translatedText = unit.translatedText.trim();
+  if (!translatedText) return false;
+  if (shouldLockCell(unit.columnKey, unit.originalValue)) return false;
+  return !isLikelyIdentifier(translatedText);
+};
+
+export const runQualityChecksOnUnits = (
+  input: QualityCheckInput,
+  options: QualityCheckOptions = {}
+): QualityReport => {
   const totals = createQualityTotals(input.rowsScanned);
   const issues = createQualityIssues();
 
@@ -115,6 +146,7 @@ export const runQualityChecksOnUnits = (input: QualityCheckInput): QualityReport
   const spacingRows = new Set<number>();
   const emptyTranslationRows = new Set<number>();
   const structureMismatchRows = new Set<number>();
+  const nonTargetRows = new Set<number>();
 
   input.units.forEach((unit) => {
     if (unit.structureOnly) {
@@ -176,6 +208,23 @@ export const runQualityChecksOnUnits = (input: QualityCheckInput): QualityReport
       });
     }
 
+    if (
+      options.targetLang &&
+      shouldCheckTargetLanguage(unit) &&
+      !isLikelyTargetLanguage(unit.translatedText, options.targetLang)
+    ) {
+      totals.nonTargetCells += 1;
+      nonTargetRows.add(unit.rowIndex);
+      issues.nonTargetLanguage.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        locationLabel: unit.locationLabel,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'nonTargetLanguage'
+      });
+    }
+
     if (PLACEHOLDER_REGEX.test(unit.translatedText)) {
       totals.placeholderCells += 1;
       placeholderRows.add(unit.rowIndex);
@@ -227,6 +276,7 @@ export const runQualityChecksOnUnits = (input: QualityCheckInput): QualityReport
   totals.spacingRows = spacingRows.size;
   totals.emptyTranslationRows = emptyTranslationRows.size;
   totals.structureMismatchRows = structureMismatchRows.size;
+  totals.nonTargetRows = nonTargetRows.size;
 
   return {
     totals,
@@ -236,8 +286,9 @@ export const runQualityChecksOnUnits = (input: QualityCheckInput): QualityReport
 
 export const runQualityChecks = (
   original: POCTRecord[],
-  translated: POCTRecord[]
-): QualityReport => runQualityChecksOnUnits(rowsToQualityUnits(original, translated, 'generic'));
+  translated: POCTRecord[],
+  options: QualityCheckOptions = {}
+): QualityReport => runQualityChecksOnUnits(rowsToQualityUnits(original, translated, 'generic'), options);
 
 export const collectPlaceholderIssues = (
   original: POCTRecord[],

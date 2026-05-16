@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.64
+
+- 继续统一 Quality Check Core：`runQualityChecks` / `runQualityChecksOnUnits` 新增 `targetLang` 选项，Excel、DOCX、PDF 可在同一份 `QualityReport` 中记录非目标语言残留。
+- `QualityReport` 新增 `nonTargetLanguage` issue、`nonTargetCells` 和 `nonTargetRows` 统计，Quality Report 面板的 Residual 卡片不再只依赖外层 issue summary。
+- 新增 `quality/report.ts` 和 `quality/retryTargets.ts` 命名空间兼容层，新的质量报告与补译目标代码可以优先从 `quality/` 入口引入，旧 `utils/` 入口继续保留兼容。
+- `useQualityWorkflow` 的 Excel/DOCX/PDF Quality Check 均传入目标语言，俄语这类混入英文的残留可被统一质量核心识别并进入 finding/debug package/issue case 链路。
+- 回归测试补充 `targetLang` 驱动的非目标语言检查，`npm run test:quality-gate` 通过；真实文档 smoke 继续显示 DOCX 俄语残留和 PDF 译后文本层为空，后续进入第 2/3 项专项修复。
+- 版本号更新为 `v0.0.64`。
+
 ## v0.0.63
 
 - 自我迭代闭环继续落地：新增 `utils/regressionAssets.ts`，可把本地 issue cases 或 Debug Package 转成 `poct.translation_regression_case.v1` 回归样本。

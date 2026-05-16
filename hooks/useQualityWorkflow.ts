@@ -22,7 +22,7 @@ import {
   buildQualityReportText,
   mapQualityFindingToIssueType,
   type QualityFinding
-} from '../utils/qualityReport';
+} from '../quality/report';
 import { runQualityChecks, runQualityChecksOnUnits, type QualityCheckInput, type QualityReport } from '../utils/quality';
 import type { POCTRecord, ReviewSample, SampleReviewAIResult, TargetLanguage } from '../types';
 
@@ -243,7 +243,7 @@ export const useQualityWorkflow = ({
       syncDocumentIssueSummary(details);
       const qualityInput = buildDocumentQualityInput();
       if (qualityInput) {
-        setQualityReport(runQualityChecksOnUnits(qualityInput));
+        setQualityReport(runQualityChecksOnUnits(qualityInput, { targetLang }));
       }
       resetSampleReviewState();
       addLog(
@@ -264,7 +264,7 @@ export const useQualityWorkflow = ({
       syncDocumentIssueSummary(details);
       const qualityInput = buildDocumentQualityInput();
       if (qualityInput) {
-        setQualityReport(runQualityChecksOnUnits(qualityInput));
+        setQualityReport(runQualityChecksOnUnits(qualityInput, { targetLang }));
       }
       resetSampleReviewState();
       addLog(
@@ -282,7 +282,7 @@ export const useQualityWorkflow = ({
       addLog('Quality Check: 没有可检查的数据。');
       return;
     }
-    const report = runQualityChecks(data, target);
+    const report = runQualityChecks(data, target, { targetLang });
     setQualityReport(report);
     resetSampleReviewState();
     const { summary, refreshedMissing, refreshedWriteFailed } = refreshTranslationIssues(target);

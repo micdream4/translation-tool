@@ -10,6 +10,7 @@ export {
 
 export type {
   QualityCheckInput,
+  QualityCheckOptions,
   QualityIssue,
   QualityIssueType,
   QualityReport,

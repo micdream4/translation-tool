@@ -103,6 +103,7 @@ export const buildQualityFindings = ({
     });
   };
 
+  appendQualityIssues('nonTarget', qualityReport.issues.nonTargetLanguage || [], '检测到非目标语言残留');
   appendQualityIssues('chinese', qualityReport.issues.chinese, '仍有中文残留');
   appendQualityIssues('emptyTranslation', qualityReport.issues.emptyTranslations, '原文可译，但目标单元格为空');
   appendQualityIssues('placeholder', qualityReport.issues.placeholders, '占位符泄漏');
@@ -142,7 +143,13 @@ export const buildQualityReportText = ({
   formatLocationLabel: FormatLocationLabel;
   generatedAt?: Date;
 }) => {
-  const nonTargetRows = new Set(nonTargetDetails.map((item) => item.rowIndex));
+  const nonTargetIssueList = qualityReport.issues.nonTargetLanguage || [];
+  const legacyNonTargetKeys = new Set(nonTargetDetails.map((item) => `${item.rowIndex}:${item.columnKey}`));
+  const nonTargetRows = new Set([
+    ...nonTargetDetails.map((item) => item.rowIndex),
+    ...nonTargetIssueList.map((item) => item.rowIndex)
+  ]);
+  const nonTargetCellCount = Math.max(nonTargetDetails.length, qualityReport.totals.nonTargetCells || 0);
   const findings: Array<{
     type: string;
     severity?: QualitySeverity;
@@ -156,6 +163,14 @@ export const buildQualityReportText = ({
       original: getStringCell(qualityRows.sourceRows, item.rowIndex, item.columnKey),
       translated: getStringCell(qualityRows.targetRows, item.rowIndex, item.columnKey)
     })),
+    ...nonTargetIssueList
+      .filter((item) => !legacyNonTargetKeys.has(`${item.rowIndex}:${item.columnKey}`))
+      .map((item) => ({
+        type: 'Non-target language',
+        location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
+        original: item.original || '',
+        translated: item.value || ''
+      })),
     ...qualityReport.issues.emptyTranslations.map((item) => ({
       type: 'Empty translation',
       location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
@@ -197,7 +212,7 @@ export const buildQualityReportText = ({
     'Overview',
     `- Rows scanned: ${qualityReport.totals.rowsScanned}`,
     `- Cells scanned: ${qualityReport.totals.cellsScanned}`,
-    `- Non-target residual: ${nonTargetDetails.length} cells / ${nonTargetRows.size} rows`,
+    `- Non-target residual: ${nonTargetCellCount} cells / ${nonTargetRows.size} rows`,
     `- Chinese residue: ${qualityReport.totals.chineseCells} cells / ${qualityReport.totals.chineseRows} rows`,
     `- Empty translations: ${qualityReport.totals.emptyTranslations} cells / ${qualityReport.totals.emptyTranslationRows} rows`,
     `- Placeholders: ${qualityReport.totals.placeholderCells} cells / ${qualityReport.totals.placeholderRows} rows`,

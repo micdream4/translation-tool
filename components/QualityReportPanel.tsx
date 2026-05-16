@@ -1,6 +1,6 @@
 import React from 'react';
 import type { QualityReport, QualitySeverity } from '../utils/quality';
-import type { QualityFinding } from '../utils/qualityReport';
+import type { QualityFinding } from '../quality/report';
 import type { SampleReviewAIResult } from '../types';
 
 type IssueSummaryView = {
@@ -122,6 +122,9 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   reviewRiskBadgeClass,
   reviewVerdictBadgeClass
 }) => {
+  const residualCells = Math.max(currentIssueSummary.cells, qualityReport?.totals.nonTargetCells || 0);
+  const residualRows = Math.max(currentIssueSummary.rows, qualityReport?.totals.nonTargetRows || 0);
+
   return (
     <section className={`${panelClass} space-y-5`}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -197,10 +200,10 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>Residual</p>
               <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                非目标语言 {currentIssueSummary.cells} / 中文 {qualityReport.totals.chineseCells}
+                非目标语言 {residualCells} / 中文 {qualityReport.totals.chineseCells}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                {currentIssueSummary.rows} rows / {qualityReport.totals.chineseRows} rows
+                {residualRows} rows / {qualityReport.totals.chineseRows} rows
               </p>
             </div>
             <div className={metricCardClass}>

@@ -292,7 +292,10 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(qualityHookSource, /buildQualityFindings/);
   assert.match(qualityHookSource, /buildQualityReportText/);
   assert.match(qualityHookSource, /SampleReviewAuditService/);
-  assert.match(appSource, /runQualityChecksOnUnits/);
+  assert.match(qualityHookSource, /const runQualityCheck/);
+  assert.match(qualityHookSource, /runQualityChecksOnUnits/);
+  assert.match(qualityHookSource, /runQualityChecks\(data, target\)/);
+  assert.doesNotMatch(appSource, /const runQualityCheck =/);
   assert.match(appSource, /segmentsToQualityUnits/);
   assert.match(qualityReportSource, /mapQualityFindingToIssueType/);
 

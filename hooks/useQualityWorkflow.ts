@@ -3,6 +3,8 @@ import { SampleReviewAuditService } from '../services/sampleReviewAuditService';
 import type { QualityRows } from '../quality/types';
 import type { TranslationMemoryPair } from '../utils/translationMemory';
 import type { UntranslatedCell } from '../utils/language';
+import type { DocxContext } from '../utils/docx';
+import type { PdfContext } from '../utils/pdf';
 import {
   clearTranslationIssueCases,
   countTranslationIssueCases,
@@ -16,7 +18,7 @@ import {
   mapQualityFindingToIssueType,
   type QualityFinding
 } from '../utils/qualityReport';
-import type { QualityReport } from '../utils/quality';
+import { runQualityChecks, runQualityChecksOnUnits, type QualityCheckInput, type QualityReport } from '../utils/quality';
 import type { POCTRecord, ReviewSample, SampleReviewAIResult, TargetLanguage } from '../types';
 
 export type SampleReviewAiSummary = {
@@ -45,12 +47,45 @@ type CurrentIssueSummary = {
   details: UntranslatedCell[];
 };
 
+type DocumentIssueDetail = {
+  index: number;
+  id: string;
+  text: string;
+  snippet: string;
+  chineseChars: number;
+  lowPriority: boolean;
+  issueType: 'source' | 'placeholder' | 'glue';
+};
+
+type DocumentIssueResult = {
+  pending: number[];
+  details: DocumentIssueDetail[];
+};
+
+type AutoRepairExcelPlaceholdersResult = {
+  records: POCTRecord[];
+  fixedCells: number;
+  remainingCells: number;
+  changed: boolean;
+};
+
+type RefreshTranslationIssuesResult = {
+  summary: {
+    cells: number;
+    rows: number;
+    details?: UntranslatedCell[];
+  };
+  refreshedMissing: number[];
+  refreshedWriteFailed: number[];
+};
+
 type UseQualityWorkflowParams = {
   appVersion: string;
   documentKind: DocumentKind;
   targetLang: TargetLanguage;
   data: POCTRecord[];
   processedData: POCTRecord[];
+  translatedFlags: boolean[];
   currentRowsForRetry: POCTRecord[];
   currentIssueSummary: CurrentIssueSummary;
   qualityRowsForDisplay: QualityRows;
@@ -61,7 +96,30 @@ type UseQualityWorkflowParams = {
   addLog: (message: string) => void;
   setPreviewFocus: (focus: PreviewFocus) => void;
   formatLocationLabel: (rowIndex: number, columnKey: string) => string;
+  formatIssueLocationPreview: (details: UntranslatedCell[], limit: number) => string;
+  formatExcelRowNumber: (rowIndex: number) => number;
+  getDocxContext: () => DocxContext | null;
+  getPdfContext: () => PdfContext | null;
+  buildDocxIssueDetails: (context: DocxContext) => DocumentIssueResult;
+  buildPdfIssueDetails: (context: PdfContext) => DocumentIssueResult;
+  syncDocumentIssueSummary: (details: DocumentIssueDetail[]) => void;
+  setDocxIssueIndices: (indices: number[]) => void;
+  setDocxIssueDetails: (details: DocumentIssueDetail[]) => void;
+  setPdfIssueIndices: (indices: number[]) => void;
+  setPdfIssueDetails: (details: DocumentIssueDetail[]) => void;
   buildDocumentQualityRows: () => QualityRows | null;
+  buildDocumentQualityInput: () => QualityCheckInput | null;
+  autoRepairExcelPlaceholders: (
+    records: POCTRecord[],
+    options?: { mutateState?: boolean; logLabel?: string }
+  ) => AutoRepairExcelPlaceholdersResult;
+  refreshTranslationIssues: (records: POCTRecord[]) => RefreshTranslationIssuesResult;
+  persistProgress: (
+    records: POCTRecord[],
+    flags: boolean[],
+    missingRows: number[],
+    writeFailedRows?: number[]
+  ) => void;
   rememberTranslationPairs: (pairs: TranslationMemoryPair[]) => Promise<void>;
   downloadTextFile: (filename: string, content: string) => void;
 };
@@ -82,6 +140,7 @@ export const useQualityWorkflow = ({
   targetLang,
   data,
   processedData,
+  translatedFlags,
   currentRowsForRetry,
   currentIssueSummary,
   qualityRowsForDisplay,
@@ -92,7 +151,22 @@ export const useQualityWorkflow = ({
   addLog,
   setPreviewFocus,
   formatLocationLabel,
+  formatIssueLocationPreview,
+  formatExcelRowNumber,
+  getDocxContext,
+  getPdfContext,
+  buildDocxIssueDetails,
+  buildPdfIssueDetails,
+  syncDocumentIssueSummary,
+  setDocxIssueIndices,
+  setDocxIssueDetails,
+  setPdfIssueIndices,
+  setPdfIssueDetails,
   buildDocumentQualityRows,
+  buildDocumentQualityInput,
+  autoRepairExcelPlaceholders,
+  refreshTranslationIssues,
+  persistProgress,
   rememberTranslationPairs,
   downloadTextFile
 }: UseQualityWorkflowParams) => {
@@ -144,6 +218,99 @@ export const useQualityWorkflow = ({
       ),
     [sampleReviewAiResults]
   );
+
+  const runQualityCheck = () => {
+    if (documentKind === 'docx') {
+      const context = getDocxContext();
+      if (!context) {
+        addLog('Quality Check: 当前没有可检查的 DOCX。');
+        return;
+      }
+      const { pending, details } = buildDocxIssueDetails(context);
+      setDocxIssueIndices(pending);
+      setDocxIssueDetails(details);
+      syncDocumentIssueSummary(details);
+      const qualityInput = buildDocumentQualityInput();
+      if (qualityInput) {
+        setQualityReport(runQualityChecksOnUnits(qualityInput));
+      }
+      resetSampleReviewState();
+      addLog(
+        `Quality Check DOCX: 检测到 ${details.length} 个异常语义段，建议重译 ${details.filter((item) => !item.lowPriority).length} 段。`
+      );
+      return;
+    }
+
+    if (documentKind === 'pdf') {
+      const context = getPdfContext();
+      if (!context) {
+        addLog('Quality Check: 当前没有可检查的 PDF。');
+        return;
+      }
+      const { pending, details } = buildPdfIssueDetails(context);
+      setPdfIssueIndices(pending);
+      setPdfIssueDetails(details);
+      syncDocumentIssueSummary(details);
+      const qualityInput = buildDocumentQualityInput();
+      if (qualityInput) {
+        setQualityReport(runQualityChecksOnUnits(qualityInput));
+      }
+      resetSampleReviewState();
+      addLog(
+        `Quality Check PDF: 检测到 ${details.length} 个异常文本段，建议重译 ${details.filter((item) => !item.lowPriority).length} 段。`
+      );
+      return;
+    }
+
+    const rawTarget = processedData.length > 0 ? processedData : data;
+    const { records: target, fixedCells } = autoRepairExcelPlaceholders(rawTarget, {
+      mutateState: processedData.length > 0,
+      logLabel: 'Quality Check'
+    });
+    if (!target.length) {
+      addLog('Quality Check: 没有可检查的数据。');
+      return;
+    }
+    const report = runQualityChecks(data, target);
+    setQualityReport(report);
+    resetSampleReviewState();
+    const { summary, refreshedMissing, refreshedWriteFailed } = refreshTranslationIssues(target);
+    persistProgress(
+      target.map((row) => ({ ...row })),
+      translatedFlags.length === target.length ? [...translatedFlags] : Array(target.length).fill(false),
+      refreshedMissing,
+      refreshedWriteFailed
+    );
+    addLog(
+      `Quality Check: 非目标语言残留 ${summary.cells} 个（${summary.rows} 行），中文残留 ${report.totals.chineseCells} 个，` +
+      `空白漏翻 ${report.totals.emptyTranslations} 个，` +
+      `占位符 ${report.totals.placeholderCells} 个，` +
+      `ID 异常 ${report.totals.idMismatches} 个，` +
+      `格式问题 ${report.totals.spacingIssues} 个，` +
+      `结构异常 ${report.totals.structureMismatches} 个。`
+    );
+    if (fixedCells > 0) {
+      addLog(`Quality Check: 已在检查前自动恢复 ${fixedCells} 个坏 token。`);
+    }
+    const issueDetails = summary.details || [];
+    if (issueDetails.length > 0) {
+      const preview = formatIssueLocationPreview(issueDetails, 6);
+      if (preview) {
+        addLog(`Quality Check: 非目标语言位置示例 -> ${preview}`);
+      }
+    }
+    if (report.issues.chinese.length > 0) {
+      const preview = report.issues.chinese
+        .slice(0, 5)
+        .map((issue) => {
+          const rowNo = formatExcelRowNumber(issue.rowIndex);
+          const value = String(issue.value || '').replace(/\s+/g, ' ').slice(0, 28);
+          return `R${rowNo}/${issue.columnKey}: ${value}`;
+        })
+        .join(' | ');
+      addLog(`Quality Check: 中文残留位置示例 -> ${preview}`);
+    }
+  };
 
   const exportQualityReport = () => {
     if (!qualityReport) {
@@ -409,6 +576,7 @@ export const useQualityWorkflow = ({
     sampleReviewAiResults,
     isRunningSampleReviewAi,
     resetSampleReviewState,
+    runQualityCheck,
     clearQualityReport,
     exportQualityReport,
     exportIssueCases,

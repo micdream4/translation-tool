@@ -93,7 +93,7 @@ import {
   type ModelReviewSample,
   type ModelReviewStyle
 } from './utils/modelReview';
-import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, runQualityChecksOnUnits, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
+import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
 import {
   ClinicalRule,
   CrossCheckResult,
@@ -1187,99 +1187,6 @@ const App: React.FC = () => {
         previewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
     });
-  };
-
-  const runQualityCheck = () => {
-    if (documentKind === 'docx') {
-      const context = docxContextRef.current;
-      if (!context) {
-        addLog('Quality Check: 当前没有可检查的 DOCX。');
-        return;
-      }
-      const { pending, details } = buildDocxIssueDetails(context);
-      setDocxIssueIndices(pending);
-      setDocxIssueDetails(details);
-      syncDocumentIssueSummary(details);
-      const qualityInput = buildDocumentQualityInput();
-      if (qualityInput) {
-        setQualityReport(runQualityChecksOnUnits(qualityInput));
-      }
-      resetSampleReviewState();
-      addLog(
-        `Quality Check DOCX: 检测到 ${details.length} 个异常语义段，建议重译 ${details.filter((item) => !item.lowPriority).length} 段。`
-      );
-      return;
-    }
-
-    if (documentKind === 'pdf') {
-      const context = pdfContextRef.current;
-      if (!context) {
-        addLog('Quality Check: 当前没有可检查的 PDF。');
-        return;
-      }
-      const { pending, details } = buildPdfIssueDetails(context);
-      setPdfIssueIndices(pending);
-      setPdfIssueDetails(details);
-      syncDocumentIssueSummary(details);
-      const qualityInput = buildDocumentQualityInput();
-      if (qualityInput) {
-        setQualityReport(runQualityChecksOnUnits(qualityInput));
-      }
-      resetSampleReviewState();
-      addLog(
-        `Quality Check PDF: 检测到 ${details.length} 个异常文本段，建议重译 ${details.filter((item) => !item.lowPriority).length} 段。`
-      );
-      return;
-    }
-
-    const rawTarget = processedData.length > 0 ? processedData : data;
-    const { records: target, fixedCells } = autoRepairExcelPlaceholders(rawTarget, {
-      mutateState: processedData.length > 0,
-      logLabel: 'Quality Check'
-    });
-    if (!target.length) {
-      addLog('Quality Check: 没有可检查的数据。');
-      return;
-    }
-    const report = runQualityChecks(data, target);
-    setQualityReport(report);
-    resetSampleReviewState();
-    // Keep top warning banners in sync with the latest dataset snapshot.
-    const { summary, refreshedMissing, refreshedWriteFailed } = refreshTranslationIssues(target);
-    persistProgress(
-      target.map((row) => ({ ...row })),
-      translatedFlags.length === target.length ? [...translatedFlags] : Array(target.length).fill(false),
-      refreshedMissing,
-      refreshedWriteFailed
-    );
-    addLog(
-      `Quality Check: 非目标语言残留 ${summary.cells} 个（${summary.rows} 行），中文残留 ${report.totals.chineseCells} 个，` +
-      `空白漏翻 ${report.totals.emptyTranslations} 个，` +
-      `占位符 ${report.totals.placeholderCells} 个，` +
-      `ID 异常 ${report.totals.idMismatches} 个，` +
-      `格式问题 ${report.totals.spacingIssues} 个，` +
-      `结构异常 ${report.totals.structureMismatches} 个。`
-    );
-    if (fixedCells > 0) {
-      addLog(`Quality Check: 已在检查前自动恢复 ${fixedCells} 个坏 token。`);
-    }
-    if (summary.details.length > 0) {
-      const preview = formatIssueLocationPreview(summary.details, 6);
-      if (preview) {
-        addLog(`Quality Check: 非目标语言位置示例 -> ${preview}`);
-      }
-    }
-    if (report.issues.chinese.length > 0) {
-      const preview = report.issues.chinese
-        .slice(0, 5)
-        .map((issue) => {
-          const rowNo = formatExcelRowNumber(issue.rowIndex);
-          const value = String(issue.value || '').replace(/\s+/g, ' ').slice(0, 28);
-          return `R${rowNo}/${issue.columnKey}: ${value}`;
-        })
-        .join(' | ');
-      addLog(`Quality Check: 中文残留位置示例 -> ${preview}`);
-    }
   };
 
   const applyQualityFixes = () => {
@@ -3931,6 +3838,7 @@ const App: React.FC = () => {
     sampleReviewAiResults,
     isRunningSampleReviewAi,
     resetSampleReviewState,
+    runQualityCheck,
     clearQualityReport,
     exportQualityReport,
     exportIssueCases,
@@ -3944,6 +3852,7 @@ const App: React.FC = () => {
     targetLang,
     data,
     processedData,
+    translatedFlags,
     currentRowsForRetry,
     currentIssueSummary,
     qualityRowsForDisplay,
@@ -3954,7 +3863,22 @@ const App: React.FC = () => {
     addLog,
     setPreviewFocus,
     formatLocationLabel,
+    formatIssueLocationPreview,
+    formatExcelRowNumber,
+    getDocxContext: () => docxContextRef.current,
+    getPdfContext: () => pdfContextRef.current,
+    buildDocxIssueDetails,
+    buildPdfIssueDetails,
+    syncDocumentIssueSummary,
+    setDocxIssueIndices,
+    setDocxIssueDetails,
+    setPdfIssueIndices,
+    setPdfIssueDetails,
     buildDocumentQualityRows,
+    buildDocumentQualityInput,
+    autoRepairExcelPlaceholders,
+    refreshTranslationIssues,
+    persistProgress,
     rememberTranslationPairs,
     downloadTextFile
   });

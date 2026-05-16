@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.58
+
+- 继续拆完 Quality workflow：`runQualityCheck` 的 Excel/DOCX/PDF 执行入口已从 `App.tsx` 迁入 `hooks/useQualityWorkflow.ts`。
+- `App.tsx` 现在只负责传入文档上下文 getter、issue builder、状态 setter 和质量输入 adapter，Quality Check 的报告写入、日志、Sample Review 重置和 Excel 进度同步都由 hook 统一处理。
+- 回归测试更新为检查 `runQualityCheck`、`runQualityChecksOnUnits` 和 Excel row-based 检查入口都在 `useQualityWorkflow` 内，避免后续把质量入口又写回主组件。
+- 版本号更新为 `v0.0.58`。
+
 ## v0.0.57
 
 - 补完整 QualityReportPanel 拆分后的状态层：新增 `hooks/useQualityWorkflow.ts`，集中管理 Quality Report 状态、finding 派生、本地 issue case 计数、导出/清空、人工修正保存、Sample Review 和 AI Sample Review。

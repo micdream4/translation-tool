@@ -73,6 +73,27 @@ Issue 负责记录远程复现信息：
 
 Codex 修复时应把 GitHub Issue 和本地 issue case 合并判断：Issue 说明场景和复现路径，issue case 提供可沉淀为测试、术语、TM 或 QA 规则的具体样本。
 
+## 本地问题入口
+
+Mac 本地发现问题时，不一定需要创建 GitHub Issue。优先按照 `docs/local-issue-capture-workflow.md` 保存本地问题包：
+
+```text
+local-data/inbox/
+local-data/issues/
+local-data/debug-packages/
+local-data/regression-jsonl/
+local-data/issue-assets/
+local-data/screenshots/
+```
+
+可先运行：
+
+```bash
+npm run issue:prepare
+```
+
+本地问题包用于减少截图转发和口头描述成本；修复时再把其中的 `Regression JSONL`、Debug Package 或脱敏样本沉淀进仓库。
+
 ## 问题样本结构
 
 第一阶段可以先存本地 IndexedDB，并支持导出 JSONL。后续接 Cloudflare D1。

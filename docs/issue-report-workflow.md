@@ -103,3 +103,5 @@ GitHub Issue 是“远程问题入口”，网站内 `Save Correction` 是“翻
 - `Regression JSONL` 适合把人工修正样本转成可提交的回归测试 fixture。
 - `Debug Package` 适合把一次翻译任务的版本、模型、质量报告和样本行打包给 Codex 复现。
 - Codex 修复时应把 Issue 或 `Save Correction` 样本沉淀为测试、QA 规则、术语、翻译记忆或语言 profile。
+
+Mac 本地发现的小问题不强制创建 GitHub Issue。可以先按 `docs/local-issue-capture-workflow.md` 保存到 `local-data/issues/`；跨电脑、多人协作、需要排期或需要历史追踪的问题，再提交 GitHub Issue。

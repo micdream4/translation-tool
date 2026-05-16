@@ -10,13 +10,14 @@
 4. `docs/ARCHITECTURE_REFACTOR_PLAN.md`
 5. `docs/issue-report-workflow.md`
 6. `docs/PROJECT_PROGRESS.md`
+7. `docs/local-issue-capture-workflow.md`
 
 不要复制整段旧聊天。旧聊天只是过程，仓库文档才是稳定上下文。
 
 ## 新对话启动提示词
 
 ```text
-这是我的 POCT 文档翻译工具项目。请先基于仓库里的 AGENTS.md、docs/context-handoff.md、docs/translation-quality-loop.md、docs/issue-report-workflow.md、docs/ARCHITECTURE_REFACTOR_PLAN.md 和 docs/PROJECT_PROGRESS.md 理解背景。
+这是我的 POCT 文档翻译工具项目。请先基于仓库里的 AGENTS.md、docs/context-handoff.md、docs/translation-quality-loop.md、docs/issue-report-workflow.md、docs/local-issue-capture-workflow.md、docs/ARCHITECTURE_REFACTOR_PLAN.md 和 docs/PROJECT_PROGRESS.md 理解背景。
 
 这个工具用于上传 Excel/DOCX/PDF/字符串资源，调用 LLM 翻译，并尽量保持原文档格式、表格结构、段落顺序、图片位置、单位、占位符、编号和术语一致性。
 
@@ -34,7 +35,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.68`。
+当前版本：`v0.0.69`。
 
 稳定地址：
 
@@ -86,6 +87,7 @@ https://translation-tool-917.pages.dev
 36. `utils/issueAssets.ts` 已新增问题样本资产转换层，可从 issue cases 生成 TM 句对、术语候选和 QA rule candidates。
 37. Quality Loop 面板已提供 `Promote TM` 和 `Asset JSON`，人工修正样本可以批量写入 Translation Memory 或导出资产候选包。
 38. 真实文档回归样本已抽成 `fixtures/real-document-regression.json`，`npm run test:real-docs` 按 manifest 跑本地 Excel / DOCX / PDF 样本，并输出每个 `caseId` 的检查状态。
+39. 已新增本地问题捕获工作流：`docs/local-issue-capture-workflow.md` 和 `npm run issue:prepare`，Mac 本地发现问题可先保存到 ignored 的 `local-data/issues/`，公司电脑或跨设备问题仍走 GitHub Issue。
 
 ## 真实回归基线
 

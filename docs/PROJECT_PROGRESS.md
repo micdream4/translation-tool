@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.69
+
+- 按“先打基础，再做多 Agent”的路线新增 `docs/local-issue-capture-workflow.md`，明确 Mac 本地发现问题时如何保存 Debug Package、Regression JSONL、Asset JSON、截图和本地 issue 包。
+- 新增 `scripts/prepareLocalIssueWorkspace.mjs` 和 `npm run issue:prepare`，一键准备 ignored 的 `local-data/inbox`、`local-data/issues`、`local-data/debug-packages`、`local-data/regression-jsonl` 等目录。
+- 更新质量闭环和跨电脑 Issue 文档：公司电脑仍走 GitHub Issue，Mac 本地小问题可先保存到本地 issue workspace，后续再沉淀为测试、规则、术语或 TM。
+- 回归测试新增本地问题捕获工作流断言，确保脚本、文档和 `local-data/` 忽略策略保持一致。
+- 版本号更新为 `v0.0.69`。
+
 ## v0.0.68
 
 - 真实文档回归库第一版落地：新增 `fixtures/real-document-regression.json`，把本地 Excel / DOCX / PDF 样本、目标语言和验证预期从脚本中抽成可版本化 manifest。

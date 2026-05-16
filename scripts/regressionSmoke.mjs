@@ -239,6 +239,26 @@ test("real document smoke uses a local-only regression manifest", () => {
   assert.match(gitignoreSource, /^local-data\/$/m);
 });
 
+test("local issue capture workflow prepares ignored self-iteration workspace", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  const workflowDoc = fs.readFileSync(path.join(repoRoot, "docs/local-issue-capture-workflow.md"), "utf8");
+  const prepareScript = fs.readFileSync(path.join(repoRoot, "scripts/prepareLocalIssueWorkspace.mjs"), "utf8");
+  const gitignoreSource = fs.readFileSync(path.join(repoRoot, ".gitignore"), "utf8");
+
+  assert.equal(packageJson.scripts["issue:prepare"], "node scripts/prepareLocalIssueWorkspace.mjs");
+  assert.match(workflowDoc, /当前阶段先不做完整多 Agent 闭环/);
+  assert.match(workflowDoc, /local-data\/inbox\//);
+  assert.match(workflowDoc, /local-data\/issues\//);
+  assert.match(workflowDoc, /Debug Package/);
+  assert.match(workflowDoc, /Regression JSONL/);
+  assert.match(workflowDoc, /Issue Draft 只是 Markdown 草稿，不会自动上传/);
+  assert.match(workflowDoc, /npm run test:quality-gate/);
+  assert.match(prepareScript, /poct\.local_issue_workspace\.v1/);
+  assert.match(prepareScript, /debug-packages/);
+  assert.match(prepareScript, /regression-jsonl/);
+  assert.match(gitignoreSource, /^local-data\/$/m);
+});
+
 test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", () => {
   const docxSource = fs.readFileSync(path.join(repoRoot, "utils/docx.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");

@@ -57,6 +57,7 @@
 - GitHub Issue 模板已补充 `Debug Package` 字段，并使用当前仓库已有的 `bug` label。
 - Quality Report 面板已新增 `Issue Draft`，可导出 GitHub Issue Markdown 草稿。
 - 已新增 `utils/regressionAssets.ts`、`fixtures/translation-issue-regression.jsonl` 和 `scripts/debugPackageToRegression.mjs`，支持从 Issue Case / Debug Package 生成回归测试资产。
+- 已新增 `docs/local-issue-capture-workflow.md` 和 `npm run issue:prepare`，先规范人工捕获问题的本地 workspace，再逐步升级 batch runner / 多 Agent。
 - 已新增 `.github/workflows/quality-gate.yml` 和 `npm run test:quality-gate`。
 - 已新增 `fixtures/real-document-regression.json`，将本地真实 Excel / DOCX / PDF 样本路径和质量预期从 smoke 脚本中抽成 manifest；真实文档继续留在 `local-data/`，只提交规则和相对路径。
 - `quality/checks.ts` 已接收 `targetLang`，并把非目标语言残留沉淀为 `QualityReport.issues.nonTargetLanguage` 与 `nonTargetCells/nonTargetRows` 统计；Excel/DOCX/PDF 的 Quality Check 均已传入目标语言。

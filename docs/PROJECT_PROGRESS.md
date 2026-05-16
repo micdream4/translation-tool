@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.53
+
+- 继续推进 Quality Check Core adapter：新增 `segmentsToQualityRows` / `segmentsToQualityUnits`，将 DOCX/PDF 文本段转换为统一质量检查 rows/units。
+- `App.tsx` 中 DOCX/PDF Quality Report 使用的 `{ content }` 临时映射已迁入 `quality/adapters.ts`，减少主组件对文档段落结构的直接拼装。
+- 回归测试扩展 segment adapter，覆盖 DOCX/PDF 类文本段到 `QualityRows` / `QualityUnit` 的转换。
+- 版本号更新为 `v0.0.53`。
+
 ## v0.0.52
 
 - 继续推进 Quality Check Core 抽离：新增 `quality/types.ts`，定义统一的 `QualityUnit`、`QualityCheckInput`、`QualityIssue`、`QualityReport` 和文档类型。

@@ -71,3 +71,30 @@ export const qualityRowsToUnits = (
   rows: QualityRows,
   documentKind: QualityDocumentKind = 'generic'
 ): QualityCheckInput => rowsToQualityUnits(rows.sourceRows, rows.targetRows, documentKind);
+
+type TextQualitySegment = {
+  original: string;
+};
+
+export const segmentsToQualityRows = <T extends TextQualitySegment>(
+  segments: T[],
+  getTranslatedText: (segment: T, index: number) => string,
+  getOriginalText: (segment: T, index: number) => string = (segment) => segment.original
+): QualityRows => ({
+  sourceRows: segments.map((segment, index) => ({
+    content: getOriginalText(segment, index)
+  })),
+  targetRows: segments.map((segment, index) => ({
+    content: getTranslatedText(segment, index)
+  }))
+});
+
+export const segmentsToQualityUnits = <T extends TextQualitySegment>(
+  segments: T[],
+  documentKind: Extract<QualityDocumentKind, 'docx' | 'pdf' | 'string-resource'>,
+  getTranslatedText: (segment: T, index: number) => string,
+  getOriginalText: (segment: T, index: number) => string = (segment) => segment.original
+): QualityCheckInput => qualityRowsToUnits(
+  segmentsToQualityRows(segments, getTranslatedText, getOriginalText),
+  documentKind
+);

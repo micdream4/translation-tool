@@ -338,7 +338,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
 });
 
 test("quality core adapters preserve existing row-based quality checks", async () => {
-  const { rowsToQualityUnits, qualityRowsToUnits } = await bundleTsModule(
+  const { rowsToQualityUnits, qualityRowsToUnits, segmentsToQualityRows, segmentsToQualityUnits } = await bundleTsModule(
     path.join(repoRoot, "quality/adapters.ts")
   );
   const { runQualityChecks, runQualityChecksOnUnits } = await bundleTsModule(
@@ -362,6 +362,21 @@ test("quality core adapters preserve existing row-based quality checks", async (
   assert.deepEqual(
     qualityRowsToUnits({ sourceRows, targetRows }, "docx").units.map((unit) => unit.documentKind).every((kind) => kind === "docx"),
     true
+  );
+  const segments = [
+    { original: "样本准备", translated: "Sample preparation" },
+    { original: "质控", translated: "QC" }
+  ];
+  assert.deepEqual(
+    segmentsToQualityRows(segments, (segment) => segment.translated),
+    {
+      sourceRows: [{ content: "样本准备" }, { content: "质控" }],
+      targetRows: [{ content: "Sample preparation" }, { content: "QC" }]
+    }
+  );
+  assert.deepEqual(
+    segmentsToQualityUnits(segments, "pdf", (segment) => segment.translated).units.map((unit) => unit.documentKind),
+    ["pdf", "pdf"]
   );
 });
 

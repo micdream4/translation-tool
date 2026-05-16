@@ -8,10 +8,11 @@ import type { ExcelContext } from './utils/excel';
 import {
   parseDocxFile,
   exportDocxFile,
-  DocxContext,
   formatDocxCoverageSummary,
   getDocxSegmentText,
-  setDocxSegmentText
+  setDocxSegmentText,
+  type DocxContext,
+  type DocxSegment
 } from './utils/docx';
 import {
   parsePdfFile,
@@ -19,7 +20,8 @@ import {
   exportPdfTranslationAsPdf,
   getPdfSegmentText,
   setPdfSegmentText,
-  type PdfContext
+  type PdfContext,
+  type PdfSegment
 } from './utils/pdf';
 import { TranslationHub } from './services/translationHub';
 import { RuleEngine } from './services/ruleEngine';
@@ -27,6 +29,7 @@ import { MultiAIJudge } from './services/multiAIJudge';
 import { SampleReviewAuditService } from './services/sampleReviewAuditService';
 import { ModelReviewService } from './services/modelReviewService';
 import { runPdfTranslationWorkflow } from './workflows/pdfTranslationWorkflow';
+import { segmentsToQualityRows } from './quality/adapters';
 import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
 import type { UntranslatedCell } from './utils/language';
 import { summarizeUntranslated } from './utils/untranslated';
@@ -2081,24 +2084,16 @@ const App: React.FC = () => {
 
   const buildDocumentQualityRows = () => {
     if (documentKind === 'docx' && docxContextRef.current) {
-      return {
-        sourceRows: docxContextRef.current.segments.map((segment) => ({
-          content: segment.original
-        })),
-        targetRows: docxContextRef.current.segments.map((segment) => ({
-          content: getDocxSegmentText(segment)
-        }))
-      };
+      return segmentsToQualityRows<DocxSegment>(
+        docxContextRef.current.segments,
+        (segment) => getDocxSegmentText(segment)
+      );
     }
     if (documentKind === 'pdf' && pdfContextRef.current) {
-      return {
-        sourceRows: pdfContextRef.current.segments.map((segment) => ({
-          content: segment.original
-        })),
-        targetRows: pdfContextRef.current.segments.map((segment) => ({
-          content: getPdfSegmentText(segment)
-        }))
-      };
+      return segmentsToQualityRows<PdfSegment>(
+        pdfContextRef.current.segments,
+        (segment) => getPdfSegmentText(segment)
+      );
     }
     return null;
   };
@@ -4234,16 +4229,16 @@ const App: React.FC = () => {
     : null;
   const qualityRowsForDisplay = useMemo(() => {
     if (documentKind === 'docx' && docxContextRef.current) {
-      return {
-        sourceRows: docxContextRef.current.segments.map((segment) => ({ content: segment.original })),
-        targetRows: docxContextRef.current.segments.map((segment) => ({ content: getDocxSegmentText(segment) }))
-      };
+      return segmentsToQualityRows<DocxSegment>(
+        docxContextRef.current.segments,
+        (segment) => getDocxSegmentText(segment)
+      );
     }
     if (documentKind === 'pdf' && pdfContextRef.current) {
-      return {
-        sourceRows: pdfContextRef.current.segments.map((segment) => ({ content: segment.original })),
-        targetRows: pdfContextRef.current.segments.map((segment) => ({ content: getPdfSegmentText(segment) }))
-      };
+      return segmentsToQualityRows<PdfSegment>(
+        pdfContextRef.current.segments,
+        (segment) => getPdfSegmentText(segment)
+      );
     }
     return {
       sourceRows: data,

@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.52`。
+当前版本：`v0.0.53`。
 
 稳定地址：
 
@@ -59,6 +59,7 @@ https://translation-tool-917.pages.dev
 9. GitHub Issue 已加入 `翻译结果问题` 模板，公司电脑发现问题时可直接提交结构化 Issue 和脱敏截图，Mac/Codex 端再按 Issue 修复。
 10. Quality Report 纯逻辑已从 `App.tsx` 拆到 `utils/qualityReport.ts`，包含 finding 构建、报告文本导出和 issue type 映射。
 11. 新增 `quality/types.ts` 和 `quality/adapters.ts`，`utils/quality.ts` 已通过 `QualityUnit` 执行检查，同时保留旧 `runQualityChecks` API。
+12. `quality/adapters.ts` 已新增 `segmentsToQualityRows` / `segmentsToQualityUnits`，DOCX/PDF 的 Quality Report rows 映射已从 `App.tsx` 迁入 adapter。
 
 ## 真实回归基线
 
@@ -101,6 +102,7 @@ docs/issue-report-workflow.md
 - `quality/types.ts` 已定义统一 QualityUnit / QualityIssue / QualityReport。
 - `quality/adapters.ts` 已支持 row-based 数据转 QualityUnit。
 - `utils/quality.ts` 已新增 `runQualityChecksOnUnits`，旧 `runQualityChecks` 内部复用 adapter。
+- `quality/adapters.ts` 已支持 DOCX/PDF 类文本段转 QualityRows / QualityUnit。
 
 参考文档：
 

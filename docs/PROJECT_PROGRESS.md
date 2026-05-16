@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.59
+
+- 新增 `utils/retryTargets.ts`，把 Quality Issue 到 Retry target 的生成逻辑抽成纯函数层。
+- Excel 的可补译行/单元格统计和 `Retry Missing Cells` 实际发送给模型的 sanitized rows 已改为复用同一套 helper，避免 UI 显示、Quality Check 和补译目标各自判断。
+- DOCX/PDF 的 retry segment 选择改为复用 `buildTextSegmentRetryPlan`，统一“优先高优先级问题，必要时回退低优先级短文本”的策略。
+- 回归测试新增 retry target helper 覆盖，确保锁定字段被排除、占位符保护会进入 sanitized row、高优先级文档段优先重译。
+- 版本号更新为 `v0.0.59`。
+
 ## v0.0.58
 
 - 继续拆完 Quality workflow：`runQualityCheck` 的 Excel/DOCX/PDF 执行入口已从 `App.tsx` 迁入 `hooks/useQualityWorkflow.ts`。

@@ -403,6 +403,79 @@ test("quality core adapters preserve existing row-based quality checks", async (
   );
 });
 
+test("retry target helpers reuse quality issue details across document kinds", async () => {
+  const {
+    buildExcelRetryTargets,
+    buildRetryableExcelSummary,
+    buildTextSegmentRetryPlan
+  } = await bundleTsModule(path.join(repoRoot, "utils/retryTargets.ts"));
+
+  const sourceRows = [
+    { id: "A-001", content: "List контрольных образцов", unit: "2-8°C" },
+    { id: "LOCK-1", content: "Home Главная страница", note: "%s" }
+  ];
+  const details = [
+    { rowIndex: 0, columnKey: "content", value: "List контрольных образцов" },
+    { rowIndex: 0, columnKey: "id", value: "A-001" },
+    { rowIndex: 1, columnKey: "content", value: "Home Главная страница" },
+    { rowIndex: 1, columnKey: "note", value: "%s" }
+  ];
+  const isRetryableCell = ({ columnKey, value }) =>
+    columnKey !== "id" && value.trim() !== "%s";
+  const guardTranslationTokens = (value) => ({
+    sanitized: value.replace("Home", "__TKN_1__"),
+    placeholders: value.includes("Home") ? { "__TKN_1__": "Home" } : null
+  });
+
+  const summary = buildRetryableExcelSummary({
+    details,
+    originalRows: sourceRows,
+    sourceRows,
+    isRetryableCell
+  });
+  assert.deepEqual(summary, { rowIndices: [0, 1], cellCount: 2 });
+
+  const targets = buildExcelRetryTargets({
+    rowIndices: [0, 1],
+    details,
+    originalRows: sourceRows,
+    sourceRows,
+    isRetryableCell,
+    guardTranslationTokens
+  });
+  assert.equal(targets.length, 2);
+  assert.deepEqual(targets[0].keys, new Set(["content", "id"]));
+  assert.deepEqual(targets[0].sanitizedRow, { content: "List контрольных образцов" });
+  assert.deepEqual(targets[1].sanitizedRow, { content: "__TKN_1__ Главная страница" });
+  assert.deepEqual(targets[1].placeholders, { content: { "__TKN_1__": "Home" } });
+
+  assert.deepEqual(
+    buildTextSegmentRetryPlan(
+      [
+        { index: 2, lowPriority: true },
+        { index: 5, lowPriority: false },
+        { index: 8, lowPriority: true }
+      ],
+      [2, 5, 8]
+    ),
+    {
+      targetIndices: [5],
+      recommendedIndices: [5],
+      skippedLowPriority: 2,
+      fallbackToLowPriority: false
+    }
+  );
+  assert.deepEqual(
+    buildTextSegmentRetryPlan([{ index: 3, lowPriority: true }], [3]),
+    {
+      targetIndices: [3],
+      recommendedIndices: [],
+      skippedLowPriority: 1,
+      fallbackToLowPriority: true
+    }
+  );
+});
+
 test("Traditional Chinese Taiwan target has UI, prompt, and quality-check coverage", async () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const languageSource = fs.readFileSync(path.join(repoRoot, "utils/language.ts"), "utf8");

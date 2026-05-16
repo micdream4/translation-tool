@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.58`。
+当前版本：`v0.0.59`。
 
 稳定地址：
 
@@ -64,6 +64,7 @@ https://translation-tool-917.pages.dev
 14. `components/QualityReportPanel.tsx` 已从 `App.tsx` 抽出，承接 Quality Report 展示、Quality Loop 和 AI Sample Review UI；`App.tsx` 只保留状态与动作接线。
 15. `hooks/useAuth.ts` 已从 `App.tsx` 抽出，集中处理 `/api/me` 身份探测和 authenticated/blocked/anonymous 状态。
 16. `hooks/useQualityWorkflow.ts` 已从 `App.tsx` 抽出，集中处理 Quality Report 状态、finding 派生、issue case 保存/导出、Sample Review、AI Sample Review 和 `runQualityCheck` 执行入口。
+17. `utils/retryTargets.ts` 已抽出 Quality Issue 到 Retry target 的生成逻辑，Excel/DOCX/PDF 的补译候选选择已开始复用统一 helper。
 
 ## 真实回归基线
 
@@ -111,6 +112,7 @@ docs/issue-report-workflow.md
 - Quality Report 面板 UI 已抽到 `components/QualityReportPanel.tsx`，后续可继续把质量状态和操作迁入 `hooks/useQualityWorkflow.ts`。
 - 认证状态已抽到 `hooks/useAuth.ts`，App 只通过 `useAuth()` 给 Header 传递身份状态。
 - Quality Report 状态、动作和 `runQualityCheck` 执行入口已抽到 `hooks/useQualityWorkflow.ts`，App 通过 hook 接收 `qualityReport`、`setQualityReport`、finding、issue case、Sample Review 和 Quality Check 操作。
+- Retry target 生成已抽到 `utils/retryTargets.ts`，Excel 的可补译行/单元格统计和 DOCX/PDF 的高优先级 segment 选择复用同一层纯函数。
 
 参考文档：
 
@@ -137,6 +139,7 @@ docs/ARCHITECTURE_REFACTOR_PLAN.md
 - `hooks/useTranslationWorkflow.ts`
 - `components/QualityReportPanel.tsx`
 - `components/TranslationSettingsPanel.tsx`
+- `utils/retryTargets.ts`（已完成第一阶段）
 
 ## Codex 固定开发原则
 

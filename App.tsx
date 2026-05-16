@@ -36,6 +36,11 @@ import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from 
 import type { UntranslatedCell } from './utils/language';
 import { summarizeUntranslated } from './utils/untranslated';
 import {
+  buildExcelRetryTargets,
+  buildRetryableExcelSummary,
+  buildTextSegmentRetryPlan
+} from './utils/retryTargets';
+import {
   loadTranslationProgress,
   saveTranslationProgress,
   clearTranslationProgress,
@@ -1914,15 +1919,13 @@ const App: React.FC = () => {
       addLog('Docx: 当前没有需要重译的段落。');
       return;
     }
-    const recommended = docxIssueDetails
-      .filter((item) => !item.lowPriority)
-      .map((item) => item.index);
-    const targetIndices = recommended.length > 0 ? recommended : pendingIndices;
-    if (recommended.length === 0 && docxIssueDetails.length > 0) {
+    const retryPlan = buildTextSegmentRetryPlan(docxIssueDetails, pendingIndices);
+    const targetIndices = retryPlan.targetIndices;
+    if (retryPlan.fallbackToLowPriority) {
       addLog('Docx Retry: 当前剩余问题均为低优先级短文本，将尝试全量重译。');
-    } else if (docxIssueDetails.length > recommended.length) {
+    } else if (retryPlan.skippedLowPriority > 0) {
       addLog(
-        `Docx Retry: 已自动聚焦 ${recommended.length} 段高优先级文本，跳过 ${docxIssueDetails.length - recommended.length} 段低优先级项。`
+        `Docx Retry: 已自动聚焦 ${retryPlan.recommendedIndices.length} 段高优先级文本，跳过 ${retryPlan.skippedLowPriority} 段低优先级项。`
       );
     }
     const detailByIndex = new Map<number, DocxIssueDetail>(
@@ -2096,15 +2099,13 @@ const App: React.FC = () => {
       addLog('PDF: 当前没有需要重译的文本段。');
       return;
     }
-    const recommended = detailsSnapshot
-      .filter((item) => !item.lowPriority)
-      .map((item) => item.index);
-    const targetIndices = recommended.length > 0 ? recommended : pendingIndices;
-    if (recommended.length === 0 && detailsSnapshot.length > 0) {
+    const retryPlan = buildTextSegmentRetryPlan(detailsSnapshot, pendingIndices);
+    const targetIndices = retryPlan.targetIndices;
+    if (retryPlan.fallbackToLowPriority) {
       addLog('PDF Retry: 当前剩余问题均为低优先级短文本，将尝试重译全部剩余问题段。');
-    } else if (detailsSnapshot.length > recommended.length) {
+    } else if (retryPlan.skippedLowPriority > 0) {
       addLog(
-        `PDF Retry: 已自动聚焦 ${recommended.length} 段高优先级文本，跳过 ${detailsSnapshot.length - recommended.length} 段低优先级项。`
+        `PDF Retry: 已自动聚焦 ${retryPlan.recommendedIndices.length} 段高优先级文本，跳过 ${retryPlan.skippedLowPriority} 段低优先级项。`
       );
     }
 
@@ -3072,53 +3073,16 @@ const App: React.FC = () => {
           ? processedData
           : data;
     const missingSummary = summarizeUntranslated(sourceRecords, targetLang);
-    const missingByRow = new Map<number, Set<string>>();
-    (missingSummary.details || []).forEach((cell) => {
-      if (!uniqueIndices.includes(cell.rowIndex)) return;
-      if (!missingByRow.has(cell.rowIndex)) {
-        missingByRow.set(cell.rowIndex, new Set());
-      }
-      missingByRow.get(cell.rowIndex)!.add(cell.columnKey);
-    });
-
-    const retryItems: Array<{
-      rowIdx: number;
-      keys: Set<string>;
-      sanitizedRow: POCTRecord;
-      placeholders: Record<string, Record<string, string> | null>;
-    }> = [];
-    uniqueIndices.forEach((rowIdx) => {
-      const keys = missingByRow.get(rowIdx);
-      if (!keys || keys.size === 0) return;
-      const originalRow = data[rowIdx] || {};
-      const sourceRow = sourceRecords[rowIdx] || originalRow;
-      const sanitizedRow: POCTRecord = {};
-      const placeholdersForRow: Record<string, Record<string, string> | null> = {};
-      keys.forEach((key) => {
-        const sourceValue = sourceRow?.[key];
-        const originalValue = originalRow?.[key];
-        const value = typeof sourceValue === 'string' ? sourceValue : originalValue;
-        if (typeof value !== 'string') {
-          sanitizedRow[key] = value;
-          return;
-        }
+    const retryItems = buildExcelRetryTargets({
+      rowIndices: uniqueIndices,
+      details: missingSummary.details || [],
+      originalRows: data,
+      sourceRows: sourceRecords,
+      isRetryableCell: ({ columnKey, value, originalValue }) => {
         const lockBasis = typeof originalValue === 'string' ? originalValue : value;
-        if (!value.trim() || shouldLockCell(key, lockBasis) || isNeutralToken(value.trim())) {
-          return;
-        }
-        const { sanitized, placeholders } = guardTranslationTokens(value);
-        if (placeholders) {
-          placeholdersForRow[key] = placeholders;
-        }
-        sanitizedRow[key] = sanitized;
-      });
-      if (Object.keys(sanitizedRow).length === 0) return;
-      retryItems.push({
-        rowIdx,
-        keys,
-        sanitizedRow,
-        placeholders: placeholdersForRow
-      });
+        return Boolean(value.trim()) && !shouldLockCell(columnKey, lockBasis) && !isNeutralToken(value.trim());
+      },
+      guardTranslationTokens
     });
 
     if (retryItems.length === 0) {
@@ -3705,49 +3669,28 @@ const App: React.FC = () => {
     [documentKind, currentRowsForRetry, targetLang, translationIssues]
   );
   const retryableRowsFromDetails = useMemo(() => {
-    const grouped = new Map<number, Set<string>>();
-    currentIssueSummary.details.forEach((item) => {
-      if (item.rowIndex < 0 || item.rowIndex >= data.length) return;
-      if (!grouped.has(item.rowIndex)) {
-        grouped.set(item.rowIndex, new Set());
-      }
-      grouped.get(item.rowIndex)!.add(item.columnKey);
-    });
-
-    const rows: number[] = [];
-    grouped.forEach((keys, rowIdx) => {
-      const originalRow = data[rowIdx] || {};
-      const sourceRow = currentRowsForRetry[rowIdx] || originalRow;
-      let retryable = false;
-      keys.forEach((key) => {
-        if (retryable) return;
-        const sourceValue = sourceRow?.[key];
-        const originalValue = originalRow?.[key];
-        const value = typeof sourceValue === 'string' ? sourceValue : originalValue;
-        if (typeof value !== 'string' || !value.trim()) return;
+    return buildRetryableExcelSummary({
+      details: currentIssueSummary.details,
+      originalRows: data,
+      sourceRows: currentRowsForRetry,
+      isRetryableCell: ({ columnKey, value, originalValue }) => {
+        if (!value.trim()) return false;
         const lockBasis = typeof originalValue === 'string' ? originalValue : value;
-        if (shouldLockCell(key, lockBasis) || isNeutralToken(value.trim())) return;
-        retryable = true;
-      });
-      if (retryable) rows.push(rowIdx);
-    });
-    return rows.sort((a, b) => a - b);
+        return !shouldLockCell(columnKey, lockBasis) && !isNeutralToken(value.trim());
+      }
+    }).rowIndices;
   }, [currentIssueSummary.details, currentRowsForRetry, data]);
   const retryableCellCount = useMemo(() => {
-    let count = 0;
-    currentIssueSummary.details.forEach((item) => {
-      if (item.rowIndex < 0 || item.rowIndex >= data.length) return;
-      const originalRow = data[item.rowIndex] || {};
-      const sourceRow = currentRowsForRetry[item.rowIndex] || originalRow;
-      const sourceValue = sourceRow?.[item.columnKey];
-      const originalValue = originalRow?.[item.columnKey];
-      const value = typeof sourceValue === 'string' ? sourceValue : originalValue;
-      if (typeof value !== 'string' || !value.trim()) return;
-      const lockBasis = typeof originalValue === 'string' ? originalValue : value;
-      if (shouldLockCell(item.columnKey, lockBasis) || isNeutralToken(value.trim())) return;
-      count += 1;
-    });
-    return count;
+    return buildRetryableExcelSummary({
+      details: currentIssueSummary.details,
+      originalRows: data,
+      sourceRows: currentRowsForRetry,
+      isRetryableCell: ({ columnKey, value, originalValue }) => {
+        if (!value.trim()) return false;
+        const lockBasis = typeof originalValue === 'string' ? originalValue : value;
+        return !shouldLockCell(columnKey, lockBasis) && !isNeutralToken(value.trim());
+      }
+    }).cellCount;
   }, [currentIssueSummary.details, currentRowsForRetry, data]);
   const untranslatedLocationPreview = useMemo(
     () => formatIssueLocationPreview(currentIssueSummary.details, 6),

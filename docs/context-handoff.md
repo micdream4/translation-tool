@@ -35,7 +35,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.69`。
+当前版本：`v0.0.70`。
 
 稳定地址：
 
@@ -88,6 +88,7 @@ https://translation-tool-917.pages.dev
 37. Quality Loop 面板已提供 `Promote TM` 和 `Asset JSON`，人工修正样本可以批量写入 Translation Memory 或导出资产候选包。
 38. 真实文档回归样本已抽成 `fixtures/real-document-regression.json`，`npm run test:real-docs` 按 manifest 跑本地 Excel / DOCX / PDF 样本，并输出每个 `caseId` 的检查状态。
 39. 已新增本地问题捕获工作流：`docs/local-issue-capture-workflow.md` 和 `npm run issue:prepare`，Mac 本地发现问题可先保存到 ignored 的 `local-data/issues/`，公司电脑或跨设备问题仍走 GitHub Issue。
+40. `local-data/README.md` 已改成中文目录规则，明确每个本地问题捕获目录应该放什么；`issue:prepare` 的 README 模板也已同步。
 
 ## 真实回归基线
 

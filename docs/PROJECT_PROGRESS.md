@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.70
+
+- 将 `local-data/README.md` 改成中文目录规则，明确 `inbox`、`done`、`failed`、`issues`、`debug-packages`、`regression-jsonl`、`issue-assets`、`screenshots` 分别放什么。
+- `scripts/prepareLocalIssueWorkspace.mjs` 的 README 模板同步改为中文规则，后续新建本地 workspace 时不会再生成模糊英文说明。
+- 回归测试补充本地 README 模板断言，确保问题捕获目录规则不会丢失。
+- 版本号更新为 `v0.0.70`。
+
 ## v0.0.69
 
 - 按“先打基础，再做多 Agent”的路线新增 `docs/local-issue-capture-workflow.md`，明确 Mac 本地发现问题时如何保存 Debug Package、Regression JSONL、Asset JSON、截图和本地 issue 包。

@@ -254,6 +254,9 @@ test("local issue capture workflow prepares ignored self-iteration workspace", (
   assert.match(workflowDoc, /Issue Draft 只是 Markdown 草稿，不会自动上传/);
   assert.match(workflowDoc, /npm run test:quality-gate/);
   assert.match(prepareScript, /poct\.local_issue_workspace\.v1/);
+  assert.match(prepareScript, /local-data 使用规则/);
+  assert.match(prepareScript, /issues\/2026-05-16-docx-russian-list-residual/);
+  assert.match(prepareScript, /不要把 .*local-data\/.* 里的真实文件提交到 git/);
   assert.match(prepareScript, /debug-packages/);
   assert.match(prepareScript, /regression-jsonl/);
   assert.match(gitignoreSource, /^local-data\/$/m);

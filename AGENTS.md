@@ -17,6 +17,26 @@
 
 如果只修改代码而没有留下可复用资产，需要在最终说明中明确原因。
 
+## 本地 Issue 包硬规则
+
+当用户反馈任何翻译、质量检查、补译、导出、PDF/DOCX/Excel 回填、格式保真、模型路由或部署问题时，Codex 必须主动判断是否需要建立本地 issue 包。只要问题来自真实使用、真实文件、截图、导出结果或用户明确指出异常，就优先在 ignored 的 `local-data/issues/` 下建立一个问题目录，除非用户明确说不要记录。
+
+命名格式：
+
+```text
+local-data/issues/YYYY-MM-DD-documentkind-targetlang-short-problem/
+```
+
+本地 issue 包至少包含 `README.md`，记录：
+
+1. 用户反馈的现象。
+2. 涉及文件路径，优先使用 `local-data/inbox/`、`local-data/done/`、`local-data/failed/` 中的相对路径。
+3. 初步归因。
+4. 优先级判断：立即修复、后续优化、按当前策略暂缓。
+5. 后续应沉淀到哪一层：测试、QA 规则、术语、翻译记忆、语言 profile、真实文档 smoke 或用户提示。
+
+如果能安全生成截图、渲染图、Debug Package、Regression JSONL 或 Asset JSON，也应放入同一个 issue 包。不要把原始敏感文件复制进 GitHub Issue；`local-data/` 继续只作为本地受控问题资产区。
+
 ## Codex 固定工作流
 
 处理任何翻译质量、导出、补译、模型路由或文档结构问题时，按这个顺序执行：

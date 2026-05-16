@@ -89,6 +89,7 @@ https://translation-tool-917.pages.dev
 38. 真实文档回归样本已抽成 `fixtures/real-document-regression.json`，`npm run test:real-docs` 按 manifest 跑本地 Excel / DOCX / PDF 样本，并输出每个 `caseId` 的检查状态。
 39. 已新增本地问题捕获工作流：`docs/local-issue-capture-workflow.md` 和 `npm run issue:prepare`，Mac 本地发现问题可先保存到 ignored 的 `local-data/issues/`，公司电脑或跨设备问题仍走 GitHub Issue。
 40. `local-data/README.md` 已改成中文目录规则，明确每个本地问题捕获目录应该放什么；`issue:prepare` 的 README 模板也已同步。
+41. Codex 处理用户反馈的真实翻译/导出/格式问题时，应主动在 `local-data/issues/` 建本地 issue 包并写 `README.md`，再判断是否立刻修复或沉淀为后续测试/规则/术语/TM/profile。
 
 ## 真实回归基线
 

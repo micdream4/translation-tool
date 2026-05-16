@@ -63,6 +63,30 @@ asset.json
 screenshot.png
 ```
 
+## Codex 处理用户反馈时
+
+当用户在对话中反馈真实翻译问题时，Codex 不应只在聊天里判断“要不要修”。默认动作是：
+
+1. 先查看相关文件、截图或导出结果。
+2. 在 `local-data/issues/` 下建立一个本地 issue 包，除非用户明确说不要记录。
+3. 至少写入 `README.md`，记录现象、文件路径、初步归因、优先级和后续沉淀方向。
+4. 如果能安全生成渲染图、截图、Debug Package、Regression JSONL 或 Asset JSON，就放进同一个问题目录。
+5. 再判断是否需要立刻修代码，或只是记录为后续优化。
+
+命名格式：
+
+```text
+local-data/issues/YYYY-MM-DD-documentkind-targetlang-short-problem/
+```
+
+示例：
+
+```text
+local-data/issues/2026-05-16-pdf-french-visual-fidelity/
+local-data/issues/2026-05-16-docx-russian-toc-english-residual/
+local-data/issues/2026-05-16-excel-french-placeholder-broken/
+```
+
 ## 公司电脑发现问题
 
 公司电脑上不能直接改代码时，仍然走 GitHub Issue：

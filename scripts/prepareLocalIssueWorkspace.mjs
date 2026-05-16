@@ -61,6 +61,29 @@ screenshot.png
 7. 脱敏截图放到 \`screenshots/\`。
 8. 重要问题在 \`issues/\` 下建一个问题文件夹，把相关材料汇总进去。
 
+## Codex 反馈处理规则
+
+以后如果你在聊天里向 Codex 反馈真实翻译、导出、格式、PDF/DOCX/Excel 回填、模型或质量检查问题，Codex 应主动在 \`issues/\` 下建立本地问题包，除非你明确说不要记录。
+
+本地问题包至少包含：
+
+\`\`\`text
+README.md
+\`\`\`
+
+能安全生成时，也应加入：
+
+\`\`\`text
+source-page.png
+translated-page.png
+debug-package.json
+regression.jsonl
+asset.json
+screenshot.png
+\`\`\`
+
+Codex 会先把问题记录为资产，再判断是否需要立即修代码，或作为后续优化进入测试、规则、术语、翻译记忆、语言 profile 或真实文档 smoke。
+
 ## 注意
 
 - 不要把原始敏感文档放进 GitHub Issue。

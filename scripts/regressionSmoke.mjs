@@ -228,6 +228,48 @@ test("translation memory supports exact reuse and in-file dedupe", async () => {
   assert.match(appSource, /Clear TM/);
 });
 
+test("quality issue cases can be saved and exported from quality findings", async () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const issueCaseSource = fs.readFileSync(path.join(repoRoot, "utils/issueCases.ts"), "utf8");
+  const { buildTranslationIssueCase, serializeTranslationIssueCasesJsonl } = await transpileTsModule(
+    path.join(repoRoot, "utils/issueCases.ts")
+  );
+
+  const issueCase = buildTranslationIssueCase(
+    {
+      appVersion: "0.0.0-test",
+      documentKind: "docx",
+      targetLang: "Russian",
+      sourceText: "5.1 List of control samples",
+      badTranslation: "5.1 List контрольных образцов",
+      correctedTranslation: "5.1 Список контрольных образцов",
+      issueType: "non-target-residual",
+      locationLabel: "DOCX Segment 5",
+      model: "test-model",
+      promptProfile: "docx-manual"
+    },
+    new Date("2026-01-01T00:00:00.000Z")
+  );
+
+  assert.equal(issueCase.status, "new");
+  assert.equal(issueCase.sourceHash, buildTranslationIssueCase({
+    appVersion: "0.0.0-test",
+    documentKind: "docx",
+    targetLang: "Russian",
+    sourceText: "5.1 List of control samples",
+    badTranslation: "",
+    correctedTranslation: "",
+    issueType: "non-target-residual",
+    locationLabel: "DOCX Segment 5"
+  }).sourceHash);
+  assert.match(serializeTranslationIssueCasesJsonl([issueCase]), /Список контрольных образцов/);
+  assert.match(issueCaseSource, /poct\.translation_issue_cases\.v1/);
+  assert.match(appSource, /Save Correction/);
+  assert.match(appSource, /Export Cases/);
+  assert.match(appSource, /saveTranslationIssueCase/);
+  assert.match(appSource, /rememberTranslationPairs/);
+});
+
 test("Traditional Chinese Taiwan target has UI, prompt, and quality-check coverage", async () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const languageSource = fs.readFileSync(path.join(repoRoot, "utils/language.ts"), "utf8");

@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.49
+
+- 落地质量闭环第一阶段：新增本地问题样本库 `utils/issueCases.ts`，支持保存人工修正、统计、清空、导出 JSONL。
+- Quality Report 的每条 finding 新增 `Save Correction`，可把源文、错误译文、人工修正、问题类型、位置、版本、模型写入本地 issue case，并可选择同步写入 Translation Memory。
+- Quality Report 新增 `Quality Loop` 区块，显示本地问题样本数量，并支持导出/清空问题样本。
+- 新增回归测试覆盖 issue case 构建、JSONL 导出和 Quality Report 保存入口。
+- 版本号更新为 `v0.0.49`。
+
 ## v0.0.48
 
 - 新增 `npm run test:real-docs` 真实文档 smoke：覆盖本地 `local-data` 中的 Excel 解析/导出/Quality Check、俄语 DOCX 残留扫描、PDF 文本抽取与首屏渲染基线。

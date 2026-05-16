@@ -45,6 +45,14 @@ import {
   saveTranslationMemoryPairs,
   type TranslationMemoryPair
 } from './utils/translationMemory';
+import {
+  clearTranslationIssueCases,
+  countTranslationIssueCases,
+  loadTranslationIssueCases,
+  saveTranslationIssueCase,
+  serializeTranslationIssueCasesJsonl,
+  type TranslationIssueType
+} from './utils/issueCases';
 import { normalizeTerminology } from './utils/terminology';
 import { polishTranslation, fixSpacingArtifacts } from './utils/postprocess';
 import {
@@ -471,6 +479,7 @@ const App: React.FC = () => {
   const [runtimeProtectedTermsRaw, setRuntimeProtectedTermsRaw] = useState<string>('');
   const [stringHistoryCount, setStringHistoryCount] = useState<number>(0);
   const [translationMemoryCount, setTranslationMemoryCount] = useState<number>(0);
+  const [issueCaseCount, setIssueCaseCount] = useState<number>(0);
   const [processingState, setProcessingState] = useState<ProcessingState>({
     status: 'idle',
     progress: 0,
@@ -1046,6 +1055,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setStringHistoryCount(loadStringHistory().length);
+    setIssueCaseCount(countTranslationIssueCases());
   }, []);
 
   const refreshTranslationMemoryCount = async () => {
@@ -1056,6 +1066,10 @@ const App: React.FC = () => {
   useEffect(() => {
     void refreshTranslationMemoryCount();
   }, []);
+
+  const refreshIssueCaseCount = () => {
+    setIssueCaseCount(countTranslationIssueCases());
+  };
 
   const persistProgress = (
     records: POCTRecord[],
@@ -1358,6 +1372,90 @@ const App: React.FC = () => {
     resetSampleReviewState();
     setPreviewFocus(null);
     addLog('Quality Report: 已清除当前检查结果。');
+  };
+
+  const mapQualityFindingToIssueType = (finding: QualityFinding): TranslationIssueType => {
+    switch (finding.category) {
+      case 'nonTarget':
+      case 'chinese':
+        return 'non-target-residual';
+      case 'placeholder':
+      case 'idMismatch':
+        return 'placeholder';
+      case 'spacing':
+        return 'number-unit-format';
+      case 'structureMismatch':
+        return 'layout';
+      case 'emptyTranslation':
+      default:
+        return 'accuracy';
+    }
+  };
+
+  const saveQualityFindingCorrection = async (finding: QualityFinding) => {
+    if (typeof window === 'undefined') return;
+    const suggested = finding.translated || '';
+    const corrected = window.prompt('输入人工修正译文。保存后会进入本地问题样本库。', suggested);
+    if (corrected === null) return;
+    const trimmed = corrected.trim();
+    if (!trimmed) {
+      addLog('Issue Case: 人工修正为空，未保存。');
+      return;
+    }
+
+    const issueCase = saveTranslationIssueCase({
+      appVersion: APP_VERSION || PACKAGE_VERSION || 'unknown',
+      documentKind,
+      targetLang,
+      sourceText: finding.original,
+      badTranslation: finding.translated,
+      correctedTranslation: trimmed,
+      issueType: mapQualityFindingToIssueType(finding),
+      locationLabel: finding.locationLabel,
+      model: currentModelLabel,
+      promptProfile: documentKind === 'excel' ? 'spreadsheet' : 'docx-manual',
+      notes: finding.description
+    });
+    refreshIssueCaseCount();
+    addLog(`Issue Case: 已保存 ${issueCase.issueType} 样本（${finding.locationLabel}）。`);
+
+    if (
+      finding.original.trim() &&
+      trimmed &&
+      window.confirm('是否同时把这条人工修正写入 Translation Memory？')
+    ) {
+      await rememberTranslationPairs([
+        {
+          sourceText: finding.original,
+          targetText: trimmed,
+          targetLang,
+          model: currentModelLabel,
+          documentKind,
+          fileName: file?.name
+        }
+      ]);
+      addLog('Issue Case: 已同步写入 Translation Memory。');
+    }
+  };
+
+  const exportIssueCases = () => {
+    const cases = loadTranslationIssueCases();
+    if (!cases.length) {
+      addLog('Issue Cases: 当前没有可导出的问题样本。');
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(`Translation_Issue_Cases_${stamp}.jsonl`, serializeTranslationIssueCasesJsonl(cases));
+    addLog(`Issue Cases: 已导出 ${cases.length} 条问题样本 JSONL。`);
+  };
+
+  const clearIssueCases = () => {
+    if (typeof window !== 'undefined' && !window.confirm('确认清空本地问题样本库？此操作不会影响翻译记忆。')) {
+      return;
+    }
+    clearTranslationIssueCases();
+    refreshIssueCaseCount();
+    addLog('Issue Cases: 已清空本地问题样本库。');
   };
 
   const jumpToPreviewCell = (rowIndex: number, columnKey: string) => {
@@ -5322,6 +5420,17 @@ const App: React.FC = () => {
                 >
                   Export Report
                 </button>
+                <button
+                  onClick={exportIssueCases}
+                  disabled={issueCaseCount === 0}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    issueCaseCount === 0
+                      ? disabledButtonClass
+                      : neutralButtonClass
+                  }`}
+                >
+                  Export Cases
+                </button>
               </div>
             </div>
 
@@ -5377,6 +5486,37 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
+                <div className={`${nestedPanelClass} flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between`}>
+                  <div>
+                    <h4 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Loop</h4>
+                    <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                      本地问题样本库：{issueCaseCount} 条。点击每条 finding 的 Save Correction 可保存人工修正，后续可转术语、翻译记忆、QA 规则或回归测试。
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={exportIssueCases}
+                      disabled={issueCaseCount === 0}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
+                      }`}
+                    >
+                      Export JSONL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearIssueCases}
+                      disabled={issueCaseCount === 0}
+                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                        issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
+                      }`}
+                    >
+                      Clear Cases
+                    </button>
+                  </div>
+                </div>
+
                 <details className={`rounded-lg border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/30'}`}>
                   <summary className="cursor-pointer list-none flex items-center justify-between">
                     <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>Details & Sample Review</span>
@@ -5420,12 +5560,20 @@ const App: React.FC = () => {
                                 译文：{(finding.translated || '(empty)').replace(/\s+/g, ' ').slice(0, 120)}
                               </p>
                             </div>
-                            <button
-                              onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}
-                              className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all"
-                            >
-                              Jump
-                            </button>
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                              <button
+                                onClick={() => saveQualityFindingCorrection(finding)}
+                                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+                              >
+                                Save Correction
+                              </button>
+                              <button
+                                onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}
+                                className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all"
+                              >
+                                Jump
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ))}

@@ -43,7 +43,8 @@
 - `hooks/useAuth.ts` 已抽出 `/api/me` 身份探测，主组件不再直接处理认证请求和状态归一化。
 - `hooks/useQualityWorkflow.ts` 已抽出 Quality Report 状态、finding 派生、issue case 操作、Sample Review、AI Sample Review 和 `runQualityCheck` 的 Excel/DOCX/PDF 执行入口。
 - `utils/retryTargets.ts` 已抽出 Quality Issue 到 Retry target 的生成逻辑，Excel/DOCX/PDF 的补译候选选择开始复用统一 helper。
-- 下一步逐步让报告展示也读取 `QualityUnit` 的 location/metadata，并继续拆出 debug package / GitHub Issue 反馈入口。
+- `utils/debugPackage.ts` 已新增本地调试包构建器，Quality Report 面板可导出版本、模型、Quality Report、issue cases 和样本行，作为 GitHub Issue 的结构化附件。
+- 下一步逐步让报告展示也读取 `QualityUnit` 的 location/metadata，并继续推进 GitHub Issue 自动创建入口。
 
 ### 3. App.tsx 拆分
 
@@ -63,7 +64,8 @@
 - `hooks/useAuth.ts` 已完成第一阶段抽离。
 - `hooks/useQualityWorkflow.ts` 已完成状态/动作和 `runQualityCheck` 执行入口抽离。
 - `utils/retryTargets.ts` 已完成第一阶段抽离，统一 Excel/DOCX/PDF 的补译候选选择。
-- 下一步优先转向 GitHub Issue / debug package 闭环，或继续拆 Preview / Translation settings。
+- `utils/debugPackage.ts` 已完成第一阶段，先支持本地 JSON 调试包导出。
+- 下一步优先做 GitHub Issue 自动创建入口，或继续拆 Preview / Translation settings。
 
 ### 4. 认证与对外开放
 

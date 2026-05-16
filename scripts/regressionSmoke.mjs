@@ -246,12 +246,14 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   const qualityHookSource = fs.readFileSync(path.join(repoRoot, "hooks/useQualityWorkflow.ts"), "utf8");
   const issueCaseSource = fs.readFileSync(path.join(repoRoot, "utils/issueCases.ts"), "utf8");
   const qualityReportSource = fs.readFileSync(path.join(repoRoot, "utils/qualityReport.ts"), "utf8");
+  const debugPackageSource = fs.readFileSync(path.join(repoRoot, "utils/debugPackage.ts"), "utf8");
   const { buildTranslationIssueCase, serializeTranslationIssueCasesJsonl } = await transpileTsModule(
     path.join(repoRoot, "utils/issueCases.ts")
   );
   const { buildQualityFindings, buildQualityReportText, mapQualityFindingToIssueType } = await transpileTsModule(
     path.join(repoRoot, "utils/qualityReport.ts")
   );
+  const { serializeDebugPackage } = await transpileTsModule(path.join(repoRoot, "utils/debugPackage.ts"));
 
   const issueCase = buildTranslationIssueCase(
     {
@@ -285,10 +287,13 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(appSource, /<QualityReportPanel/);
   assert.match(qualityPanelSource, /Save Correction/);
   assert.match(qualityPanelSource, /Export Cases/);
+  assert.match(qualityPanelSource, /Debug Package/);
   assert.match(qualityPanelSource, /Quality Loop/);
   assert.match(appSource, /useQualityWorkflow/);
+  assert.match(appSource, /exportDebugPackage/);
   assert.match(qualityHookSource, /saveTranslationIssueCase/);
   assert.match(qualityHookSource, /rememberTranslationPairs/);
+  assert.match(qualityHookSource, /serializeDebugPackage/);
   assert.match(qualityHookSource, /buildQualityFindings/);
   assert.match(qualityHookSource, /buildQualityReportText/);
   assert.match(qualityHookSource, /SampleReviewAuditService/);
@@ -298,6 +303,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.doesNotMatch(appSource, /const runQualityCheck =/);
   assert.match(appSource, /segmentsToQualityUnits/);
   assert.match(qualityReportSource, /mapQualityFindingToIssueType/);
+  assert.match(debugPackageSource, /poct\.translation_debug_package\.v1/);
 
   const qualityReport = {
     totals: {
@@ -358,6 +364,37 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(reportText, /Target language: Russian/);
   assert.match(reportText, /Non-target residual: 1 cells \/ 1 rows/);
   assert.match(reportText, /\[Placeholder\] R2\/content/);
+
+  const debugPackage = JSON.parse(
+    serializeDebugPackage({
+      appVersion: "0.0.0-test",
+      documentKind: "docx",
+      targetLang: "Russian",
+      fileName: "sample.docx",
+      modelLabel: "Auto",
+      modelPreference: "auto-openrouter",
+      generatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      qualityReport,
+      issueSummary: {
+        cells: 1,
+        rows: 1,
+        rowIndices: [0],
+        missingRows: [],
+        details: [{ rowIndex: 0, columnKey: "content", value: "List контрольных образцов" }]
+      },
+      qualityFindings: findings,
+      issueCases: [issueCase],
+      qualityRows: {
+        sourceRows: [{ content: "List of control samples" }],
+        targetRows: [{ content: "List контрольных образцов" }]
+      },
+      formatSnapshot: { sheetName: "DOCX", rows: 1, cols: 1 }
+    })
+  );
+  assert.equal(debugPackage.schema, "poct.translation_debug_package.v1");
+  assert.equal(debugPackage.metadata.appVersion, "0.0.0-test");
+  assert.equal(debugPackage.issueCases.count, 1);
+  assert.equal(debugPackage.samples.issueRows[0].source.content, "List of control samples");
 });
 
 test("quality core adapters preserve existing row-based quality checks", async () => {

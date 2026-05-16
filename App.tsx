@@ -3784,6 +3784,7 @@ const App: React.FC = () => {
     runQualityCheck,
     clearQualityReport,
     exportQualityReport,
+    exportDebugPackage,
     exportIssueCases,
     clearIssueCases,
     saveQualityFindingCorrection,
@@ -3799,6 +3800,7 @@ const App: React.FC = () => {
     currentRowsForRetry,
     currentIssueSummary,
     qualityRowsForDisplay,
+    formatSnapshot,
     currentModelLabel,
     fileName: file?.name,
     translationModelPreference,
@@ -4812,6 +4814,7 @@ const App: React.FC = () => {
             sectionDividerClass={sectionDividerClass}
             clearQualityReport={clearQualityReport}
             exportQualityReport={exportQualityReport}
+            exportDebugPackage={exportDebugPackage}
             exportIssueCases={exportIssueCases}
             clearIssueCases={clearIssueCases}
             saveQualityFindingCorrection={saveQualityFindingCorrection}

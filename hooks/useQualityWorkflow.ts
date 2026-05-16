@@ -5,6 +5,7 @@ import type { TranslationMemoryPair } from '../utils/translationMemory';
 import type { UntranslatedCell } from '../utils/language';
 import type { DocxContext } from '../utils/docx';
 import type { PdfContext } from '../utils/pdf';
+import { serializeDebugPackage, type DebugFormatSnapshot } from '../utils/debugPackage';
 import {
   clearTranslationIssueCases,
   countTranslationIssueCases,
@@ -44,6 +45,10 @@ export type SampleReviewItem = {
 type DocumentKind = 'excel' | 'docx' | 'pdf';
 type PreviewFocus = { rowIndex: number; columnKey: string } | null;
 type CurrentIssueSummary = {
+  cells?: number;
+  rows?: number;
+  rowIndices?: number[];
+  missingRows?: number[];
   details: UntranslatedCell[];
 };
 
@@ -89,6 +94,7 @@ type UseQualityWorkflowParams = {
   currentRowsForRetry: POCTRecord[];
   currentIssueSummary: CurrentIssueSummary;
   qualityRowsForDisplay: QualityRows;
+  formatSnapshot: DebugFormatSnapshot;
   currentModelLabel: string;
   fileName?: string;
   translationModelPreference: string;
@@ -144,6 +150,7 @@ export const useQualityWorkflow = ({
   currentRowsForRetry,
   currentIssueSummary,
   qualityRowsForDisplay,
+  formatSnapshot,
   currentModelLabel,
   fileName,
   translationModelPreference,
@@ -399,6 +406,37 @@ export const useQualityWorkflow = ({
     addLog(`Issue Cases: 已导出 ${cases.length} 条问题样本 JSONL。`);
   };
 
+  const exportDebugPackage = () => {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const cases = loadTranslationIssueCases();
+    downloadTextFile(
+      `Translation_Debug_Package_${targetLang}_${stamp}.json`,
+      serializeDebugPackage({
+        appVersion,
+        documentKind,
+        targetLang,
+        fileName,
+        modelLabel: currentModelLabel,
+        modelPreference: translationModelPreference,
+        qualityReport,
+        issueSummary: {
+          cells: currentIssueSummary.cells ?? currentIssueSummary.details.length,
+          rows:
+            currentIssueSummary.rows ??
+            new Set(currentIssueSummary.details.map((item) => item.rowIndex)).size,
+          rowIndices: currentIssueSummary.rowIndices || [],
+          missingRows: currentIssueSummary.missingRows || [],
+          details: currentIssueSummary.details
+        },
+        qualityFindings,
+        issueCases: cases,
+        qualityRows: qualityRowsForDisplay,
+        formatSnapshot
+      })
+    );
+    addLog(`Debug Package: 已导出调试包（Quality findings ${qualityFindings.length} 条，Issue cases ${cases.length} 条）。`);
+  };
+
   const clearIssueCases = () => {
     if (typeof window !== 'undefined' && !window.confirm('确认清空本地问题样本库？此操作不会影响翻译记忆。')) {
       return;
@@ -579,6 +617,7 @@ export const useQualityWorkflow = ({
     runQualityCheck,
     clearQualityReport,
     exportQualityReport,
+    exportDebugPackage,
     exportIssueCases,
     clearIssueCases,
     saveQualityFindingCorrection,

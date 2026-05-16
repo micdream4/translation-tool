@@ -66,6 +66,7 @@ interface QualityReportPanelProps {
   sectionDividerClass: string;
   clearQualityReport: () => void;
   exportQualityReport: () => void;
+  exportDebugPackage: () => void;
   exportIssueCases: () => void;
   clearIssueCases: () => void;
   saveQualityFindingCorrection: (finding: QualityFinding) => void;
@@ -105,6 +106,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   sectionDividerClass,
   clearQualityReport,
   exportQualityReport,
+  exportDebugPackage,
   exportIssueCases,
   clearIssueCases,
   saveQualityFindingCorrection,
@@ -152,6 +154,12 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             }`}
           >
             Export Cases
+          </button>
+          <button
+            onClick={exportDebugPackage}
+            className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+          >
+            Debug Package
           </button>
         </div>
       </div>

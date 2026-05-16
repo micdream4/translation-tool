@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.60
+
+- 新增 `utils/debugPackage.ts`，提供 `poct.translation_debug_package.v1` 调试包构建器。
+- Quality Report 面板新增 `Debug Package` 按钮，可一键导出 JSON，包含版本、文件类型、目标语言、模型、格式快照、Quality Report、异常摘要、finding、issue cases 和问题行样本。
+- 调试包只本地下载，不自动上传外部服务；JSON 内置隐私提示，方便公司电脑发现问题后脱敏并贴到 GitHub Issue。
+- 回归测试新增 debug package schema、元数据、issue cases 和问题行样本校验。
+- 版本号更新为 `v0.0.60`。
+
 ## v0.0.59
 
 - 新增 `utils/retryTargets.ts`，把 Quality Issue 到 Retry target 的生成逻辑抽成纯函数层。

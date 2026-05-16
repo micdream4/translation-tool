@@ -74,6 +74,7 @@ npm run deploy:pages
    - `WorkflowConsole`
    - `PreviewPanel`
 4. 问题反馈闭环应支持：保存人工修正、问题样本库、转术语、转翻译记忆、转 QA 规则、转回归测试。
+5. 跨电脑问题反馈以 GitHub Issue 为正式入口：公司电脑提交结构化 Issue，Mac/Codex 读取 Issue 后按本文件和 `docs/translation-quality-loop.md` 分类、复现、修复和沉淀测试资产。
 
 ## 质量规则基线
 
@@ -110,3 +111,13 @@ Cloudflare Pages 非敏感配置在 `wrangler.toml` 的 `[vars]` 中维护，包
 ## 长对话迁移
 
 当上下文变长或准备换新对话时，更新 `docs/context-handoff.md`。新对话只需要引用这个文件和本 `AGENTS.md`，不要复制整段聊天记录。
+
+## 跨电脑问题入口
+
+公司电脑发现问题时，优先使用 GitHub Issue 模板 `翻译结果问题`，不要依赖手机转发截图。Codex 处理 Issue 时必须读取：
+
+1. Issue 中的网站版本、文件类型、目标语言、复现步骤、截图和 Quality Report。
+2. `docs/issue-report-workflow.md`。
+3. `docs/translation-quality-loop.md`。
+
+如果 Issue 只包含截图，先要求补齐最低复现信息或从截图中提取可执行线索；不要在缺少版本、目标语言、文件类型时贸然改核心逻辑。

@@ -40,6 +40,39 @@ Codex 修改代码或配置
 下次同类问题自动拦截
 ```
 
+## 远程问题入口
+
+公司电脑使用翻译网站但不能直接改代码时，问题应进入 GitHub Issue，而不是通过手机转发截图。
+
+入口文件：
+
+```text
+.github/ISSUE_TEMPLATE/translation-bug.yml
+docs/issue-report-workflow.md
+```
+
+Issue 负责记录远程复现信息：
+
+- 问题现象。
+- 文件类型。
+- 目标语言。
+- 网站版本。
+- 初步问题类型。
+- 复现步骤。
+- 脱敏截图。
+- Quality Report 或日志摘录。
+
+`Save Correction` 负责保存具体翻译样本：
+
+- 原文。
+- 当前错译。
+- 人工修正。
+- 问题类型。
+- 位置。
+- 模型和版本。
+
+Codex 修复时应把 GitHub Issue 和本地 issue case 合并判断：Issue 说明场景和复现路径，issue case 提供可沉淀为测试、术语、TM 或 QA 规则的具体样本。
+
 ## 问题样本结构
 
 第一阶段可以先存本地 IndexedDB，并支持导出 JSONL。后续接 Cloudflare D1。
@@ -258,6 +291,8 @@ type TranslationIssueCase = {
 问题类型：
 是否应该沉淀为术语/TM/QA规则/测试：
 ```
+
+如果问题来自公司电脑，优先新建 GitHub Issue，并在新对话或 Codex 任务里引用 Issue 编号。
 
 Codex 修复时必须回答：
 

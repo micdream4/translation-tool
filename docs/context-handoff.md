@@ -8,14 +8,15 @@
 2. `docs/context-handoff.md`
 3. `docs/translation-quality-loop.md`
 4. `docs/ARCHITECTURE_REFACTOR_PLAN.md`
-5. `docs/PROJECT_PROGRESS.md`
+5. `docs/issue-report-workflow.md`
+6. `docs/PROJECT_PROGRESS.md`
 
 不要复制整段旧聊天。旧聊天只是过程，仓库文档才是稳定上下文。
 
 ## 新对话启动提示词
 
 ```text
-这是我的 POCT 文档翻译工具项目。请先基于仓库里的 AGENTS.md、docs/context-handoff.md、docs/translation-quality-loop.md、docs/ARCHITECTURE_REFACTOR_PLAN.md 和 docs/PROJECT_PROGRESS.md 理解背景。
+这是我的 POCT 文档翻译工具项目。请先基于仓库里的 AGENTS.md、docs/context-handoff.md、docs/translation-quality-loop.md、docs/issue-report-workflow.md、docs/ARCHITECTURE_REFACTOR_PLAN.md 和 docs/PROJECT_PROGRESS.md 理解背景。
 
 这个工具用于上传 Excel/DOCX/PDF/字符串资源，调用 LLM 翻译，并尽量保持原文档格式、表格结构、段落顺序、图片位置、单位、占位符、编号和术语一致性。
 
@@ -33,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.49`。
+当前版本：`v0.0.50`。
 
 稳定地址：
 
@@ -55,6 +56,7 @@ https://translation-tool-917.pages.dev
 6. PDF 新导出对 Latin-1 可覆盖文本优先写真实文本层，不支持字符集回退 PNG 文本块。
 7. DOCX/PDF 已接入 Quality Report 表面层，但 Quality Check Core 尚未完全抽离。
 8. Quality Report 已加入 `Save Correction`，可将 finding 保存为本地 issue case，并可选择同步写入 Translation Memory。
+9. GitHub Issue 已加入 `翻译结果问题` 模板，公司电脑发现问题时可直接提交结构化 Issue 和脱敏截图，Mac/Codex 端再按 Issue 修复。
 
 ## 真实回归基线
 
@@ -70,16 +72,17 @@ https://translation-tool-917.pages.dev
 
 优先做：
 
-- `Save Correction`。
-- 本地问题样本库。
-- 导出 issue cases JSONL。
+- 将 GitHub Issue 与本地 issue cases 打通。
 - 从问题样本转翻译记忆。
 - 从问题样本转回归测试。
+- 从问题样本转 QA 规则候选。
+- 后续接 Cloudflare D1。
 
 参考文档：
 
 ```text
 docs/translation-quality-loop.md
+docs/issue-report-workflow.md
 ```
 
 ### 2. Quality Check Core 抽离

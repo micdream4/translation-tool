@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.50
+
+- 新增 GitHub Issue 表单 `.github/ISSUE_TEMPLATE/translation-bug.yml`，公司电脑发现翻译、格式、导出、补译、质量检查问题时可直接提交结构化问题和脱敏截图。
+- 新增 `docs/issue-report-workflow.md`，明确“公司电脑提交 Issue，Mac/Codex 读取 Issue，修复后沉淀测试/QA/术语/TM/语言 profile”的跨电脑工作流。
+- 更新 `AGENTS.md`、`docs/translation-quality-loop.md` 和 `docs/context-handoff.md`，把 GitHub Issue 作为远程问题入口纳入质量闭环。
+- 版本号更新为 `v0.0.50`。
+
 ## v0.0.49
 
 - 落地质量闭环第一阶段：新增本地问题样本库 `utils/issueCases.ts`，支持保存人工修正、统计、清空、导出 JSONL。

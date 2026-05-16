@@ -34,7 +34,10 @@
 当前进度：
 
 - 已新增 `utils/qualityReport.ts`，先抽出 Quality Report finding 构建、报告文本导出和 issue type 映射。
-- 下一步再抽 `quality/types.ts` 和文档 adapter，避免一次性改动质量检查、补译和 UI 三条链路。
+- 已新增 `quality/types.ts`，定义 `QualityUnit`、`QualityCheckInput`、`QualityIssue`、`QualityReport` 和文档类型。
+- 已新增 `quality/adapters.ts`，支持 row-based 数据转 `QualityUnit[]`。
+- `utils/quality.ts` 已新增 `runQualityChecksOnUnits`，旧 `runQualityChecks` API 保持不变并复用 adapter。
+- 下一步再为 DOCX/PDF 建专用 adapter，并把 Retry Missing target 生成迁入统一 issue 层。
 
 ### 3. App.tsx 拆分
 

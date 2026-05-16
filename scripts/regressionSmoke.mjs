@@ -337,6 +337,34 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(reportText, /\[Placeholder\] R2\/content/);
 });
 
+test("quality core adapters preserve existing row-based quality checks", async () => {
+  const { rowsToQualityUnits, qualityRowsToUnits } = await bundleTsModule(
+    path.join(repoRoot, "quality/adapters.ts")
+  );
+  const { runQualityChecks, runQualityChecksOnUnits } = await bundleTsModule(
+    path.join(repoRoot, "utils/quality.ts")
+  );
+
+  const sourceRows = [
+    { id: "A-001", content: "白细胞", note: "2-8°C" },
+    { id: "B-002", content: "血小板", placeholder: "%s" }
+  ];
+  const targetRows = [
+    { id: "A-999", content: "White blood cell", note: "2 - 8 °C" },
+    { id: "B-002", content: "", placeholder: "__TKN_1__" },
+    { id: "C-003", content: "Unexpected row" }
+  ];
+
+  const input = rowsToQualityUnits(sourceRows, targetRows, "excel");
+  assert.equal(input.rowsScanned, 3);
+  assert.ok(input.units.some((unit) => unit.documentKind === "excel" && unit.columnKey === "__ROW__"));
+  assert.deepEqual(runQualityChecksOnUnits(input), runQualityChecks(sourceRows, targetRows));
+  assert.deepEqual(
+    qualityRowsToUnits({ sourceRows, targetRows }, "docx").units.map((unit) => unit.documentKind).every((kind) => kind === "docx"),
+    true
+  );
+});
+
 test("Traditional Chinese Taiwan target has UI, prompt, and quality-check coverage", async () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const languageSource = fs.readFileSync(path.join(repoRoot, "utils/language.ts"), "utf8");

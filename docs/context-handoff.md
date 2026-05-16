@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.51`。
+当前版本：`v0.0.52`。
 
 稳定地址：
 
@@ -54,10 +54,11 @@ https://translation-tool-917.pages.dev
 4. 新增 `/api/me`，前端 Header 显示登录/访客/阻止状态。
 5. 新增 `npm run test:real-docs`，用 `local-data` 中真实 Excel/DOCX/PDF 做 smoke。
 6. PDF 新导出对 Latin-1 可覆盖文本优先写真实文本层，不支持字符集回退 PNG 文本块。
-7. DOCX/PDF 已接入 Quality Report 表面层，但 Quality Check Core 尚未完全抽离。
+7. DOCX/PDF 已接入 Quality Report 表面层；Quality Check Core 已开始抽离统一类型和 row adapter。
 8. Quality Report 已加入 `Save Correction`，可将 finding 保存为本地 issue case，并可选择同步写入 Translation Memory。
 9. GitHub Issue 已加入 `翻译结果问题` 模板，公司电脑发现问题时可直接提交结构化 Issue 和脱敏截图，Mac/Codex 端再按 Issue 修复。
 10. Quality Report 纯逻辑已从 `App.tsx` 拆到 `utils/qualityReport.ts`，包含 finding 构建、报告文本导出和 issue type 映射。
+11. 新增 `quality/types.ts` 和 `quality/adapters.ts`，`utils/quality.ts` 已通过 `QualityUnit` 执行检查，同时保留旧 `runQualityChecks` API。
 
 ## 真实回归基线
 
@@ -97,6 +98,9 @@ docs/issue-report-workflow.md
 已完成的第一步：
 
 - `utils/qualityReport.ts` 已承接报告展示前的 finding 构建和导出文本生成。
+- `quality/types.ts` 已定义统一 QualityUnit / QualityIssue / QualityReport。
+- `quality/adapters.ts` 已支持 row-based 数据转 QualityUnit。
+- `utils/quality.ts` 已新增 `runQualityChecksOnUnits`，旧 `runQualityChecks` 内部复用 adapter。
 
 参考文档：
 

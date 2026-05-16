@@ -1,54 +1,9 @@
 import { POCTRecord } from '../types';
+import { rowsToQualityUnits } from '../quality/adapters';
+import type { QualityCheckInput, QualityIssue, QualityIssueType, QualityReport, QualitySeverity, QualityUnit } from '../quality/types';
 import { isLikelyIdentifier } from './translationTokens';
 
-export type QualityIssueType =
-  | 'chinese'
-  | 'placeholder'
-  | 'idMismatch'
-  | 'spacing'
-  | 'emptyTranslation'
-  | 'structureMismatch';
-
-export type QualitySeverity = 'high' | 'medium' | 'low';
-
-export interface QualityIssue {
-  rowIndex: number;
-  columnKey: string;
-  value: string;
-  original?: string;
-  type: QualityIssueType;
-  severity?: QualitySeverity;
-}
-
-export interface QualityReport {
-  totals: {
-    cellsScanned: number;
-    rowsScanned: number;
-    chineseCells: number;
-    chineseRows: number;
-    placeholderCells: number;
-    placeholderRows: number;
-    idMismatches: number;
-    idMismatchRows: number;
-    spacingIssues: number;
-    spacingRows: number;
-    spacingHigh: number;
-    spacingMedium: number;
-    spacingLow: number;
-    emptyTranslations: number;
-    emptyTranslationRows: number;
-    structureMismatches: number;
-    structureMismatchRows: number;
-  };
-  issues: {
-    chinese: QualityIssue[];
-    placeholders: QualityIssue[];
-    idMismatch: QualityIssue[];
-    spacing: QualityIssue[];
-    emptyTranslations: QualityIssue[];
-    structureMismatches: QualityIssue[];
-  };
-}
+export type { QualityCheckInput, QualityIssue, QualityIssueType, QualityReport, QualitySeverity, QualityUnit } from '../quality/types';
 
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 export const PLACEHOLDER_REGEX =
@@ -82,6 +37,35 @@ const isTranslatableSourceCell = (value: unknown) => {
   if (!CHINESE_REGEX.test(trimmed)) return false;
   return !isLikelyIdentifier(trimmed);
 };
+
+const createQualityTotals = (rowsScanned: number): QualityReport['totals'] => ({
+  cellsScanned: 0,
+  rowsScanned,
+  chineseCells: 0,
+  chineseRows: 0,
+  placeholderCells: 0,
+  placeholderRows: 0,
+  idMismatches: 0,
+  idMismatchRows: 0,
+  spacingIssues: 0,
+  spacingRows: 0,
+  spacingHigh: 0,
+  spacingMedium: 0,
+  spacingLow: 0,
+  emptyTranslations: 0,
+  emptyTranslationRows: 0,
+  structureMismatches: 0,
+  structureMismatchRows: 0
+});
+
+const createQualityIssues = (): QualityReport['issues'] => ({
+  chinese: [],
+  placeholders: [],
+  idMismatch: [],
+  spacing: [],
+  emptyTranslations: [],
+  structureMismatches: []
+});
 
 export const hasSpacingIssue = (value: string) => {
   if (SAFE_MEDICAL_SPACING_REGEX.test(value)) {
@@ -121,38 +105,9 @@ export const hasGlueIssue = (value: string) => {
   );
 };
 
-export const runQualityChecks = (
-  original: POCTRecord[],
-  translated: POCTRecord[]
-): QualityReport => {
-  const totals = {
-    cellsScanned: 0,
-    rowsScanned: Math.max(original.length, translated.length),
-    chineseCells: 0,
-    chineseRows: 0,
-    placeholderCells: 0,
-    placeholderRows: 0,
-    idMismatches: 0,
-    idMismatchRows: 0,
-    spacingIssues: 0,
-    spacingRows: 0,
-    spacingHigh: 0,
-    spacingMedium: 0,
-    spacingLow: 0,
-    emptyTranslations: 0,
-    emptyTranslationRows: 0,
-    structureMismatches: 0,
-    structureMismatchRows: 0
-  };
-
-  const issues: QualityReport['issues'] = {
-    chinese: [],
-    placeholders: [],
-    idMismatch: [],
-    spacing: [],
-    emptyTranslations: [],
-    structureMismatches: []
-  };
+export const runQualityChecksOnUnits = (input: QualityCheckInput): QualityReport => {
+  const totals = createQualityTotals(input.rowsScanned);
+  const issues = createQualityIssues();
 
   const chineseRows = new Set<number>();
   const placeholderRows = new Set<number>();
@@ -161,120 +116,103 @@ export const runQualityChecks = (
   const emptyTranslationRows = new Set<number>();
   const structureMismatchRows = new Set<number>();
 
-  const rowCount = Math.max(original.length, translated.length);
-  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
-    const originalRow = original[rowIndex] || {};
-    const translatedRow = translated[rowIndex] || {};
-    const keys = new Set([
-      ...Object.keys(originalRow),
-      ...Object.keys(translatedRow)
-    ]);
-
-    if (
-      rowIndex >= original.length ||
-      rowIndex >= translated.length
-    ) {
+  input.units.forEach((unit) => {
+    if (unit.structureOnly) {
       totals.structureMismatches += 1;
-      structureMismatchRows.add(rowIndex);
+      structureMismatchRows.add(unit.rowIndex);
       issues.structureMismatches.push({
-        rowIndex,
+        rowIndex: unit.rowIndex,
         columnKey: '__ROW__',
-        value: rowIndex >= translated.length ? 'Missing translated row' : 'Extra translated row',
-        original: rowIndex >= original.length ? '' : 'Expected row from source',
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'structureMismatch'
+      });
+      return;
+    }
+
+    if (unit.hasOriginal !== unit.hasTranslated) {
+      totals.structureMismatches += 1;
+      structureMismatchRows.add(unit.rowIndex);
+      issues.structureMismatches.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        value: unit.hasTranslated ? 'Unexpected target column' : 'Missing target column',
+        original: unit.originalText,
         type: 'structureMismatch'
       });
     }
 
-    keys.forEach((key) => {
-      const value = translatedRow[key];
-      const originalValue = originalRow[key];
-      const hasTranslatedKey = Object.prototype.hasOwnProperty.call(translatedRow, key);
-      const hasOriginalKey = Object.prototype.hasOwnProperty.call(originalRow, key);
-
-      if (hasOriginalKey !== hasTranslatedKey) {
-        totals.structureMismatches += 1;
-        structureMismatchRows.add(rowIndex);
-        issues.structureMismatches.push({
-          rowIndex,
-          columnKey: key,
-          value: hasTranslatedKey ? 'Unexpected target column' : 'Missing target column',
-          original: typeof originalValue === 'string' ? originalValue : '',
-          type: 'structureMismatch'
+    if (isTranslatableSourceCell(unit.originalValue)) {
+      const translatedText = unit.translatedText.trim();
+      if (!translatedText) {
+        totals.emptyTranslations += 1;
+        emptyTranslationRows.add(unit.rowIndex);
+        issues.emptyTranslations.push({
+          rowIndex: unit.rowIndex,
+          columnKey: unit.columnKey,
+          value: '',
+          original: unit.originalText,
+          type: 'emptyTranslation'
         });
       }
+    }
 
-      if (isTranslatableSourceCell(originalValue)) {
-        const translatedText = typeof value === 'string' ? value.trim() : '';
-        if (!translatedText) {
-          totals.emptyTranslations += 1;
-          emptyTranslationRows.add(rowIndex);
-          issues.emptyTranslations.push({
-            rowIndex,
-            columnKey: key,
-            value: '',
-            original: typeof originalValue === 'string' ? originalValue : '',
-            type: 'emptyTranslation'
-          });
-        }
-      }
+    if (typeof unit.translatedValue !== 'string') return;
+    totals.cellsScanned += 1;
 
-      if (typeof value !== 'string') return;
-      totals.cellsScanned += 1;
+    if (CHINESE_REGEX.test(unit.translatedText)) {
+      totals.chineseCells += 1;
+      chineseRows.add(unit.rowIndex);
+      issues.chinese.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'chinese'
+      });
+    }
 
-      if (CHINESE_REGEX.test(value)) {
-        totals.chineseCells += 1;
-        chineseRows.add(rowIndex);
-        issues.chinese.push({
-          rowIndex,
-          columnKey: key,
-          value,
-          original: typeof originalRow[key] === 'string' ? originalRow[key] : '',
-          type: 'chinese'
-        });
-      }
+    if (PLACEHOLDER_REGEX.test(unit.translatedText)) {
+      totals.placeholderCells += 1;
+      placeholderRows.add(unit.rowIndex);
+      issues.placeholders.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'placeholder'
+      });
+    }
 
-      if (PLACEHOLDER_REGEX.test(value)) {
-        totals.placeholderCells += 1;
-        placeholderRows.add(rowIndex);
-        issues.placeholders.push({
-          rowIndex,
-          columnKey: key,
-          value,
-          original: typeof originalRow[key] === 'string' ? originalRow[key] : '',
-          type: 'placeholder'
-        });
-      }
+    const spacingSeverity = getSpacingSeverity(unit.translatedText);
+    if (spacingSeverity) {
+      totals.spacingIssues += 1;
+      spacingRows.add(unit.rowIndex);
+      if (spacingSeverity === 'high') totals.spacingHigh += 1;
+      if (spacingSeverity === 'medium') totals.spacingMedium += 1;
+      if (spacingSeverity === 'low') totals.spacingLow += 1;
+      issues.spacing.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'spacing',
+        severity: spacingSeverity
+      });
+    }
 
-      const spacingSeverity = getSpacingSeverity(value);
-      if (spacingSeverity) {
-        totals.spacingIssues += 1;
-        spacingRows.add(rowIndex);
-        if (spacingSeverity === 'high') totals.spacingHigh += 1;
-        if (spacingSeverity === 'medium') totals.spacingMedium += 1;
-        if (spacingSeverity === 'low') totals.spacingLow += 1;
-        issues.spacing.push({
-          rowIndex,
-          columnKey: key,
-          value,
-          original: typeof originalRow[key] === 'string' ? originalRow[key] : '',
-          type: 'spacing',
-          severity: spacingSeverity
-        });
-      }
-
-      if (shouldLockCell(key, originalValue) && value !== originalValue) {
-        totals.idMismatches += 1;
-        idMismatchRows.add(rowIndex);
-        issues.idMismatch.push({
-          rowIndex,
-          columnKey: key,
-          value,
-          original: typeof originalValue === 'string' ? originalValue : '',
-          type: 'idMismatch'
-        });
-      }
-    });
-  }
+    if (shouldLockCell(unit.columnKey, unit.originalValue) && unit.translatedValue !== unit.originalValue) {
+      totals.idMismatches += 1;
+      idMismatchRows.add(unit.rowIndex);
+      issues.idMismatch.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'idMismatch'
+      });
+    }
+  });
 
   totals.chineseRows = chineseRows.size;
   totals.placeholderRows = placeholderRows.size;
@@ -288,6 +226,11 @@ export const runQualityChecks = (
     issues
   };
 };
+
+export const runQualityChecks = (
+  original: POCTRecord[],
+  translated: POCTRecord[]
+): QualityReport => runQualityChecksOnUnits(rowsToQualityUnits(original, translated, 'generic'));
 
 export const collectPlaceholderIssues = (
   original: POCTRecord[],

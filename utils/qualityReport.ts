@@ -1,4 +1,5 @@
 import type { POCTRecord, TargetLanguage } from '../types';
+import type { QualityRows } from '../quality/types';
 import type { UntranslatedCell } from './language';
 import type { TranslationIssueType } from './issueCases';
 import type { QualityReport, QualitySeverity } from './quality';
@@ -22,11 +23,6 @@ export interface QualityFinding {
   translated: string;
   description: string;
   severity?: QualitySeverity;
-}
-
-export interface QualityRows {
-  sourceRows: POCTRecord[];
-  targetRows: POCTRecord[];
 }
 
 type FormatLocationLabel = (rowIndex: number, columnKey: string) => string;

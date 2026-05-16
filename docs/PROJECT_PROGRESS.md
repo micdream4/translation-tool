@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.52
+
+- 继续推进 Quality Check Core 抽离：新增 `quality/types.ts`，定义统一的 `QualityUnit`、`QualityCheckInput`、`QualityIssue`、`QualityReport` 和文档类型。
+- 新增 `quality/adapters.ts`，提供 `rowsToQualityUnits` / `qualityRowsToUnits`，为 Excel、DOCX、PDF 后续统一质量检查入口打基础。
+- `utils/quality.ts` 保持原有 `runQualityChecks(originalRows, translatedRows)` API 不变，但内部已迁移为 `rowsToQualityUnits -> runQualityChecksOnUnits`，降低 App 侧改动风险。
+- 回归测试新增 unified QualityUnit 路径与旧 row-based 路径结果一致性校验。
+- 版本号更新为 `v0.0.52`。
+
 ## v0.0.51
 
 - 继续拆分 `App.tsx`：新增 `utils/qualityReport.ts`，把 Quality Report finding 构建、导出文本生成、finding 到 issue case 类型映射从主组件抽成纯逻辑模块。

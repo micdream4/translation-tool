@@ -95,7 +95,7 @@ import {
   type ModelReviewSample,
   type ModelReviewStyle
 } from './utils/modelReview';
-import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, QualityReport, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
+import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, PLACEHOLDER_REGEX, type QualityReport, type QualitySeverity } from './utils/quality';
 import {
   buildQualityFindings,
   buildQualityReportText,

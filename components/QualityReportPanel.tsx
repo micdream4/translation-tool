@@ -70,6 +70,8 @@ interface QualityReportPanelProps {
   exportIssueDraft: () => void;
   exportIssueCases: () => void;
   exportRegressionCases: () => void;
+  exportIssueAssetCandidates: () => void;
+  promoteIssueCasesToTranslationMemory: () => void;
   clearIssueCases: () => void;
   saveQualityFindingCorrection: (finding: QualityFinding) => void;
   jumpToPreviewCell: (rowIndex: number, columnKey: string) => void;
@@ -112,6 +114,8 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   exportIssueDraft,
   exportIssueCases,
   exportRegressionCases,
+  exportIssueAssetCandidates,
+  promoteIssueCasesToTranslationMemory,
   clearIssueCases,
   saveQualityFindingCorrection,
   jumpToPreviewCell,
@@ -237,6 +241,26 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={promoteIssueCasesToTranslationMemory}
+              disabled={issueCaseCount === 0}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
+              }`}
+            >
+              Promote TM
+            </button>
+            <button
+              type="button"
+              onClick={exportIssueAssetCandidates}
+              disabled={issueCaseCount === 0}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
+              }`}
+            >
+              Asset JSON
+            </button>
             <button
               type="button"
               onClick={exportIssueCases}

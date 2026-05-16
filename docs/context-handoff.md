@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.66`。
+当前版本：`v0.0.67`。
 
 稳定地址：
 
@@ -83,6 +83,8 @@ https://translation-tool-917.pages.dev
 33. Issue regression fixture 已扩到 5 条，新增法语 PDF 英文标签残留和俄语 `1-year` 残留样本。
 34. PDF 文本层规范化已拆到 `utils/pdfTextLayer.ts`，法语 `’/œ/窄空格/长横线/µ` 等字符会先转成可复制文本层，不再整段退回 PNG。
 35. PDF 下载前会记录文本层统计：可复制文本层段数、总段数和图片文本回退段数。
+36. `utils/issueAssets.ts` 已新增问题样本资产转换层，可从 issue cases 生成 TM 句对、术语候选和 QA rule candidates。
+37. Quality Loop 面板已提供 `Promote TM` 和 `Asset JSON`，人工修正样本可以批量写入 Translation Memory 或导出资产候选包。
 
 ## 真实回归基线
 

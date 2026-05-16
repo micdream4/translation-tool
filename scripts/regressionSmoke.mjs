@@ -270,6 +270,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   const qualityPanelSource = fs.readFileSync(path.join(repoRoot, "components/QualityReportPanel.tsx"), "utf8");
   const qualityHookSource = fs.readFileSync(path.join(repoRoot, "hooks/useQualityWorkflow.ts"), "utf8");
   const issueCaseSource = fs.readFileSync(path.join(repoRoot, "utils/issueCases.ts"), "utf8");
+  const issueAssetsSource = fs.readFileSync(path.join(repoRoot, "utils/issueAssets.ts"), "utf8");
   const qualityReportSource = fs.readFileSync(path.join(repoRoot, "utils/qualityReport.ts"), "utf8");
   const debugPackageSource = fs.readFileSync(path.join(repoRoot, "utils/debugPackage.ts"), "utf8");
   const regressionAssetsSource = fs.readFileSync(path.join(repoRoot, "utils/regressionAssets.ts"), "utf8");
@@ -279,6 +280,9 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   );
   const { buildQualityFindings, buildQualityReportText, mapQualityFindingToIssueType } = await transpileTsModule(
     path.join(repoRoot, "utils/qualityReport.ts")
+  );
+  const { buildIssueAssetPackage, buildQaRuleCandidatesFromIssueCases, buildTerminologyCandidatesFromIssueCases, buildTranslationMemoryPairsFromIssueCases } = await transpileTsModule(
+    path.join(repoRoot, "utils/issueAssets.ts")
   );
   const { serializeDebugPackage, serializeGitHubIssueMarkdown } = await transpileTsModule(path.join(repoRoot, "utils/debugPackage.ts"));
   const {
@@ -321,6 +325,8 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(appSource, /<QualityReportPanel/);
   assert.match(qualityPanelSource, /Save Correction/);
   assert.match(qualityPanelSource, /Export Cases/);
+  assert.match(qualityPanelSource, /Promote TM/);
+  assert.match(qualityPanelSource, /Asset JSON/);
   assert.match(qualityPanelSource, /Debug Package/);
   assert.match(qualityPanelSource, /Issue Draft/);
   assert.match(qualityPanelSource, /Regression JSONL/);
@@ -334,6 +340,8 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(qualityHookSource, /serializeDebugPackage/);
   assert.match(qualityHookSource, /serializeGitHubIssueMarkdown/);
   assert.match(qualityHookSource, /buildRegressionCasesFromIssueCases/);
+  assert.match(qualityHookSource, /buildIssueAssetPackage/);
+  assert.match(qualityHookSource, /promoteIssueCasesToTranslationMemory/);
   assert.match(qualityHookSource, /buildQualityFindings/);
   assert.match(qualityHookSource, /buildQualityReportText/);
   assert.match(qualityHookSource, /SampleReviewAuditService/);
@@ -343,6 +351,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.doesNotMatch(appSource, /const runQualityCheck =/);
   assert.match(appSource, /segmentsToQualityUnits/);
   assert.match(qualityReportSource, /mapQualityFindingToIssueType/);
+  assert.match(issueAssetsSource, /poct\.translation_issue_assets\.v1/);
   assert.match(debugPackageSource, /poct\.translation_debug_package\.v1/);
   assert.match(regressionAssetsSource, /poct\.translation_regression_case\.v1/);
   assert.match(packageSource, /test:issue-regression/);
@@ -447,6 +456,16 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.equal(runRegressionCases(regressionCases).failed, 0);
   assert.equal(buildRegressionCasesFromDebugPackage(debugPackage).length, 1);
   assert.equal(parseRegressionCasesJsonl(serializeRegressionCasesJsonl(regressionCases)).length, 1);
+  assert.equal(buildTranslationMemoryPairsFromIssueCases([issueCase], "sample.docx")[0].targetText, "5.1 Список контрольных образцов");
+  assert.equal(buildTerminologyCandidatesFromIssueCases([issueCase]).length, 1);
+  assert.equal(buildQaRuleCandidatesFromIssueCases([issueCase])[0].ruleType, "target-language-residual");
+  const assetPackage = buildIssueAssetPackage([issueCase], {
+    generatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    fileName: "sample.docx"
+  });
+  assert.equal(assetPackage.schema, "poct.translation_issue_assets.v1");
+  assert.equal(assetPackage.counts.translationMemoryPairs, 1);
+  assert.equal(assetPackage.counts.qaRuleCandidates, 1);
 
   const issueMarkdown = serializeGitHubIssueMarkdown({
     appVersion: "0.0.0-test",

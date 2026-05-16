@@ -3801,6 +3801,8 @@ const App: React.FC = () => {
     exportIssueDraft,
     exportIssueCases,
     exportRegressionCases,
+    exportIssueAssetCandidates,
+    promoteIssueCasesToTranslationMemory,
     clearIssueCases,
     saveQualityFindingCorrection,
     generateSampleReview,
@@ -4833,6 +4835,8 @@ const App: React.FC = () => {
             exportIssueDraft={exportIssueDraft}
             exportIssueCases={exportIssueCases}
             exportRegressionCases={exportRegressionCases}
+            exportIssueAssetCandidates={exportIssueAssetCandidates}
+            promoteIssueCasesToTranslationMemory={promoteIssueCasesToTranslationMemory}
             clearIssueCases={clearIssueCases}
             saveQualityFindingCorrection={saveQualityFindingCorrection}
             jumpToPreviewCell={jumpToPreviewCell}

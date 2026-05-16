@@ -18,6 +18,11 @@ import {
   serializeRegressionCasesJsonl
 } from '../utils/regressionAssets';
 import {
+  buildIssueAssetPackage,
+  buildTranslationMemoryPairsFromIssueCases,
+  serializeIssueAssetPackage
+} from '../utils/issueAssets';
+import {
   buildQualityFindings,
   buildQualityReportText,
   mapQualityFindingToIssueType,
@@ -425,6 +430,34 @@ export const useQualityWorkflow = ({
     addLog(`Regression Cases: 已导出 ${regressionCases.length} 条回归测试 JSONL，可追加到 fixtures/translation-issue-regression.jsonl。`);
   };
 
+  const exportIssueAssetCandidates = () => {
+    const cases = loadTranslationIssueCases();
+    if (!cases.length) {
+      addLog('Issue Assets: 当前没有可转换的问题样本。');
+      return;
+    }
+    const assetPackage = buildIssueAssetPackage(cases, { fileName });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(
+      `Translation_Issue_Assets_${stamp}.json`,
+      serializeIssueAssetPackage(assetPackage)
+    );
+    addLog(
+      `Issue Assets: 已导出 TM ${assetPackage.counts.translationMemoryPairs} 条、术语候选 ${assetPackage.counts.terminologyCandidates} 条、QA 规则候选 ${assetPackage.counts.qaRuleCandidates} 条。`
+    );
+  };
+
+  const promoteIssueCasesToTranslationMemory = async () => {
+    const cases = loadTranslationIssueCases();
+    const pairs = buildTranslationMemoryPairsFromIssueCases(cases, fileName);
+    if (!pairs.length) {
+      addLog('Translation Memory: 当前没有包含人工修正的问题样本可写入。');
+      return;
+    }
+    await rememberTranslationPairs(pairs);
+    addLog(`Translation Memory: 已从问题样本写入/更新 ${pairs.length} 条 TM 句对。`);
+  };
+
   const buildCurrentDebugPackageInput = (): DebugPackageInput => {
     const cases = loadTranslationIssueCases();
     return {
@@ -656,6 +689,8 @@ export const useQualityWorkflow = ({
     exportIssueDraft,
     exportIssueCases,
     exportRegressionCases,
+    exportIssueAssetCandidates,
+    promoteIssueCasesToTranslationMemory,
     clearIssueCases,
     saveQualityFindingCorrection,
     generateSampleReview,

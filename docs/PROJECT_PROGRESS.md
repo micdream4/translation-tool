@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.67
+
+- 问题样本资产化继续落地：新增 `utils/issueAssets.ts`，可把本地 issue cases 转成 Translation Memory 句对、术语候选和 QA rule candidates。
+- Quality Loop 面板新增 `Promote TM`，可将已保存的人工修正样本批量写入本地 Translation Memory。
+- Quality Loop 面板新增 `Asset JSON`，导出 `poct.translation_issue_assets.v1`，包含 TM、术语候选、QA 规则候选和统计信息。
+- 回归测试覆盖 issue asset package、TM pair、术语候选和 QA rule candidate 生成，确保问题不会只停留在截图或 JSONL。
+- 版本号更新为 `v0.0.67`。
+
 ## v0.0.66
 
 - PDF 文本层专项修复：新增 `utils/pdfTextLayer.ts`，把 PDF 可复制文本层规范化逻辑从 `pdf.ts` 拆出，便于独立测试。

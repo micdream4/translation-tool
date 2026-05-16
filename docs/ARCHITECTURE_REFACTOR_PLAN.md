@@ -82,6 +82,7 @@
 - `utils/retryTargets.ts` 已完成第一阶段抽离，统一 Excel/DOCX/PDF 的补译候选选择。
 - `utils/debugPackage.ts` 已完成第一阶段，先支持本地 JSON 调试包导出。
 - `utils/pdfTextLayer.ts` 已从 PDF 导出中拆出，负责 Latin 目标语言 PDF 文本层规范化和可复制文本层判断。
+- `utils/issueAssets.ts` 已新增，负责将 issue cases 转成 Translation Memory、术语候选和 QA rule candidates。
 - GitHub Issue 模板已与 debug package 对齐。
 - `Issue Draft` 已完成第一阶段，先支持本地 Markdown 草稿导出。
 - 下一步优先做 GitHub Issue 自动创建入口 / 初始化自定义 labels，或继续拆 Preview / Translation settings。

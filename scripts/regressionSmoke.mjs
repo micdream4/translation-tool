@@ -150,6 +150,18 @@ test("frontend upload copy stays aligned with supported formats", () => {
   assert.doesNotMatch(appSource, /accept="[^"]*\.xls(?:,|")/);
 });
 
+test("frontend auth state is isolated in useAuth hook", () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const authHookSource = fs.readFileSync(path.join(repoRoot, "hooks/useAuth.ts"), "utf8");
+  assert.match(appSource, /import \{ useAuth \} from '\.\/hooks\/useAuth'/);
+  assert.match(appSource, /const authState = useAuth\(\)/);
+  assert.doesNotMatch(appSource, /fetch\('\/api\/me'/);
+  assert.match(authHookSource, /fetch\('\/api\/me', \{ credentials: 'same-origin' \}\)/);
+  assert.match(authHookSource, /status: 'authenticated'/);
+  assert.match(authHookSource, /status: 'blocked'/);
+  assert.match(authHookSource, /status: 'anonymous'/);
+});
+
 test("PDF support is text-first and exports translated content as DOCX", () => {
   const pdfSource = fs.readFileSync(path.join(repoRoot, "utils/pdf.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");

@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.56
+
+- 继续拆分 `App.tsx`：新增 `hooks/useAuth.ts`，把 `/api/me` 身份探测、登录/阻止/匿名状态归一化从主组件移入独立 hook。
+- Header 的 `authStatus` / `userEmail` 接口保持不变，Cloudflare Access 与 Pages Functions 逻辑不变。
+- 回归测试新增认证拆分断言，确保 App 只调用 `useAuth()`，认证请求集中在 hook 内。
+- 版本号更新为 `v0.0.56`。
+
 ## v0.0.55
 
 - 继续拆分 `App.tsx`：新增 `components/QualityReportPanel.tsx`，把 Quality Report 展示、finding 列表、Quality Loop、抽样复核 UI 从主组件抽出。

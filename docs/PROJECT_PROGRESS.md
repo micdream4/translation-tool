@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.61
+
+- 检查远端 GitHub Issue 模板：`.github/ISSUE_TEMPLATE/translation-bug.yml` 已在 `origin/main`。
+- 模板新增 `Debug Package` 字段，和页面 Quality Report 的本地调试包导出闭环对齐。
+- 由于仓库当前只有 GitHub 默认 labels，模板标签改为现有 `bug`，避免引用尚未创建的 `translation-bug` / `needs-triage` 自定义标签。
+- 回归测试新增 Issue 模板断言，确保模板保留 `Debug Package` 字段并只引用可用 label。
+- 版本号更新为 `v0.0.61`。
+
 ## v0.0.60
 
 - 新增 `utils/debugPackage.ts`，提供 `poct.translation_debug_package.v1` 调试包构建器。

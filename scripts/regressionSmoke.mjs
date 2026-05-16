@@ -162,6 +162,19 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(authHookSource, /status: 'anonymous'/);
 });
 
+test("GitHub issue template captures debug packages with available labels", () => {
+  const templateSource = fs.readFileSync(
+    path.join(repoRoot, ".github/ISSUE_TEMPLATE/translation-bug.yml"),
+    "utf8"
+  );
+  assert.match(templateSource, /name: 翻译结果问题/);
+  assert.match(templateSource, /- bug/);
+  assert.doesNotMatch(templateSource, /translation-bug/);
+  assert.doesNotMatch(templateSource, /needs-triage/);
+  assert.match(templateSource, /id: debug-package/);
+  assert.match(templateSource, /Debug Package/);
+});
+
 test("PDF support is text-first and exports translated content as DOCX", () => {
   const pdfSource = fs.readFileSync(path.join(repoRoot, "utils/pdf.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");

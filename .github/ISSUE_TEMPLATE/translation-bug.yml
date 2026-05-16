@@ -2,8 +2,7 @@ name: 翻译结果问题
 description: 公司电脑发现翻译、格式、导出、补译、质量检查异常时使用这个模板。
 title: "[Translation Bug]: "
 labels:
-  - translation-bug
-  - needs-triage
+  - bug
 body:
   - type: markdown
     attributes:
@@ -116,6 +115,15 @@ body:
       label: Quality Report / 日志摘录
       description: 如果页面有质量报告或控制台日志，复制关键几行。
       placeholder: 粘贴 Quality Report、日志或错误提示。
+    validations:
+      required: false
+
+  - type: textarea
+    id: debug-package
+    attributes:
+      label: Debug Package
+      description: 页面 Quality Report 里的 Debug Package 可导出 JSON。请先脱敏，再粘贴关键内容或上传 JSON 文件。
+      placeholder: 粘贴脱敏后的 Debug Package 摘要，或拖入 JSON 附件。
     validations:
       required: false
 

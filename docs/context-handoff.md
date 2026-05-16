@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.60`。
+当前版本：`v0.0.61`。
 
 稳定地址：
 
@@ -66,6 +66,7 @@ https://translation-tool-917.pages.dev
 16. `hooks/useQualityWorkflow.ts` 已从 `App.tsx` 抽出，集中处理 Quality Report 状态、finding 派生、issue case 保存/导出、Sample Review、AI Sample Review 和 `runQualityCheck` 执行入口。
 17. `utils/retryTargets.ts` 已抽出 Quality Issue 到 Retry target 的生成逻辑，Excel/DOCX/PDF 的补译候选选择已开始复用统一 helper。
 18. `utils/debugPackage.ts` 已新增本地调试包导出，Quality Report 面板的 `Debug Package` 可下载结构化 JSON，用于 GitHub Issue 附件。
+19. GitHub Issue 模板已加入 `Debug Package` 字段；当前模板使用仓库已有的 `bug` label，避免引用未创建的自定义 label。
 
 ## 真实回归基线
 

@@ -31,5 +31,8 @@ dist-ssr
 原始/
 .playwright-cli/
 .wrangler/
-local-data/design/
-local-data/reports/
+local-data/
+output/
+tmp/
+.tmp-real-*/
+docs/debug/

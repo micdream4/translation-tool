@@ -40,7 +40,7 @@
 
 ### 3.1 Excel 解析与结构化
 - 支持多工作表/多文件：上传时列出全部 sheet，并允许批量或逐个解析；对后续新增的其它血常规/生化/免疫表格保持同一解析路径。
-- 将 `白细胞正常.xlsx` 等表格在上传后转换为结构化 JSON，字段示例：
+- 将 `local-data/excel/scratch/白细胞正常.xlsx` 等表格在上传后转换为结构化 JSON，字段示例：
   ```ts
   interface RuleRow {
     id: string;
@@ -63,7 +63,7 @@
 - 构建指标映射表：结合 `CORE_METRICS` 和 Excel 中的其它字段，统一符号（↑、↓、±）转为标准表达。
 - 校验流程：
   1. 从 Excel 中提取所有已存在组合；
-  2. 基于医学知识库（可由 `白细胞正常.xlsx` + 官方指南 + AI 生成的 reference）生成“理论组合列表”；
+  2. 基于医学知识库（可由 `local-data/excel/scratch/白细胞正常.xlsx` + 官方指南 + AI 生成的 reference）生成“理论组合列表”；
   3. 使用集合差或图遍历找出尚未覆盖的组合，输出“缺失组合 + 建议解释”；
   4. 指定规则格式（YAML/JSON）以便人工校对后纳入 KnowledgeStore。
 - 需要增加 `services/ruleEngine.ts`，包含：

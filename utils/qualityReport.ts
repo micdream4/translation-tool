@@ -76,7 +76,7 @@ export const buildQualityFindings = ({
       category: 'nonTarget',
       rowIndex: item.rowIndex,
       columnKey: item.columnKey,
-      locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
+      locationLabel: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: getStringCell(qualityRows.sourceRows, item.rowIndex, item.columnKey),
       translated: getStringCell(qualityRows.targetRows, item.rowIndex, item.columnKey),
       description: '检测到非目标语言残留'
@@ -85,7 +85,7 @@ export const buildQualityFindings = ({
 
   const appendQualityIssues = (
     category: QualityFindingCategory,
-    list: Array<{ rowIndex: number; columnKey: string; original?: string; value: string; severity?: QualitySeverity }>,
+    list: Array<{ rowIndex: number; columnKey: string; locationLabel?: string; original?: string; value: string; severity?: QualitySeverity }>,
     description: string
   ) => {
     list.forEach((item) => {
@@ -94,7 +94,7 @@ export const buildQualityFindings = ({
         category,
         rowIndex: item.rowIndex,
         columnKey: item.columnKey,
-        locationLabel: formatLocationLabel(item.rowIndex, item.columnKey),
+        locationLabel: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
         original: item.original || '',
         translated: item.value || '',
         description,
@@ -152,38 +152,38 @@ export const buildQualityReportText = ({
   }> = [
     ...nonTargetDetails.map((item) => ({
       type: 'Non-target language',
-      location: formatLocationLabel(item.rowIndex, item.columnKey),
+      location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: getStringCell(qualityRows.sourceRows, item.rowIndex, item.columnKey),
       translated: getStringCell(qualityRows.targetRows, item.rowIndex, item.columnKey)
     })),
     ...qualityReport.issues.emptyTranslations.map((item) => ({
       type: 'Empty translation',
-      location: formatLocationLabel(item.rowIndex, item.columnKey),
+      location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: item.original || '',
       translated: item.value || ''
     })),
     ...qualityReport.issues.structureMismatches.map((item) => ({
       type: 'Structure mismatch',
-      location: formatLocationLabel(item.rowIndex, item.columnKey),
+      location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: item.original || '',
       translated: item.value || ''
     })),
     ...qualityReport.issues.placeholders.map((item) => ({
       type: 'Placeholder',
-      location: formatLocationLabel(item.rowIndex, item.columnKey),
+      location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: item.original || '',
       translated: item.value || ''
     })),
     ...qualityReport.issues.idMismatch.map((item) => ({
       type: 'ID mismatch',
-      location: formatLocationLabel(item.rowIndex, item.columnKey),
+      location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: item.original || '',
       translated: item.value || ''
     })),
     ...qualityReport.issues.spacing.map((item) => ({
       type: 'Spacing issue',
       severity: item.severity || 'medium',
-      location: formatLocationLabel(item.rowIndex, item.columnKey),
+      location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: item.original || '',
       translated: item.value || ''
     }))

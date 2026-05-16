@@ -93,8 +93,25 @@ export const segmentsToQualityUnits = <T extends TextQualitySegment>(
   segments: T[],
   documentKind: Extract<QualityDocumentKind, 'docx' | 'pdf' | 'string-resource'>,
   getTranslatedText: (segment: T, index: number) => string,
-  getOriginalText: (segment: T, index: number) => string = (segment) => segment.original
-): QualityCheckInput => qualityRowsToUnits(
-  segmentsToQualityRows(segments, getTranslatedText, getOriginalText),
-  documentKind
-);
+  getOriginalText: (segment: T, index: number) => string = (segment) => segment.original,
+  getLocationLabel?: (segment: T, index: number) => string
+): QualityCheckInput => ({
+  units: segments.map((segment, index) => {
+    const originalText = getOriginalText(segment, index);
+    const translatedText = getTranslatedText(segment, index);
+    return {
+      id: buildQualityUnitId(documentKind, index, 'content'),
+      documentKind,
+      rowIndex: index,
+      columnKey: 'content',
+      originalValue: originalText,
+      translatedValue: translatedText,
+      hasOriginal: true,
+      hasTranslated: true,
+      originalText,
+      translatedText,
+      locationLabel: getLocationLabel?.(segment, index)
+    };
+  }),
+  rowsScanned: segments.length
+});

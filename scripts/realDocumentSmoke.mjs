@@ -16,6 +16,15 @@ const realPath = (...parts) => path.join(repoRoot, ...parts);
 
 const exists = (filePath) => fs.existsSync(filePath);
 
+const firstExisting = (candidates) => candidates.find((candidate) => candidate && exists(candidate)) || null;
+
+const listPdfFiles = (dirPath) => {
+  if (!exists(dirPath)) return [];
+  return fs.readdirSync(dirPath)
+    .filter((name) => /\.pdf$/i.test(name))
+    .map((name) => path.join(dirPath, name));
+};
+
 const bundleTsModule = async (sourcePath) => {
   const tmpDir = fs.mkdtempSync(path.join(repoRoot, ".tmp-real-smoke-"));
   const outputPath = path.join(tmpDir, `${path.basename(sourcePath, ".ts")}.mjs`);
@@ -115,7 +124,7 @@ const renderPdfFirstPage = (filePath) => {
 const runExcelSmoke = async () => {
   const sourcePath = realPath("local-data/excel/source/BA512-AI版-兽-白细胞全-20250107.xlsx");
   const translatedPath = realPath("local-data/excel/translated/Translated_English_BA512-AI版-兽-白细胞全-20250107 (7).xlsx");
-  if (!exists(sourcePath) || !exists(translatedPath)) {
+  if (!sourcePath || !translatedPath || !exists(sourcePath) || !exists(translatedPath)) {
     return { skipped: true, reason: "Excel sample files not found." };
   }
   const { parseExcelWorkbook, exportToExcel } = await bundleTsModule(realPath("utils/excel.ts"));
@@ -166,8 +175,15 @@ const runDocxSmoke = async () => {
 };
 
 const runPdfSmoke = () => {
-  const sourcePath = realPath("local-data/pdf/检测教程-202英文 (1).pdf");
-  const translatedPath = realPath("local-data/pdf/Translated_French_检测教程-202英文.pdf");
+  const pdfDir = realPath("local-data/pdf");
+  const pdfFiles = listPdfFiles(pdfDir);
+  const sourcePath = firstExisting([
+    realPath("local-data/pdf/检测教程-202英文 (1).pdf"),
+    realPath("local-data/pdf/检测教程-202英文.pdf")
+  ]) || pdfFiles.find((filePath) => !/^Translated_/i.test(path.basename(filePath))) || null;
+  const translatedPath = firstExisting([
+    realPath("local-data/pdf/Translated_French_检测教程-202英文.pdf")
+  ]) || pdfFiles.find((filePath) => /^Translated_/i.test(path.basename(filePath))) || null;
   if (!exists(sourcePath) || !exists(translatedPath)) {
     return { skipped: true, reason: "PDF sample files not found." };
   }

@@ -1,5 +1,26 @@
 # 项目进度
 
+## v0.0.63
+
+- 自我迭代闭环继续落地：新增 `utils/regressionAssets.ts`，可把本地 issue cases 或 Debug Package 转成 `poct.translation_regression_case.v1` 回归样本。
+- 新增 `fixtures/translation-issue-regression.jsonl` 和 `npm run test:issue-regression`，先覆盖俄语英文残留、占位符泄漏、数字单位格式三类问题。
+- 新增 `scripts/debugPackageToRegression.mjs`，公司电脑导出的 Debug Package JSON 可转换为回归测试 JSONL，追加到 fixture 后进入自动测试。
+- Quality Report 的 Quality Loop 增加 `Regression JSONL` 导出按钮，人工修正样本可直接沉淀为回归测试资产。
+- `quality/checks.ts` 成为统一 Quality Check Core，`utils/quality.ts` 改为兼容导出，后续 Excel/DOCX/PDF 检查继续向 `quality/` 收敛。
+- `utils/languageProfiles.ts` 扩展为多目标语言 profile 结构，已包含 Russian、French、Spanish、Portuguese、German、Italian、Turkish、Traditional Chinese (Taiwan) 的第一版规则骨架。
+- 新增 `.github/workflows/quality-gate.yml` 和 `npm run test:quality-gate`，把 typecheck、普通回归、issue regression、build、真实文档 smoke 串成质量闸门。
+- 清理无用临时目录和生成物，`.gitignore` 忽略 `local-data/`、`output/`、`tmp/`、`.tmp-real-*/`、`docs/debug/`；根目录旧计划文档迁入 `docs/plans/`。
+- 版本号更新为 `v0.0.63`。
+
+## v0.0.62
+
+- QualityUnit/QualityIssue 增加 `locationLabel`，DOCX/PDF 的 Quality Report finding、导出报告和异常摘要现在优先显示文档段落位置，而不是退回 Excel 风格行列。
+- 新增 `utils/languageProfiles.ts` 俄语 profile 第一版，沉淀 `Home / Orders / Reports / List / feces / reference / Building / Street` 等英文残留词，俄语残留检测改为复用 profile。
+- Quality Report 面板新增 `Issue Draft`，可导出 GitHub Issue Markdown 草稿；`Debug Package` 仍导出 JSON 附件，形成“草稿 + 调试包”的远程反馈入口。
+- 真实文档 smoke 的 PDF 样本查找改为兼容 `检测教程-202英文.pdf` 和旧的 `(1)` 文件名，避免真实 PDF 基线被误跳过。
+- 回归测试补充 Issue Draft、俄语 profile、QualityUnit locationLabel 和 PDF 样本发现逻辑覆盖。
+- 版本号更新为 `v0.0.62`。
+
 ## v0.0.61
 
 - 检查远端 GitHub Issue 模板：`.github/ISSUE_TEMPLATE/translation-bug.yml` 已在 `origin/main`。

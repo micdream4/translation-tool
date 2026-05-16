@@ -40,6 +40,7 @@ export interface QualityCheckInput {
 export interface QualityIssue {
   rowIndex: number;
   columnKey: string;
+  locationLabel?: string;
   value: string;
   original?: string;
   type: QualityIssueType;

@@ -3,7 +3,9 @@ import path from "node:path";
 import XLSX from "xlsx";
 
 const [argFile, argLang, argLimit] = process.argv.slice(2);
-const filePath = path.resolve(argFile || "白细胞正常_test.xlsx");
+const filePath = path.resolve(
+  argFile || "local-data/excel/scratch/白细胞正常_test.xlsx"
+);
 const targetLanguage = argLang || "English";
 const rowLimit = Number(argLimit ?? 0);
 
@@ -102,7 +104,7 @@ try {
   process.exit(1);
 }
 
-const outputPath = path.resolve("deepseek_translation_preview.json");
+const outputPath = path.resolve("docs/debug/deepseek_translation_preview.json");
 await fs.writeFile(outputPath, JSON.stringify(parsed, null, 2), "utf8");
 
 console.log(`Translation finished. Preview saved to ${outputPath}`);

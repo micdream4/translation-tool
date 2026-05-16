@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.61`。
+当前版本：`v0.0.63`。
 
 稳定地址：
 
@@ -67,6 +67,16 @@ https://translation-tool-917.pages.dev
 17. `utils/retryTargets.ts` 已抽出 Quality Issue 到 Retry target 的生成逻辑，Excel/DOCX/PDF 的补译候选选择已开始复用统一 helper。
 18. `utils/debugPackage.ts` 已新增本地调试包导出，Quality Report 面板的 `Debug Package` 可下载结构化 JSON，用于 GitHub Issue 附件。
 19. GitHub Issue 模板已加入 `Debug Package` 字段；当前模板使用仓库已有的 `bug` label，避免引用未创建的自定义 label。
+20. Quality Report 面板已新增 `Issue Draft`，可把当前版本、文件类型、目标语言、模型、finding 摘要生成 GitHub Issue Markdown 草稿。
+21. DOCX/PDF 的 `QualityUnit` 和 `QualityIssue` 已携带 `locationLabel`，报告和导出文本优先显示文档段落位置。
+22. `utils/languageProfiles.ts` 已加入俄语 profile 第一版，沉淀常见英文残留词，供俄语残留检测复用。
+23. `npm run test:real-docs` 的 PDF 样本发现已兼容 `检测教程-202英文.pdf` 和旧的 `(1)` 文件名，减少真实 PDF 回归误跳过。
+24. `utils/regressionAssets.ts` 已加入问题样本到回归测试的转换层，支持从 issue cases 或 Debug Package 生成 `poct.translation_regression_case.v1`。
+25. `fixtures/translation-issue-regression.jsonl` 和 `npm run test:issue-regression` 已覆盖首批问题资产回归。
+26. Quality Report 面板已提供 `Regression JSONL`，人工修正样本可导出后追加进 fixture。
+27. `scripts/debugPackageToRegression.mjs` 可把页面导出的 Debug Package JSON 转成回归测试 JSONL。
+28. `quality/checks.ts` 已成为统一 Quality Check Core；`utils/quality.ts` 只做兼容导出。
+29. `.github/workflows/quality-gate.yml` 和 `npm run test:quality-gate` 已建立质量闸门。
 
 ## 真实回归基线
 
@@ -74,7 +84,7 @@ https://translation-tool-917.pages.dev
 
 - Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；仍有大量 spacing 类提示，需要后续分级优化。
 - DOCX 俄语：旧译文仍有英文残留，1195 段中 182 段被判非目标语言，35 段命中常见英文残留。
-- PDF：源 PDF 可抽取文本，旧法语译后 PDF 可渲染但不可文本抽取；新导出逻辑已开始改善拉丁文字 PDF 文本层。
+- PDF：真实样本查找已兼容当前 `local-data/pdf/检测教程-202英文.pdf` 文件名；源 PDF 可抽取文本，旧法语译后 PDF 可渲染但不可文本抽取。
 
 ## 当前主要待办
 
@@ -83,8 +93,9 @@ https://translation-tool-917.pages.dev
 优先做：
 
 - 将 GitHub Issue 与本地 issue cases 打通。
+- 将 Issue Draft 进一步升级为可直接创建 GitHub Issue 的入口，或接入 GitHub CLI/API。
 - 从问题样本转翻译记忆。
-- 从问题样本转回归测试。
+- 继续丰富 `fixtures/translation-issue-regression.jsonl`，把真实 Issue 中的 Debug Package 转成回归样本。
 - 从问题样本转 QA 规则候选。
 - 后续接 Cloudflare D1。
 

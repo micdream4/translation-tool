@@ -33,6 +33,8 @@ Mac / Codex 读取 Issue
    - 原文 / 当前译文 / 期望译文。
    - 脱敏截图或录屏。
    - Quality Report 或日志摘录。
+   - Debug Package 摘要或 JSON 附件。
+   - Issue Draft 内容可以直接粘贴到 Issue 正文中。
 5. 如果问题明确且希望尽快处理，在 Issue 正文或评论里写：
 
 ```text
@@ -56,8 +58,16 @@ gh issue view <issue-number> --comments
 2. 判断链路：导入解析、翻译、后处理、质量检查、补译、导出回写、认证、部署。
 3. 判断问题类型：术语、TM、残留、占位符、数字单位、布局、风格、语义、认证部署。
 4. 先补回归测试或真实文档 smoke，再改实现。
-5. 修复后更新 `docs/PROJECT_PROGRESS.md`。
-6. push/deploy 后在 Issue 里回复：
+5. 如果 Issue 附了 Debug Package，先转成回归样本：
+
+```bash
+npm run debug:to-regression -- --input path/to/Translation_Debug_Package.json --output /tmp/issue-regression.jsonl
+cat /tmp/issue-regression.jsonl >> fixtures/translation-issue-regression.jsonl
+npm run test:issue-regression
+```
+
+6. 修复后更新 `docs/PROJECT_PROGRESS.md`。
+7. push/deploy 后在 Issue 里回复：
 
 ```text
 已修复：
@@ -90,4 +100,6 @@ GitHub Issue 是“远程问题入口”，网站内 `Save Correction` 是“翻
 
 - Issue 适合公司电脑快速提交截图、复现步骤和版本信息。
 - `Save Correction` 适合保存具体原文、错译和人工修正。
+- `Regression JSONL` 适合把人工修正样本转成可提交的回归测试 fixture。
+- `Debug Package` 适合把一次翻译任务的版本、模型、质量报告和样本行打包给 Codex 复现。
 - Codex 修复时应把 Issue 或 `Save Correction` 样本沉淀为测试、QA 规则、术语、翻译记忆或语言 profile。

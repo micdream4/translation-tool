@@ -1,0 +1,38 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit regression
+        run: npm test
+
+      - name: Issue regression
+        run: npm run test:issue-regression
+
+      - name: Build
+        run: npm run build
+
+      - name: Real document smoke
+        run: npm run test:real-docs

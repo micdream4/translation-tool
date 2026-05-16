@@ -67,7 +67,9 @@ interface QualityReportPanelProps {
   clearQualityReport: () => void;
   exportQualityReport: () => void;
   exportDebugPackage: () => void;
+  exportIssueDraft: () => void;
   exportIssueCases: () => void;
+  exportRegressionCases: () => void;
   clearIssueCases: () => void;
   saveQualityFindingCorrection: (finding: QualityFinding) => void;
   jumpToPreviewCell: (rowIndex: number, columnKey: string) => void;
@@ -107,7 +109,9 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   clearQualityReport,
   exportQualityReport,
   exportDebugPackage,
+  exportIssueDraft,
   exportIssueCases,
+  exportRegressionCases,
   clearIssueCases,
   saveQualityFindingCorrection,
   jumpToPreviewCell,
@@ -127,7 +131,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             Summary view for Quality Check results, issue navigation, export, and sample review.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             onClick={clearQualityReport}
             disabled={!hasQualityReport}
@@ -160,6 +164,12 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
           >
             Debug Package
+          </button>
+          <button
+            onClick={exportIssueDraft}
+            className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+          >
+            Issue Draft
           </button>
         </div>
       </div>
@@ -224,18 +234,28 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={exportIssueCases}
-                disabled={issueCaseCount === 0}
+            <button
+              type="button"
+              onClick={exportIssueCases}
+              disabled={issueCaseCount === 0}
                 className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                   issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
                 }`}
-              >
-                Export JSONL
-              </button>
-              <button
-                type="button"
+            >
+              Export JSONL
+            </button>
+            <button
+              type="button"
+              onClick={exportRegressionCases}
+              disabled={issueCaseCount === 0}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
+              }`}
+            >
+              Regression JSONL
+            </button>
+            <button
+              type="button"
                 onClick={clearIssueCases}
                 disabled={issueCaseCount === 0}
                 className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${

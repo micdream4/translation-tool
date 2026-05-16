@@ -10,22 +10,22 @@
 
 ## 输入/输出文件
 - 输入文件（含 4 个 sheet）:
-  - `BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106.xlsx`
+  - `local-data/excel/source/BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106.xlsx`
   - Sheet:
     - `白细胞正常-AWBC`
     - `白细胞增高-AWBC`
     - `白细胞降低-AWBC`
     - `红细胞和血红蛋白-SRBC`
 - 输出文件:
-  - `BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106_补充提示.xlsx`
+  - `local-data/excel/source/BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106_补充提示.xlsx`
 
 ## 脚本位置与用法
 - 脚本: `scripts/update_awbc_srbc.py`
 - 用法:
 ```bash
 python scripts/update_awbc_srbc.py \
-  --input "BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106.xlsx" \
-  --output "BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106_补充提示.xlsx" \
+  --input "local-data/excel/source/BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106.xlsx" \
+  --output "local-data/excel/source/BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106_补充提示.xlsx" \
   --profile v2
 ```
 

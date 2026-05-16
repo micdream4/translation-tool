@@ -117,3 +117,96 @@ export const buildDebugPackage = ({
 
 export const serializeDebugPackage = (input: DebugPackageInput) =>
   JSON.stringify(buildDebugPackage(input), null, 2);
+
+export const buildGitHubIssueMarkdown = (input: DebugPackageInput) => {
+  const debugPackage = buildDebugPackage(input);
+  const topFindings = input.qualityFindings.slice(0, 10);
+  const issueDetails = input.issueSummary.details || [];
+  const lines = [
+    `# [Translation Bug] ${input.documentKind.toUpperCase()} ${input.targetLang} quality issue`,
+    '',
+    '## 问题现象',
+    '<!-- 请在这里补充你看到的异常，例如：俄语目录残留英文、PDF 回写错位、下载按钮无响应等。 -->',
+    '',
+    '## 复现步骤',
+    '1. 上传文件。',
+    `2. 目标语言选择：${input.targetLang}。`,
+    `3. 模型选择：${input.modelPreference || input.modelLabel}。`,
+    '4. 运行翻译或 Quality Check。',
+    '5. 观察结果或尝试导出文件。',
+    '',
+    '## 环境',
+    `- Version: ${input.appVersion}`,
+    `- File type: ${input.documentKind}`,
+    `- File name: ${input.fileName || '(not provided)'}`,
+    `- Target language: ${input.targetLang}`,
+    `- Model: ${input.modelLabel}`,
+    `- Model preference: ${input.modelPreference}`,
+    `- Generated at: ${debugPackage.metadata.generatedAt}`,
+    '',
+    '## Quality Summary',
+    `- Has quality report: ${debugPackage.quality.hasQualityReport ? 'yes' : 'no'}`,
+    `- Non-target residual: ${input.issueSummary.cells} cells / ${input.issueSummary.rows} rows`,
+    `- Quality findings: ${input.qualityFindings.length}`,
+    `- Saved issue cases: ${input.issueCases.length}`,
+    '',
+    '## Top Findings'
+  ];
+
+  if (!topFindings.length && !issueDetails.length) {
+    lines.push('- 暂无结构化 finding。请补充截图、日志或可复现描述。');
+  } else {
+    topFindings.forEach((finding, index) => {
+      lines.push(
+        `${index + 1}. ${finding.locationLabel} | ${finding.category}`,
+        `   - Source: ${truncateText(finding.original, 240) || '(empty)'}`,
+        `   - Target: ${truncateText(finding.translated, 240) || '(empty)'}`,
+        `   - Note: ${finding.description}`
+      );
+    });
+    if (!topFindings.length) {
+      issueDetails.slice(0, 10).forEach((item, index) => {
+        lines.push(`${index + 1}. ${item.locationLabel || `${item.rowIndex}/${item.columnKey}`}: ${truncateText(item.value, 240)}`);
+      });
+    }
+  }
+
+  lines.push(
+    '',
+    '## Debug Package',
+    '请把导出的 JSON 调试包作为附件上传到这个 Issue。下面是可直接粘贴的摘要，公开仓库使用前请先脱敏。',
+    '',
+    '<details>',
+    '<summary>Debug package summary JSON</summary>',
+    '',
+    '```json',
+    JSON.stringify(
+      {
+        schema: debugPackage.schema,
+        metadata: debugPackage.metadata,
+        quality: {
+          hasQualityReport: debugPackage.quality.hasQualityReport,
+          issueSummary: {
+            cells: debugPackage.quality.issueSummary.cells,
+            rows: debugPackage.quality.issueSummary.rows,
+            detailCount: debugPackage.quality.issueSummary.detailCount
+          },
+          findingCount: debugPackage.quality.findingCount
+        },
+        issueCases: {
+          count: debugPackage.issueCases.count
+        }
+      },
+      null,
+      2
+    ),
+    '```',
+    '',
+    '</details>'
+  );
+
+  return lines.join('\n');
+};
+
+export const serializeGitHubIssueMarkdown = (input: DebugPackageInput) =>
+  buildGitHubIssueMarkdown(input);

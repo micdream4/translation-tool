@@ -260,13 +260,22 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   const issueCaseSource = fs.readFileSync(path.join(repoRoot, "utils/issueCases.ts"), "utf8");
   const qualityReportSource = fs.readFileSync(path.join(repoRoot, "utils/qualityReport.ts"), "utf8");
   const debugPackageSource = fs.readFileSync(path.join(repoRoot, "utils/debugPackage.ts"), "utf8");
+  const regressionAssetsSource = fs.readFileSync(path.join(repoRoot, "utils/regressionAssets.ts"), "utf8");
+  const packageSource = fs.readFileSync(path.join(repoRoot, "package.json"), "utf8");
   const { buildTranslationIssueCase, serializeTranslationIssueCasesJsonl } = await transpileTsModule(
     path.join(repoRoot, "utils/issueCases.ts")
   );
   const { buildQualityFindings, buildQualityReportText, mapQualityFindingToIssueType } = await transpileTsModule(
     path.join(repoRoot, "utils/qualityReport.ts")
   );
-  const { serializeDebugPackage } = await transpileTsModule(path.join(repoRoot, "utils/debugPackage.ts"));
+  const { serializeDebugPackage, serializeGitHubIssueMarkdown } = await transpileTsModule(path.join(repoRoot, "utils/debugPackage.ts"));
+  const {
+    buildRegressionCasesFromDebugPackage,
+    buildRegressionCasesFromIssueCases,
+    parseRegressionCasesJsonl,
+    runRegressionCases,
+    serializeRegressionCasesJsonl
+  } = await bundleTsModule(path.join(repoRoot, "utils/regressionAssets.ts"));
 
   const issueCase = buildTranslationIssueCase(
     {
@@ -301,12 +310,18 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(qualityPanelSource, /Save Correction/);
   assert.match(qualityPanelSource, /Export Cases/);
   assert.match(qualityPanelSource, /Debug Package/);
+  assert.match(qualityPanelSource, /Issue Draft/);
+  assert.match(qualityPanelSource, /Regression JSONL/);
   assert.match(qualityPanelSource, /Quality Loop/);
   assert.match(appSource, /useQualityWorkflow/);
   assert.match(appSource, /exportDebugPackage/);
+  assert.match(appSource, /exportIssueDraft/);
+  assert.match(appSource, /exportRegressionCases/);
   assert.match(qualityHookSource, /saveTranslationIssueCase/);
   assert.match(qualityHookSource, /rememberTranslationPairs/);
   assert.match(qualityHookSource, /serializeDebugPackage/);
+  assert.match(qualityHookSource, /serializeGitHubIssueMarkdown/);
+  assert.match(qualityHookSource, /buildRegressionCasesFromIssueCases/);
   assert.match(qualityHookSource, /buildQualityFindings/);
   assert.match(qualityHookSource, /buildQualityReportText/);
   assert.match(qualityHookSource, /SampleReviewAuditService/);
@@ -317,6 +332,9 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(appSource, /segmentsToQualityUnits/);
   assert.match(qualityReportSource, /mapQualityFindingToIssueType/);
   assert.match(debugPackageSource, /poct\.translation_debug_package\.v1/);
+  assert.match(regressionAssetsSource, /poct\.translation_regression_case\.v1/);
+  assert.match(packageSource, /test:issue-regression/);
+  assert.match(packageSource, /test:quality-gate/);
 
   const qualityReport = {
     totals: {
@@ -340,16 +358,16 @@ test("quality issue cases can be saved and exported from quality findings", asyn
     },
     issues: {
       chinese: [],
-      placeholders: [{ rowIndex: 1, columnKey: "content", value: "__TKN_1__", original: "%s", type: "placeholder" }],
+      placeholders: [{ rowIndex: 1, columnKey: "content", locationLabel: "DOCX segment 2", value: "__TKN_1__", original: "%s", type: "placeholder" }],
       idMismatch: [],
-      spacing: [{ rowIndex: 0, columnKey: "content", value: "2 - 8 °C", original: "2-8°C", type: "spacing", severity: "medium" }],
+      spacing: [{ rowIndex: 0, columnKey: "content", locationLabel: "DOCX segment 1", value: "2 - 8 °C", original: "2-8°C", type: "spacing", severity: "medium" }],
       emptyTranslations: [],
       structureMismatches: []
     }
   };
   const findings = buildQualityFindings({
     qualityReport,
-    nonTargetDetails: [{ rowIndex: 0, columnKey: "content", value: "List контрольных образцов" }],
+    nonTargetDetails: [{ rowIndex: 0, columnKey: "content", locationLabel: "DOCX segment 1", value: "List контрольных образцов" }],
     qualityRows: {
       sourceRows: [{ content: "List of control samples" }, { content: "%s" }],
       targetRows: [{ content: "List контрольных образцов" }, { content: "__TKN_1__" }]
@@ -365,7 +383,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.equal(mapQualityFindingToIssueType(findings[1]), "number-unit-format");
   const reportText = buildQualityReportText({
     qualityReport,
-    nonTargetDetails: [{ rowIndex: 0, columnKey: "content", value: "List контрольных образцов" }],
+    nonTargetDetails: [{ rowIndex: 0, columnKey: "content", locationLabel: "DOCX segment 1", value: "List контрольных образцов" }],
     qualityRows: {
       sourceRows: [{ content: "List of control samples" }, { content: "%s" }],
       targetRows: [{ content: "List контрольных образцов" }, { content: "__TKN_1__" }]
@@ -376,7 +394,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   });
   assert.match(reportText, /Target language: Russian/);
   assert.match(reportText, /Non-target residual: 1 cells \/ 1 rows/);
-  assert.match(reportText, /\[Placeholder\] R2\/content/);
+  assert.match(reportText, /\[Placeholder\] DOCX segment 2/);
 
   const debugPackage = JSON.parse(
     serializeDebugPackage({
@@ -393,7 +411,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
         rows: 1,
         rowIndices: [0],
         missingRows: [],
-        details: [{ rowIndex: 0, columnKey: "content", value: "List контрольных образцов" }]
+        details: [{ rowIndex: 0, columnKey: "content", locationLabel: "DOCX segment 1", value: "List контрольных образцов" }]
       },
       qualityFindings: findings,
       issueCases: [issueCase],
@@ -408,6 +426,40 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.equal(debugPackage.metadata.appVersion, "0.0.0-test");
   assert.equal(debugPackage.issueCases.count, 1);
   assert.equal(debugPackage.samples.issueRows[0].source.content, "List of control samples");
+  const regressionCases = buildRegressionCasesFromIssueCases([issueCase]);
+  assert.equal(regressionCases.length, 1);
+  assert.deepEqual(regressionCases[0].assertions, ["bad-fails-target-language", "expected-passes-target-language"]);
+  assert.equal(runRegressionCases(regressionCases).failed, 0);
+  assert.equal(buildRegressionCasesFromDebugPackage(debugPackage).length, 1);
+  assert.equal(parseRegressionCasesJsonl(serializeRegressionCasesJsonl(regressionCases)).length, 1);
+
+  const issueMarkdown = serializeGitHubIssueMarkdown({
+    appVersion: "0.0.0-test",
+    documentKind: "docx",
+    targetLang: "Russian",
+    fileName: "sample.docx",
+    modelLabel: "Auto",
+    modelPreference: "auto-openrouter",
+    generatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    qualityReport,
+    issueSummary: {
+      cells: 1,
+      rows: 1,
+      rowIndices: [0],
+      missingRows: [],
+      details: [{ rowIndex: 0, columnKey: "content", locationLabel: "DOCX segment 1", value: "List контрольных образцов" }]
+    },
+    qualityFindings: findings,
+    issueCases: [issueCase],
+    qualityRows: {
+      sourceRows: [{ content: "List of control samples" }],
+      targetRows: [{ content: "List контрольных образцов" }]
+    },
+    formatSnapshot: { sheetName: "DOCX", rows: 1, cols: 1 }
+  });
+  assert.match(issueMarkdown, /\[Translation Bug\]/);
+  assert.match(issueMarkdown, /Debug Package/);
+  assert.match(issueMarkdown, /DOCX segment 1/);
 });
 
 test("quality core adapters preserve existing row-based quality checks", async () => {
@@ -417,6 +469,10 @@ test("quality core adapters preserve existing row-based quality checks", async (
   const { runQualityChecks, runQualityChecksOnUnits } = await bundleTsModule(
     path.join(repoRoot, "utils/quality.ts")
   );
+  const checksSource = fs.readFileSync(path.join(repoRoot, "quality/checks.ts"), "utf8");
+  const compatibilitySource = fs.readFileSync(path.join(repoRoot, "utils/quality.ts"), "utf8");
+  assert.match(checksSource, /runQualityChecksOnUnits/);
+  assert.match(compatibilitySource, /from '..\/quality\/checks'/);
 
   const sourceRows = [
     { id: "A-001", content: "白细胞", note: "2-8°C" },
@@ -451,6 +507,15 @@ test("quality core adapters preserve existing row-based quality checks", async (
     segmentsToQualityUnits(segments, "pdf", (segment) => segment.translated).units.map((unit) => unit.documentKind),
     ["pdf", "pdf"]
   );
+  const segmentInput = segmentsToQualityUnits(
+    [{ original: "Sample preparation", translated: "样本准备" }],
+    "pdf",
+    (segment) => segment.translated,
+    (segment) => segment.original,
+    (_segment, index) => `PDF segment ${index + 1}`
+  );
+  assert.equal(segmentInput.units[0].locationLabel, "PDF segment 1");
+  assert.equal(runQualityChecksOnUnits(segmentInput).issues.chinese[0].locationLabel, "PDF segment 1");
 });
 
 test("retry target helpers reuse quality issue details across document kinds", async () => {
@@ -554,14 +619,25 @@ test("Russian target detection flags mixed English table-of-contents labels", as
   const { isLikelyTargetLanguage, detectUntranslatedCells } = await bundleTsModule(
     path.join(repoRoot, "utils/language.ts")
   );
+  const { TARGET_LANGUAGE_PROFILES, getRussianResidueProfile, getTargetLanguageProfile, isRussianDisallowedLatinResidue } = await bundleTsModule(
+    path.join(repoRoot, "utils/languageProfiles.ts")
+  );
 
   assert.equal(isLikelyTargetLanguage("Описание продукта", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("Home: Главная страница", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("Orders: Заказы на исследование", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("Reports: Отчеты об исследовании", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("AI analysis: Анализ отчета AI", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("5.1 List контрольных образцов", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("feces reference: справка", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("Building Street: адрес", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("OpenDx: руководство пользователя", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("POCT QC: контроль качества", "Russian"), true);
+  assert.ok(getRussianResidueProfile().disallowedLatinResidueWords.includes("home"));
+  assert.equal(isRussianDisallowedLatinResidue("Reports"), true);
+  assert.ok(TARGET_LANGUAGE_PROFILES.french.commonFunctionWords.includes("avec"));
+  assert.equal(getTargetLanguageProfile("French")?.target, "French");
+  assert.equal(getTargetLanguageProfile("Traditional Chinese (Taiwan)")?.preferredLocale, "zh-TW");
 
   const issues = detectUntranslatedCells(
     [

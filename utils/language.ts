@@ -1,10 +1,12 @@
 import { POCTRecord, TargetLanguage } from "../types";
+import { isRussianDisallowedLatinResidue } from "./languageProfiles";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
 import { isLikelyIdentifier, isProtectedTerm } from "./translationTokens";
 
 export interface UntranslatedCell {
   rowIndex: number;
   columnKey: string;
+  locationLabel?: string;
   value: string;
 }
 
@@ -388,9 +390,14 @@ const isAllowedLatinTokenInNonLatinTarget = (token: string) => {
   return false;
 };
 
-const hasDisallowedLatinResidue = (text: string) => {
+const hasDisallowedLatinResidue = (text: string, targetLang?: TargetLanguage) => {
   const tokens = text.match(LATIN_TOKEN_REGEX) || [];
-  return tokens.some((token) => !isAllowedLatinTokenInNonLatinTarget(token));
+  return tokens.some((token) => {
+    if (targetLang && targetLangToCode(targetLang) === "ru" && isRussianDisallowedLatinResidue(token)) {
+      return true;
+    }
+    return !isAllowedLatinTokenInNonLatinTarget(token);
+  });
 };
 
 export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage) => {
@@ -414,7 +421,7 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   if (targetCode === "ru") {
     if (CJK_REGEX.test(trimmed)) return false;
     if (!CYRILLIC_REGEX.test(trimmed)) return false;
-    return !hasDisallowedLatinResidue(trimmed);
+    return !hasDisallowedLatinResidue(trimmed, targetLang);
   }
 
   // For non-Chinese / non-Russian targets, any residual CJK/Cyrillic means not fully translated.

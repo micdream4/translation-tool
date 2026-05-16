@@ -19,6 +19,12 @@
 
 建议落点：`utils/languageProfiles.ts`，由翻译 prompt、后处理、Quality Check、Retry Missing 共用。
 
+当前进度：
+
+- `utils/languageProfiles.ts` 已扩展为 profile registry。
+- 第一版已覆盖 Russian、French、Spanish、Portuguese、German、Italian、Turkish、Traditional Chinese (Taiwan)。
+- Russian 已实际接入残留检测；其他 Latin 语种先沉淀 function words、特色字符和数字单位规则说明，后续从真实 Issue 逐步转为硬规则。
+
 ### 2. 统一 Quality Check Core
 
 将 Quality Check 从 `App.tsx` 抽成文档无关核心：
@@ -33,19 +39,24 @@
 
 当前进度：
 
+- 已新增 `utils/languageProfiles.ts`，先落地多语种 profile registry，Russian profile 已接入俄语目标语言检测。
 - 已新增 `utils/qualityReport.ts`，先抽出 Quality Report finding 构建、报告文本导出和 issue type 映射。
 - 已新增 `quality/types.ts`，定义 `QualityUnit`、`QualityCheckInput`、`QualityIssue`、`QualityReport` 和文档类型。
 - 已新增 `quality/adapters.ts`，支持 row-based 数据转 `QualityUnit[]`。
-- `utils/quality.ts` 已新增 `runQualityChecksOnUnits`，旧 `runQualityChecks` API 保持不变并复用 adapter。
+- 已新增 `quality/checks.ts`，承接统一 Quality Check Core；`utils/quality.ts` 保留兼容导出。
 - `quality/adapters.ts` 已新增 `segmentsToQualityRows` / `segmentsToQualityUnits`，DOCX/PDF Quality Report 的文本段 rows 映射已从 `App.tsx` 迁出。
 - DOCX/PDF 的 `Run Quality Check` 执行路径已直接基于 `QualityUnit`，rows 中间层只用于报告展示和导出。
+- `QualityUnit` / `QualityIssue` 已携带 `locationLabel`，报告展示和导出文本可优先显示 DOCX/PDF 段落位置。
 - `components/QualityReportPanel.tsx` 已抽出 Quality Report、Quality Loop、AI Sample Review 展示层，主组件只保留状态和回调接线。
 - `hooks/useAuth.ts` 已抽出 `/api/me` 身份探测，主组件不再直接处理认证请求和状态归一化。
 - `hooks/useQualityWorkflow.ts` 已抽出 Quality Report 状态、finding 派生、issue case 操作、Sample Review、AI Sample Review 和 `runQualityCheck` 的 Excel/DOCX/PDF 执行入口。
 - `utils/retryTargets.ts` 已抽出 Quality Issue 到 Retry target 的生成逻辑，Excel/DOCX/PDF 的补译候选选择开始复用统一 helper。
 - `utils/debugPackage.ts` 已新增本地调试包构建器，Quality Report 面板可导出版本、模型、Quality Report、issue cases 和样本行，作为 GitHub Issue 的结构化附件。
 - GitHub Issue 模板已补充 `Debug Package` 字段，并使用当前仓库已有的 `bug` label。
-- 下一步逐步让报告展示也读取 `QualityUnit` 的 location/metadata，并继续推进 GitHub Issue 自动创建入口或自定义 label 初始化。
+- Quality Report 面板已新增 `Issue Draft`，可导出 GitHub Issue Markdown 草稿。
+- 已新增 `utils/regressionAssets.ts`、`fixtures/translation-issue-regression.jsonl` 和 `scripts/debugPackageToRegression.mjs`，支持从 Issue Case / Debug Package 生成回归测试资产。
+- 已新增 `.github/workflows/quality-gate.yml` 和 `npm run test:quality-gate`。
+- 下一步继续推进 GitHub Issue 自动创建入口、自定义 label 初始化，或将更多目标语言 profile 沉淀到统一检查层。
 
 ### 3. App.tsx 拆分
 
@@ -67,6 +78,7 @@
 - `utils/retryTargets.ts` 已完成第一阶段抽离，统一 Excel/DOCX/PDF 的补译候选选择。
 - `utils/debugPackage.ts` 已完成第一阶段，先支持本地 JSON 调试包导出。
 - GitHub Issue 模板已与 debug package 对齐。
+- `Issue Draft` 已完成第一阶段，先支持本地 Markdown 草稿导出。
 - 下一步优先做 GitHub Issue 自动创建入口 / 初始化自定义 labels，或继续拆 Preview / Translation settings。
 
 ### 4. 认证与对外开放

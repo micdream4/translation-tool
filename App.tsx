@@ -234,6 +234,7 @@ type IssueSummaryState = {
 type DocxIssueDetail = {
   index: number;
   id: string;
+  locationLabel?: string;
   text: string;
   snippet: string;
   chineseChars: number;
@@ -1098,7 +1099,7 @@ const App: React.FC = () => {
     const seen = new Set<string>();
     const picked: string[] = [];
     details.forEach((issue) => {
-      const location = formatLocationLabel(issue.rowIndex, issue.columnKey);
+      const location = issue.locationLabel || formatLocationLabel(issue.rowIndex, issue.columnKey);
       if (seen.has(location)) return;
       seen.add(location);
       picked.push(location);
@@ -1276,6 +1277,7 @@ const App: React.FC = () => {
       details.push({
         index: idx,
         id: segment.id,
+        locationLabel: `${segment.partLabel || 'DOCX'} segment ${idx + 1}`,
         text: trimmed,
         snippet: toDocxSnippet(trimmed),
         chineseChars: countChineseChars(stripped),
@@ -1590,6 +1592,7 @@ const App: React.FC = () => {
       details.push({
         index: idx,
         id: segment.id,
+        locationLabel: `PDF page ${segment.pageNumber}, segment ${idx + 1}`,
         text,
         snippet: toDocxSnippet(text),
         chineseChars: countChineseChars(stripped),
@@ -1640,6 +1643,7 @@ const App: React.FC = () => {
       details: details.map((item) => ({
         rowIndex: item.index,
         columnKey: 'content',
+        locationLabel: item.locationLabel || `${documentKind.toUpperCase()} segment ${item.index + 1}`,
         value: item.text
       }))
     });
@@ -1666,14 +1670,18 @@ const App: React.FC = () => {
       return segmentsToQualityUnits<DocxSegment>(
         docxContextRef.current.segments,
         'docx',
-        (segment) => getDocxSegmentText(segment)
+        (segment) => getDocxSegmentText(segment),
+        (segment) => segment.original,
+        (segment, index) => `${segment.partLabel || 'DOCX'} segment ${index + 1}`
       );
     }
     if (documentKind === 'pdf' && pdfContextRef.current) {
       return segmentsToQualityUnits<PdfSegment>(
         pdfContextRef.current.segments,
         'pdf',
-        (segment) => getPdfSegmentText(segment)
+        (segment) => getPdfSegmentText(segment),
+        (segment) => segment.original,
+        (segment, index) => `PDF page ${segment.pageNumber}, segment ${index + 1}`
       );
     }
     return null;
@@ -3785,7 +3793,9 @@ const App: React.FC = () => {
     clearQualityReport,
     exportQualityReport,
     exportDebugPackage,
+    exportIssueDraft,
     exportIssueCases,
+    exportRegressionCases,
     clearIssueCases,
     saveQualityFindingCorrection,
     generateSampleReview,
@@ -4815,7 +4825,9 @@ const App: React.FC = () => {
             clearQualityReport={clearQualityReport}
             exportQualityReport={exportQualityReport}
             exportDebugPackage={exportDebugPackage}
+            exportIssueDraft={exportIssueDraft}
             exportIssueCases={exportIssueCases}
+            exportRegressionCases={exportRegressionCases}
             clearIssueCases={clearIssueCases}
             saveQualityFindingCorrection={saveQualityFindingCorrection}
             jumpToPreviewCell={jumpToPreviewCell}

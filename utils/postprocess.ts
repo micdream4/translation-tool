@@ -75,7 +75,18 @@ const EN_EXACT_TOKEN_FIXES: Array<[RegExp, string]> = [
   [/\bPLTFocusing\b/g, "PLT Focusing"]
 ];
 const RUSSIAN_RESIDUE_FIXES: Array<[RegExp, string]> = [
+  [/\b(\d+)-year\b/gi, "$1 год"],
   [/\bList\b/g, "Список"],
+  [/\bHome\b/g, "Главная"],
+  [/\bOrders\b/g, "Заказы"],
+  [/\bReports\b/g, "Отчеты"],
+  [/\bservices\b/gi, "службы"],
+  [/\bservice\b/gi, "обслуживание"],
+  [/\breference\b/gi, "справка"],
+  [/\bsample\b/gi, "образец"],
+  [/\bresult\b/gi, "результат"],
+  [/\bresults\b/gi, "результаты"],
+  [/\banalysis\b/gi, "анализ"],
   [/\bBuilding\b/g, "здание"],
   [/\bStreet\b/g, "улица"],
   [/\bDistrict\b/g, "район"],
@@ -84,6 +95,7 @@ const RUSSIAN_RESIDUE_FIXES: Array<[RegExp, string]> = [
   [/\bfeces\b/gi, "фекалий"],
   [/\buncertain\b/gi, "неопределенным"],
   [/\bestablish\b/gi, "установить"],
+  [/\bref(?=[\u0400-\u04FF])/gi, ""],
   [/\bWhite Blood Cell Count\b/g, "Количество лейкоцитов"],
   [/\bСрок\s+service\s+службы\b/gi, "Срок службы"]
 ];

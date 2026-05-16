@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.64`。
+当前版本：`v0.0.65`。
 
 稳定地址：
 
@@ -79,14 +79,16 @@ https://translation-tool-917.pages.dev
 29. `.github/workflows/quality-gate.yml` 和 `npm run test:quality-gate` 已建立质量闸门。
 30. `QualityReport` 已把非目标语言残留纳入统一 core，`runQualityChecks` / `runQualityChecksOnUnits` 支持 `targetLang`，Excel/DOCX/PDF 的残留 finding、debug package 和 issue case 可以走同一份报告。
 31. 已新增 `quality/report.ts` 和 `quality/retryTargets.ts` 入口，新的质量报告/补译目标代码优先从 `quality/` 引入，旧 `utils/` 入口保留兼容。
+32. Russian/French profile 已进入可执行规则阶段：French 能检测 `Quickly squeeze`、`The blue button is lifted` 等英文标签残留，Russian 增加 `ref/year/reference/service/sample/result` 等真实 DOCX 残留词和轻量后处理。
+33. Issue regression fixture 已扩到 5 条，新增法语 PDF 英文标签残留和俄语 `1-year` 残留样本。
 
 ## 真实回归基线
 
 最近一次 `npm run test:real-docs` 结果摘要：
 
 - Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；统一 Quality Core 统计正常，仍有大量 spacing 类提示，需要后续分级优化。
-- DOCX 俄语：旧译文仍有英文残留，1195 段中 182 段被判非目标语言，35 段命中常见英文残留；下一步优先用 Russian profile 做实修复。
-- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但文本层为空，下一步进入 PDF 文本层和质量检查专项。
+- DOCX 俄语：旧译文仍有英文残留，1195 段中 182 段被判非目标语言，35 段命中常见英文残留；Russian profile 已扩大词表和后处理，下一步继续通过真实 Issue/Debug Package 转规则。
+- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但文本层为空，French profile 已能拦截图片标签周边的高置信英文残留，下一步进入 PDF 文本层专项。
 
 ## 当前主要待办
 

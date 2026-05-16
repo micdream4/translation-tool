@@ -5,6 +5,8 @@ export type TargetLanguageProfile = {
   script: 'latin' | 'cyrillic' | 'cjk';
   preferredLocale?: string;
   disallowedLatinResidueWords?: string[];
+  englishResidueWords?: string[];
+  englishResiduePhrases?: string[];
   commonFunctionWords?: string[];
   distinctiveCharacters?: RegExp;
   notes: string[];
@@ -44,6 +46,7 @@ export const RUSSIAN_DISALLOWED_LATIN_RESIDUE_WORDS = [
   'reports',
   'result',
   'results',
+  'ref',
   'sample',
   'service',
   'services',
@@ -52,12 +55,31 @@ export const RUSSIAN_DISALLOWED_LATIN_RESIDUE_WORDS = [
   'street',
   'support',
   'uncertain',
-  'white'
+  'white',
+  'year'
 ];
 
 const RUSSIAN_DISALLOWED_LATIN_RESIDUE_SET = new Set(
   RUSSIAN_DISALLOWED_LATIN_RESIDUE_WORDS.map(normalizeLatinToken)
 );
+
+export const FRENCH_ENGLISH_RESIDUE_WORDS = [
+  'blue',
+  'button',
+  'consumables',
+  'lifted',
+  'quickly',
+  'remove',
+  'removed',
+  'squeeze',
+  'testing'
+];
+
+export const FRENCH_ENGLISH_RESIDUE_PHRASES = [
+  'quickly squeeze',
+  'blue button',
+  'the blue button is lifted'
+];
 
 export const isRussianTarget = (targetLang?: TargetLanguage) =>
   String(targetLang || '').toLowerCase().includes('russian');
@@ -83,6 +105,8 @@ export const TARGET_LANGUAGE_PROFILES: Record<string, TargetLanguageProfile> = {
   french: {
     target: 'French',
     script: 'latin',
+    englishResidueWords: [...FRENCH_ENGLISH_RESIDUE_WORDS],
+    englishResiduePhrases: [...FRENCH_ENGLISH_RESIDUE_PHRASES],
     commonFunctionWords: ['le', 'la', 'les', 'des', 'une', 'avec', 'pour', 'dans', 'sur'],
     distinctiveCharacters: /[éèêëàâçîïôûùüÿœ]/i,
     notes: [
@@ -154,4 +178,25 @@ export const TARGET_LANGUAGE_PROFILES: Record<string, TargetLanguageProfile> = {
 export const getTargetLanguageProfile = (targetLang?: TargetLanguage) => {
   const normalized = String(targetLang || '').toLowerCase();
   return Object.entries(TARGET_LANGUAGE_PROFILES).find(([key]) => normalized.includes(key))?.[1] || null;
+};
+
+export const isProfileEnglishResidueToken = (token: string, targetLang?: TargetLanguage) => {
+  const profile = getTargetLanguageProfile(targetLang);
+  if (!profile?.englishResidueWords?.length) return false;
+  return new Set(profile.englishResidueWords.map(normalizeLatinToken)).has(normalizeLatinToken(token));
+};
+
+export const hasProfileEnglishResidue = (text: string, targetLang?: TargetLanguage) => {
+  const profile = getTargetLanguageProfile(targetLang);
+  if (!profile) return false;
+  const normalizedText = normalizeLatinToken(text).replace(/[^a-z0-9]+/g, ' ');
+  if (
+    profile.englishResiduePhrases?.some((phrase) =>
+      normalizedText.includes(normalizeLatinToken(phrase).replace(/[^a-z0-9]+/g, ' '))
+    )
+  ) {
+    return true;
+  }
+  const tokens = text.match(/\b[A-Za-z][A-Za-z0-9'-]{1,}\b/g) || [];
+  return tokens.some((token) => isProfileEnglishResidueToken(token, targetLang));
 };

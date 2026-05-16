@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.65
+
+- 目标语言 profile 继续做实：`utils/languageProfiles.ts` 新增 French 高置信英文残留词/短语规则，`Quickly squeeze`、`The blue button is lifted` 等 PDF 操作标签可被法语目标检测拦截。
+- Russian profile 扩展真实 DOCX 中暴露的残留词：`ref`、`year`、`reference`、`service`、`sample`、`result(s)` 等；俄语轻量后处理新增 `1-year -> 1 год` 和常见 UI/说明书残留替换。
+- `isLikelyTargetLanguage` 已接入 profile 级英文残留规则，Latin 语种不再只依赖通用 language score，后续 Spanish/Portuguese/German/Turkish 可按同一结构扩展。
+- `fixtures/translation-issue-regression.jsonl` 从 3 条扩展到 5 条，新增法语 PDF 英文标签残留和俄语 `1-year` 残留回归样本。
+- 回归测试新增 Russian/French profile 可执行规则覆盖，`npm test` 与 `npm run test:issue-regression` 通过。
+- 版本号更新为 `v0.0.65`。
+
 ## v0.0.64
 
 - 继续统一 Quality Check Core：`runQualityChecks` / `runQualityChecksOnUnits` 新增 `targetLang` 选项，Excel、DOCX、PDF 可在同一份 `QualityReport` 中记录非目标语言残留。

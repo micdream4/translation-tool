@@ -23,7 +23,9 @@
 
 - `utils/languageProfiles.ts` 已扩展为 profile registry。
 - 第一版已覆盖 Russian、French、Spanish、Portuguese、German、Italian、Turkish、Traditional Chinese (Taiwan)。
-- Russian 已实际接入残留检测；其他 Latin 语种先沉淀 function words、特色字符和数字单位规则说明，后续从真实 Issue 逐步转为硬规则。
+- Russian 已实际接入残留检测，并加入 `ref/year/reference/service/sample/result` 等真实 DOCX 残留词和轻量后处理。
+- French 已加入高置信英文残留词/短语规则，覆盖真实 PDF 中的 `Quickly squeeze`、`The blue button is lifted` 这类操作标签残留。
+- 其他 Latin 语种先沉淀 function words、特色字符和数字单位规则说明，后续从真实 Issue 逐步转为硬规则。
 
 ### 2. 统一 Quality Check Core
 

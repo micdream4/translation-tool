@@ -1,5 +1,5 @@
 import { POCTRecord, TargetLanguage } from "../types";
-import { isRussianDisallowedLatinResidue } from "./languageProfiles";
+import { hasProfileEnglishResidue, isRussianDisallowedLatinResidue } from "./languageProfiles";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
 import { isLikelyIdentifier, isProtectedTerm } from "./translationTokens";
 
@@ -426,6 +426,9 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
 
   // For non-Chinese / non-Russian targets, any residual CJK/Cyrillic means not fully translated.
   if (CJK_REGEX.test(trimmed) || CYRILLIC_REGEX.test(trimmed)) {
+    return false;
+  }
+  if (targetCode !== "en" && hasProfileEnglishResidue(trimmed, targetLang)) {
     return false;
   }
 

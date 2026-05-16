@@ -623,11 +623,19 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   assert.match(modelReviewSource, /penalize Simplified Chinese characters/);
 });
 
-test("Russian target detection flags mixed English table-of-contents labels", async () => {
+test("Russian and French profiles flag high-confidence source-language residue", async () => {
   const { isLikelyTargetLanguage, detectUntranslatedCells } = await bundleTsModule(
     path.join(repoRoot, "utils/language.ts")
   );
-  const { TARGET_LANGUAGE_PROFILES, getRussianResidueProfile, getTargetLanguageProfile, isRussianDisallowedLatinResidue } = await bundleTsModule(
+  const { polishTranslation } = await bundleTsModule(path.join(repoRoot, "utils/postprocess.ts"));
+  const {
+    TARGET_LANGUAGE_PROFILES,
+    getRussianResidueProfile,
+    getTargetLanguageProfile,
+    hasProfileEnglishResidue,
+    isProfileEnglishResidueToken,
+    isRussianDisallowedLatinResidue
+  } = await bundleTsModule(
     path.join(repoRoot, "utils/languageProfiles.ts")
   );
 
@@ -639,12 +647,24 @@ test("Russian target detection flags mixed English table-of-contents labels", as
   assert.equal(isLikelyTargetLanguage("5.1 List контрольных образцов", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("feces reference: справка", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("Building Street: адрес", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("Гарантия составляет 1-year.", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("далее refме", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("OpenDx: руководство пользователя", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("POCT QC: контроль качества", "Russian"), true);
+  assert.equal(polishTranslation("", "Reports: Отчеты об исследовании", "Russian"), "Отчеты: Отчеты об исследовании");
+  assert.equal(polishTranslation("", "Гарантия составляет 1-year.", "Russian").trim(), "Гарантия составляет 1 год.");
   assert.ok(getRussianResidueProfile().disallowedLatinResidueWords.includes("home"));
   assert.equal(isRussianDisallowedLatinResidue("Reports"), true);
+  assert.equal(isRussianDisallowedLatinResidue("year"), true);
   assert.ok(TARGET_LANGUAGE_PROFILES.french.commonFunctionWords.includes("avec"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.french.englishResidueWords.includes("quickly"));
   assert.equal(getTargetLanguageProfile("French")?.target, "French");
+  assert.equal(isLikelyTargetLanguage("Remplissage de l'échantillon", "French"), true);
+  assert.equal(isLikelyTargetLanguage("Quickly squeeze", "French"), false);
+  assert.equal(isLikelyTargetLanguage("The blue button is lifted", "French"), false);
+  assert.equal(isLikelyTargetLanguage("Insérez le flacon quadruple dans l'injecteur d'échantillon.", "French"), true);
+  assert.equal(isProfileEnglishResidueToken("squeeze", "French"), true);
+  assert.equal(hasProfileEnglishResidue("The blue button is lifted", "French"), true);
   assert.equal(getTargetLanguageProfile("Traditional Chinese (Taiwan)")?.preferredLocale, "zh-TW");
 
   const issues = detectUntranslatedCells(
@@ -658,6 +678,18 @@ test("Russian target detection flags mixed English table-of-contents labels", as
   assert.deepEqual(
     issues.map((issue) => issue.value),
     ["Home: Главная страница"]
+  );
+  const frenchIssues = detectUntranslatedCells(
+    [
+      { content: "Remplissage de l'échantillon" },
+      { content: "Quickly squeeze" },
+      { content: "The blue button is lifted" }
+    ],
+    "French"
+  );
+  assert.deepEqual(
+    frenchIssues.map((issue) => issue.value),
+    ["Quickly squeeze", "The blue button is lifted"]
   );
 });
 

@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.54`。
+当前版本：`v0.0.55`。
 
 稳定地址：
 
@@ -61,6 +61,7 @@ https://translation-tool-917.pages.dev
 11. 新增 `quality/types.ts` 和 `quality/adapters.ts`，`utils/quality.ts` 已通过 `QualityUnit` 执行检查，同时保留旧 `runQualityChecks` API。
 12. `quality/adapters.ts` 已新增 `segmentsToQualityRows` / `segmentsToQualityUnits`，DOCX/PDF 的 Quality Report rows 映射已从 `App.tsx` 迁入 adapter。
 13. DOCX/PDF 的 `Run Quality Check` 已直接走 `segmentsToQualityUnits -> runQualityChecksOnUnits`；rows 中间层只保留给报告展示和导出。
+14. `components/QualityReportPanel.tsx` 已从 `App.tsx` 抽出，承接 Quality Report 展示、Quality Loop 和 AI Sample Review UI；`App.tsx` 只保留状态与动作接线。
 
 ## 真实回归基线
 
@@ -105,6 +106,7 @@ docs/issue-report-workflow.md
 - `utils/quality.ts` 已新增 `runQualityChecksOnUnits`，旧 `runQualityChecks` 内部复用 adapter。
 - `quality/adapters.ts` 已支持 DOCX/PDF 类文本段转 QualityRows / QualityUnit。
 - DOCX/PDF 的检查执行路径已直接使用 `QualityUnit`，不再通过临时 rows 运行检查。
+- Quality Report 面板 UI 已抽到 `components/QualityReportPanel.tsx`，后续可继续把质量状态和操作迁入 `hooks/useQualityWorkflow.ts`。
 
 参考文档：
 

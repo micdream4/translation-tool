@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.55
+
+- 继续拆分 `App.tsx`：新增 `components/QualityReportPanel.tsx`，把 Quality Report 展示、finding 列表、Quality Loop、抽样复核 UI 从主组件抽出。
+- `App.tsx` 现在只保留 Quality Report 的状态、动作和数据接线，面板组件通过 props 接收导出、保存修正、跳转预览、AI Sample Review 等回调。
+- 回归测试更新为同时检查 App 接线和 QualityReportPanel UI，确保 `Save Correction`、`Export Cases`、`Quality Loop` 仍然存在。
+- 版本号更新为 `v0.0.55`。
+
 ## v0.0.54
 
 - DOCX/PDF 的 `Run Quality Check` 执行路径改为直接使用 `segmentsToQualityUnits -> runQualityChecksOnUnits`，不再先转成临时 rows 后再检查。

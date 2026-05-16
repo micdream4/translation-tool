@@ -230,6 +230,7 @@ test("translation memory supports exact reuse and in-file dedupe", async () => {
 
 test("quality issue cases can be saved and exported from quality findings", async () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const qualityPanelSource = fs.readFileSync(path.join(repoRoot, "components/QualityReportPanel.tsx"), "utf8");
   const issueCaseSource = fs.readFileSync(path.join(repoRoot, "utils/issueCases.ts"), "utf8");
   const qualityReportSource = fs.readFileSync(path.join(repoRoot, "utils/qualityReport.ts"), "utf8");
   const { buildTranslationIssueCase, serializeTranslationIssueCasesJsonl } = await transpileTsModule(
@@ -268,8 +269,10 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   }).sourceHash);
   assert.match(serializeTranslationIssueCasesJsonl([issueCase]), /Список контрольных образцов/);
   assert.match(issueCaseSource, /poct\.translation_issue_cases\.v1/);
-  assert.match(appSource, /Save Correction/);
-  assert.match(appSource, /Export Cases/);
+  assert.match(appSource, /<QualityReportPanel/);
+  assert.match(qualityPanelSource, /Save Correction/);
+  assert.match(qualityPanelSource, /Export Cases/);
+  assert.match(qualityPanelSource, /Quality Loop/);
   assert.match(appSource, /saveTranslationIssueCase/);
   assert.match(appSource, /rememberTranslationPairs/);
   assert.match(appSource, /buildQualityFindings/);

@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.57
+
+- 补完整 QualityReportPanel 拆分后的状态层：新增 `hooks/useQualityWorkflow.ts`，集中管理 Quality Report 状态、finding 派生、本地 issue case 计数、导出/清空、人工修正保存、Sample Review 和 AI Sample Review。
+- `App.tsx` 继续减薄：质量报告 UI 已在 `components/QualityReportPanel.tsx`，质量报告状态与动作已迁入 hook，主组件保留 `runQualityCheck` 的 Excel/DOCX/PDF 执行入口和数据接线。
+- 回归测试更新为检查 `useQualityWorkflow` 承接 `saveTranslationIssueCase`、`rememberTranslationPairs`、`buildQualityFindings`、`buildQualityReportText` 和 `SampleReviewAuditService`。
+- 版本号更新为 `v0.0.57`。
+
 ## v0.0.56
 
 - 继续拆分 `App.tsx`：新增 `hooks/useAuth.ts`，把 `/api/me` 身份探测、登录/阻止/匿名状态归一化从主组件移入独立 hook。

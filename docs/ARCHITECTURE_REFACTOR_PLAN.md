@@ -41,6 +41,7 @@
 - DOCX/PDF 的 `Run Quality Check` 执行路径已直接基于 `QualityUnit`，rows 中间层只用于报告展示和导出。
 - `components/QualityReportPanel.tsx` 已抽出 Quality Report、Quality Loop、AI Sample Review 展示层，主组件只保留状态和回调接线。
 - `hooks/useAuth.ts` 已抽出 `/api/me` 身份探测，主组件不再直接处理认证请求和状态归一化。
+- `hooks/useQualityWorkflow.ts` 已抽出 Quality Report 状态、finding 派生、issue case 操作、Sample Review 和 AI Sample Review；`runQualityCheck` 的文档执行入口仍留在 `App.tsx`。
 - 下一步把 Retry Missing target 生成迁入统一 issue 层，并逐步让报告展示也读取 `QualityUnit` 的 location/metadata。
 
 ### 3. App.tsx 拆分
@@ -59,7 +60,8 @@
 
 - `components/QualityReportPanel.tsx` 已完成第一阶段抽离。
 - `hooks/useAuth.ts` 已完成第一阶段抽离。
-- 下一步优先抽 `hooks/useQualityWorkflow.ts`，继续减少 `App.tsx` 中质量流程状态。
+- `hooks/useQualityWorkflow.ts` 已完成状态/动作第一阶段抽离。
+- 下一步优先拆 `runQualityCheck` 的文档执行入口，或转向 GitHub Issue / debug package 闭环。
 
 ### 4. 认证与对外开放
 

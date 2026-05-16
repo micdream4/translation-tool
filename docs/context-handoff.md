@@ -34,7 +34,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.56`。
+当前版本：`v0.0.57`。
 
 稳定地址：
 
@@ -63,6 +63,7 @@ https://translation-tool-917.pages.dev
 13. DOCX/PDF 的 `Run Quality Check` 已直接走 `segmentsToQualityUnits -> runQualityChecksOnUnits`；rows 中间层只保留给报告展示和导出。
 14. `components/QualityReportPanel.tsx` 已从 `App.tsx` 抽出，承接 Quality Report 展示、Quality Loop 和 AI Sample Review UI；`App.tsx` 只保留状态与动作接线。
 15. `hooks/useAuth.ts` 已从 `App.tsx` 抽出，集中处理 `/api/me` 身份探测和 authenticated/blocked/anonymous 状态。
+16. `hooks/useQualityWorkflow.ts` 已从 `App.tsx` 抽出，集中处理 Quality Report 状态、finding 派生、issue case 保存/导出、Sample Review 和 AI Sample Review；`runQualityCheck` 执行入口仍留在 App。
 
 ## 真实回归基线
 
@@ -109,6 +110,7 @@ docs/issue-report-workflow.md
 - DOCX/PDF 的检查执行路径已直接使用 `QualityUnit`，不再通过临时 rows 运行检查。
 - Quality Report 面板 UI 已抽到 `components/QualityReportPanel.tsx`，后续可继续把质量状态和操作迁入 `hooks/useQualityWorkflow.ts`。
 - 认证状态已抽到 `hooks/useAuth.ts`，App 只通过 `useAuth()` 给 Header 传递身份状态。
+- Quality Report 状态和动作已抽到 `hooks/useQualityWorkflow.ts`，App 通过 hook 接收 `qualityReport`、`setQualityReport`、finding、issue case 和 Sample Review 操作。
 
 参考文档：
 
@@ -131,7 +133,7 @@ docs/ARCHITECTURE_REFACTOR_PLAN.md
 优先拆：
 
 - `hooks/useAuth.ts`（已完成第一阶段）
-- `hooks/useQualityWorkflow.ts`
+- `hooks/useQualityWorkflow.ts`（状态/动作第一阶段已完成；`runQualityCheck` 执行入口仍在 App）
 - `hooks/useTranslationWorkflow.ts`
 - `components/QualityReportPanel.tsx`
 - `components/TranslationSettingsPanel.tsx`

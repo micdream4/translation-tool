@@ -182,21 +182,29 @@ export const guardTranslationTokens = (
     : {};
   let counter = Object.keys(placeholders).length;
 
+  const createPlaceholder = (match: string) => {
+    if (!match.trim()) return match;
+    const placeholder = `__ID_${counter++}__`;
+    placeholders[placeholder] = match;
+    return placeholder;
+  };
+
   const replaceTokens = (regex: RegExp) => {
     sanitized = sanitized.replace(regex, (match) => {
-      if (!match.trim()) return match;
-      const placeholder = `__ID_${counter++}__`;
-      placeholders[placeholder] = match;
-      return placeholder;
+      return createPlaceholder(match);
     });
   };
 
+  replaceTokens(UI_LABEL_REGEX);
+  sanitized = sanitized.replace(SOURCE_UI_LABEL_CONTEXT_REGEX, (match, label) =>
+    match.replace(label, createPlaceholder(label))
+  );
+  sanitized = sanitized.replace(SOURCE_UI_BUTTON_CONTEXT_REGEX, (match, label) =>
+    match.replace(label, createPlaceholder(label))
+  );
   effectiveProtectedTermPatterns.forEach((regex) => {
     sanitized = sanitized.replace(regex, (match) => {
-      if (!match.trim()) return match;
-      const placeholder = `__ID_${counter++}__`;
-      placeholders[placeholder] = match;
-      return placeholder;
+      return createPlaceholder(match);
     });
   });
   replaceTokens(UUID_REGEX);

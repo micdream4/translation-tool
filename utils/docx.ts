@@ -368,6 +368,22 @@ const isPreferredSplitBoundary = (text: string, index: number) => {
   return false;
 };
 
+const isWordInternalRunBoundary = (left: string, right: string) => {
+  if (!left || !right) return false;
+  const leftChar = left[left.length - 1] || "";
+  const rightChar = right[0] || "";
+  return /[A-Za-z\u00C0-\u024F]/.test(leftChar) && /[A-Za-z\u00C0-\u024F]/.test(rightChar);
+};
+
+const hasWordInternalRunSplit = (nodes: Element[]) => {
+  for (let i = 0; i < nodes.length - 1; i += 1) {
+    if (isWordInternalRunBoundary(nodes[i].textContent || "", nodes[i + 1].textContent || "")) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const adjustSplitIndex = (
   text: string,
   desired: number,
@@ -400,6 +416,14 @@ export const setDocxSegmentText = (segment: DocxSegment, text: string) => {
   if (nodes.length === 1) {
     nodes[0].textContent = text;
     ensurePreserveSpace(nodes[0]);
+    return;
+  }
+
+  if (hasWordInternalRunSplit(nodes)) {
+    nodes.forEach((node, idx) => {
+      node.textContent = idx === 0 ? text : "";
+      ensurePreserveSpace(node);
+    });
     return;
   }
 

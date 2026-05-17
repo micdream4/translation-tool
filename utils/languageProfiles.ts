@@ -32,6 +32,7 @@ export const RUSSIAN_DISALLOWED_LATIN_RESIDUE_WORDS = [
   'establish',
   'feces',
   'home',
+  'hour',
   'list',
   'lists',
   'maintenance',

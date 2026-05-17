@@ -36,6 +36,7 @@ export const PLACEHOLDER_REGEX =
 const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
+const URL_REGEX = /\bhttps?:\/\/[^\s"'<>]+/gi;
 const LETTER_DIGIT_SPACE_REGEX = /\b[A-Za-z]\s+\d{1,3}\b|\b\d{1,3}\s+[A-Za-z]\b/;
 const SAFE_MEDICAL_SPACING_REGEX = /\b(?:B\s*12|B\s*6|G\s*6|P\s*50)\b/i;
 const SAFE_NUMBER_UNIT_SPACING_REGEX =
@@ -50,6 +51,8 @@ const DIGIT_BOUNDARY_GLUE_REGEX =
 const LOWER_COMPOUND_GLUE_REGEX =
   /\b(?:connectthe|intothe|displaywbc|usesledlight|providesusbinterface|withtcp\/ipprotocol|withgb\/t|andgb\/t|thedcpower|cbcdetection|cbctest|pltthe|aianalysis|retand|supplyrequirements|compositiondescription|routineimaging|fluorescenceimage|andperformmaintenance|powerswitchto|tostart|is1year|enter\d+(?:[-/.]\d+)*digits|than\d+digits)\b/i;
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
+
+const stripUrls = (value: string) => String(value || '').replace(URL_REGEX, ' ').replace(/ {2,}/g, ' ');
 
 const shouldLockCell = (key: string, value: unknown) => {
   if (typeof value !== 'string') return false;
@@ -100,7 +103,7 @@ const createQualityIssues = (): QualityReport['issues'] => ({
 });
 
 export const hasSpacingIssue = (value: string) => {
-  const checkValue = String(value || '')
+  const checkValue = stripUrls(value)
     .replace(SAFE_NUMBER_UNIT_SPACING_REGEX, ' ')
     .replace(SAFE_STANDARD_SPACING_REGEX, ' ');
   if (SAFE_MEDICAL_SPACING_REGEX.test(checkValue)) {
@@ -120,7 +123,7 @@ export const hasSpacingIssue = (value: string) => {
 
 export const getSpacingSeverity = (value: string): QualitySeverity | null => {
   if (hasGlueIssue(value)) return 'high';
-  const checkValue = String(value || '')
+  const checkValue = stripUrls(value)
     .replace(SAFE_NUMBER_UNIT_SPACING_REGEX, ' ')
     .replace(SAFE_STANDARD_SPACING_REGEX, ' ');
   if (EXTRA_SPACE_REGEX.test(checkValue) || SPACE_BEFORE_PUNCT_REGEX.test(checkValue) || EG_REGEX.test(checkValue)) {
@@ -134,12 +137,13 @@ export const getSpacingSeverity = (value: string): QualitySeverity | null => {
 };
 
 export const hasGlueIssue = (value: string) => {
+  const checkValue = stripUrls(value);
   return (
-    GLUED_PUNCT_REGEX.test(value) ||
-    CAMEL_GLUE_REGEX.test(value) ||
-    UPPER_ABBR_GLUE_REGEX.test(value) ||
-    DIGIT_BOUNDARY_GLUE_REGEX.test(value) ||
-    LOWER_COMPOUND_GLUE_REGEX.test(value)
+    GLUED_PUNCT_REGEX.test(checkValue) ||
+    CAMEL_GLUE_REGEX.test(checkValue) ||
+    UPPER_ABBR_GLUE_REGEX.test(checkValue) ||
+    DIGIT_BOUNDARY_GLUE_REGEX.test(checkValue) ||
+    LOWER_COMPOUND_GLUE_REGEX.test(checkValue)
   );
 };
 
@@ -270,8 +274,6 @@ export const runQualityChecksOnUnits = (
       hasPreservedUiLabelAdvisory(unit, options.targetLang) &&
       (!targetLanguageCheckText || isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang))
     ) {
-      totals.nonTargetCells += 1;
-      nonTargetRows.add(unit.rowIndex);
       issues.nonTargetLanguage.push({
         rowIndex: unit.rowIndex,
         columnKey: unit.columnKey,

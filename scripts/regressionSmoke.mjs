@@ -262,9 +262,12 @@ test("local issue capture workflow prepares ignored self-iteration workspace", (
   assert.match(gitignoreSource, /^local-data\/$/m);
 });
 
-test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", () => {
+test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", async () => {
   const docxSource = fs.readFileSync(path.join(repoRoot, "utils/docx.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const { setDocxSegmentText, getDocxSegmentText } = await bundleTsModule(
+    path.join(repoRoot, "utils/docx.ts")
+  );
   assert.match(docxSource, /coverageWarnings/);
   assert.match(docxSource, /formatDocxCoverageSummary/);
   assert.match(docxSource, /numbering\\.xml/);
@@ -279,6 +282,37 @@ test("DOCX parser covers body, headers, footers, footnotes, endnotes, and commen
   assert.match(appSource, /DOCX coverage:/);
   assert.match(appSource, /Docx coverage: 导出覆盖/);
   assert.doesNotMatch(docxSource, /segment\.original\s*=\s*text/);
+
+  const makeTextNode = (text) => ({
+    textContent: text,
+    attrs: {},
+    setAttribute(name, value) {
+      this.attrs[name] = value;
+    }
+  });
+  const fragmentedNodes = [makeTextNode("S"), makeTextNode("tatement")];
+  const fragmentedSegment = {
+    id: "docx-segment-test",
+    original: "Statement",
+    nodes: fragmentedNodes,
+    partPath: "word/document.xml",
+    partLabel: "正文"
+  };
+  setDocxSegmentText(fragmentedSegment, "Declaración");
+  assert.equal(getDocxSegmentText(fragmentedSegment), "Declaración");
+  assert.deepEqual(fragmentedNodes.map((node) => node.textContent), ["Declaración", ""]);
+
+  const boundaryNodes = [makeTextNode("Ehome"), makeTextNode(" Health Technology Co., Ltd.")];
+  const boundarySegment = {
+    id: "docx-segment-test-2",
+    original: "Ehome Health Technology Co., Ltd.",
+    nodes: boundaryNodes,
+    partPath: "word/document.xml",
+    partLabel: "正文"
+  };
+  setDocxSegmentText(boundarySegment, "Ehome Health Technology Co., Ltd. se reserva el derecho.");
+  assert.equal(getDocxSegmentText(boundarySegment), "Ehome Health Technology Co., Ltd. se reserva el derecho.");
+  assert.equal(boundaryNodes.every((node) => typeof node.textContent === "string"), true);
 });
 
 test("production proxy builds do not inject server-side model keys into the browser bundle", () => {
@@ -553,6 +587,57 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(reportText, /Non-target residual: 1 cells \/ 1 rows/);
   assert.match(reportText, /\[Placeholder\] DOCX segment 2/);
 
+  const advisoryReportText = buildQualityReportText({
+    qualityReport: {
+      totals: {
+        ...qualityReport.totals,
+        nonTargetCells: 1,
+        nonTargetRows: 1
+      },
+      issues: {
+        chinese: [],
+        placeholders: [],
+        idMismatch: [],
+        spacing: [],
+        emptyTranslations: [],
+        structureMismatches: [],
+        nonTargetLanguage: [
+          {
+            rowIndex: 0,
+            columnKey: "content",
+            locationLabel: "DOCX segment 1",
+            value: "Задайте настройки отображения времени в формате 24-hour.",
+            original: "Set 24-hour time display.",
+            type: "nonTargetLanguage"
+          },
+          {
+            rowIndex: 1,
+            columnKey: "content",
+            locationLabel: "DOCX segment 2",
+            value: "Нажмите кнопку «Save».",
+            original: "Click the 'Save' button.",
+            type: "nonTargetLanguage",
+            severity: "low"
+          }
+        ]
+      }
+    },
+    nonTargetDetails: [
+      { rowIndex: 0, columnKey: "content", locationLabel: "DOCX segment 1", value: "Задайте настройки отображения времени в формате 24-hour." },
+      { rowIndex: 1, columnKey: "content", locationLabel: "DOCX segment 2", value: "Нажмите кнопку «Save»." }
+    ],
+    qualityRows: {
+      sourceRows: [{ content: "Set 24-hour time display." }, { content: "Click the 'Save' button." }],
+      targetRows: [{ content: "Задайте настройки отображения времени в формате 24-hour." }, { content: "Нажмите кнопку «Save»." }]
+    },
+    targetLang: "Russian",
+    formatLocationLabel: (rowIndex, columnKey) => `R${rowIndex + 1}/${columnKey}`,
+    generatedAt: new Date("2026-01-01T00:00:00.000Z")
+  });
+  assert.match(advisoryReportText, /Non-target residual: 1 cells \/ 1 rows/);
+  assert.match(advisoryReportText, /Protected UI labels retained: 1 advisories \/ 1 rows/);
+  assert.match(advisoryReportText, /\[Protected UI label retained \/ LOW\] DOCX segment 2/);
+
   const debugPackage = JSON.parse(
     serializeDebugPackage({
       appVersion: "0.0.0-test",
@@ -686,6 +771,12 @@ test("quality core adapters preserve existing row-based quality checks", async (
   assert.equal(guardedEnglish.sanitized.includes("Enter access process"), true);
   assert.equal(guardedEnglish.sanitized.includes("__ID_"), true);
   assert.equal(restoreTranslationTokens(guardedEnglish.sanitized, guardedEnglish.placeholders), "Enter access process CE EN");
+  const guardedUi = guardTranslationTokens("Click the 'Save' button and open the Clinic Information icon from [Home].");
+  assert.doesNotMatch(guardedUi.sanitized, /Save|Clinic Information|Home/);
+  assert.equal(
+    restoreTranslationTokens(guardedUi.sanitized, guardedUi.placeholders),
+    "Click the 'Save' button and open the Clinic Information icon from [Home]."
+  );
   assert.deepEqual(
     runQualityChecksOnUnits(
       segmentsToQualityUnits(
@@ -708,6 +799,37 @@ test("quality core adapters preserve existing row-based quality checks", async (
       ["The device volume", "blocking"],
       ["Click the 'Save' button.", "low"]
     ]
+  );
+  const russianNoiseReport = runQualityChecksOnUnits(
+    segmentsToQualityUnits(
+      [
+        { original: "10^12/L", translated: "10^12/L" },
+        { original: "Tg#", translated: "Tg#" },
+        {
+          original: "Set 24-hour time display.",
+          translated: "Задайте настройки отображения времени в формате 24-hour."
+        },
+        { original: "Website: https://ozellemed.com/", translated: "Веб-сайт: https://ozellemed.com/" },
+        { original: "Click the 'Save' button.", translated: "Нажмите кнопку «Save»." }
+      ],
+      "docx",
+      (segment) => segment.translated,
+      (segment) => segment.original
+    ),
+    { targetLang: "Russian" }
+  );
+  assert.deepEqual(
+    russianNoiseReport.issues.nonTargetLanguage.map((issue) => [issue.original, issue.severity || "blocking"]),
+    [
+      ["Set 24-hour time display.", "blocking"],
+      ["Click the 'Save' button.", "low"]
+    ]
+  );
+  assert.equal(russianNoiseReport.totals.nonTargetCells, 1);
+  assert.equal(russianNoiseReport.totals.nonTargetRows, 1);
+  assert.equal(
+    russianNoiseReport.issues.spacing.some((issue) => issue.original === "Website: https://ozellemed.com/"),
+    false
   );
   assert.equal(
     runQualityChecksOnUnits(
@@ -873,11 +995,23 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(isLikelyTargetLanguage("feces reference: справка", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("Building Street: адрес", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("Гарантия составляет 1-year.", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("Отображать время в формате 24-hour.", "Russian"), false);
+  assert.equal(isLikelyTargetLanguage("10^12/L", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Tg#", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Веб-сайт: https://ozellemed.com/", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("далее refме", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("OpenDx: руководство пользователя", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("POCT QC: контроль качества", "Russian"), true);
   assert.equal(polishTranslation("", "Reports: Отчеты об исследовании", "Russian"), "Отчеты: Отчеты об исследовании");
   assert.equal(polishTranslation("", "Гарантия составляет 1-year.", "Russian").trim(), "Гарантия составляет 1 год.");
+  assert.equal(
+    polishTranslation("", "1. 1 Ámbito de aplicación y 7. 2. 10 Acerca de", "Spanish").trim(),
+    "1.1 Ámbito de aplicación y 7.2.10 Acerca de"
+  );
+  assert.equal(
+    polishTranslation("", "Отображение времени в формате 24-hour (при отключении отображается в формате 12-hour).", "Russian").trim(),
+    "Отображение времени в 24-часовом формате (при отключении отображается в 12-часовом формате)."
+  );
   assert.equal(
     polishTranslation("", "Это не только повыceет эффективность, но и сниceет ошибки в спиlisку.", "Russian").trim(),
     "Это не только повышает эффективность, но и снижает ошибки в списку."

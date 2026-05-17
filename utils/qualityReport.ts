@@ -173,12 +173,22 @@ export const buildQualityReportText = ({
   generatedAt?: Date;
 }) => {
   const nonTargetIssueList = qualityReport.issues.nonTargetLanguage || [];
+  const getIssueKey = (rowIndex: number, columnKey: string) => `${rowIndex}:${columnKey}`;
+  const lowNonTargetIssueList = nonTargetIssueList.filter((item) => item.severity === 'low');
+  const blockingNonTargetIssueList = nonTargetIssueList.filter((item) => item.severity !== 'low');
+  const lowNonTargetKeys = new Set(
+    lowNonTargetIssueList.map((item) => getIssueKey(item.rowIndex, item.columnKey))
+  );
+  const blockingNonTargetDetails = nonTargetDetails.filter(
+    (item) => !lowNonTargetKeys.has(getIssueKey(item.rowIndex, item.columnKey))
+  );
   const legacyNonTargetKeys = new Set(nonTargetDetails.map((item) => `${item.rowIndex}:${item.columnKey}`));
   const nonTargetRows = new Set([
-    ...nonTargetDetails.map((item) => item.rowIndex),
-    ...nonTargetIssueList.map((item) => item.rowIndex)
+    ...blockingNonTargetDetails.map((item) => item.rowIndex),
+    ...blockingNonTargetIssueList.map((item) => item.rowIndex)
   ]);
-  const nonTargetCellCount = Math.max(nonTargetDetails.length, qualityReport.totals.nonTargetCells || 0);
+  const lowNonTargetRows = new Set(lowNonTargetIssueList.map((item) => item.rowIndex));
+  const nonTargetCellCount = Math.max(blockingNonTargetDetails.length, qualityReport.totals.nonTargetCells || 0);
   const findings: Array<{
     type: string;
     severity?: QualitySeverity;
@@ -187,7 +197,10 @@ export const buildQualityReportText = ({
     translated: string;
   }> = [
     ...nonTargetDetails.map((item) => ({
-      type: 'Non-target language',
+      type: lowNonTargetKeys.has(getIssueKey(item.rowIndex, item.columnKey))
+        ? 'Protected UI label retained'
+        : 'Non-target language',
+      severity: lowNonTargetKeys.has(getIssueKey(item.rowIndex, item.columnKey)) ? 'low' as QualitySeverity : undefined,
       location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       original: getStringCell(qualityRows.sourceRows, item.rowIndex, item.columnKey),
       translated: getStringCell(qualityRows.targetRows, item.rowIndex, item.columnKey)
@@ -237,6 +250,7 @@ export const buildQualityReportText = ({
     `- Rows scanned: ${qualityReport.totals.rowsScanned}`,
     `- Cells scanned: ${qualityReport.totals.cellsScanned}`,
     `- Non-target residual: ${nonTargetCellCount} cells / ${nonTargetRows.size} rows`,
+    `- Protected UI labels retained: ${lowNonTargetIssueList.length} advisories / ${lowNonTargetRows.size} rows`,
     `- Chinese residue: ${qualityReport.totals.chineseCells} cells / ${qualityReport.totals.chineseRows} rows`,
     `- Empty translations: ${qualityReport.totals.emptyTranslations} cells / ${qualityReport.totals.emptyTranslationRows} rows`,
     `- Placeholders: ${qualityReport.totals.placeholderCells} cells / ${qualityReport.totals.placeholderRows} rows`,

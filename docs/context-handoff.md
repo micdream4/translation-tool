@@ -35,12 +35,19 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.71`。
+当前版本：`v0.0.76`。
 
 稳定地址：
 
 ```text
 https://translation-tool-917.pages.dev
+```
+
+最近一次确认部署：
+
+```text
+Preview: https://84f2ad62.translation-tool-917.pages.dev
+Commit: 057364a
 ```
 
 最近已完成：
@@ -91,6 +98,20 @@ https://translation-tool-917.pages.dev
 40. `local-data/README.md` 已改成中文目录规则，明确每个本地问题捕获目录应该放什么；`issue:prepare` 的 README 模板也已同步。
 41. Codex 处理用户反馈的真实翻译/导出/格式问题时，应主动在 `local-data/issues/` 建本地 issue 包并写 `README.md`，再判断是否立刻修复或沉淀为后续测试/规则/术语/TM/profile。
 42. Quality Report finding 已改为优先从 `qualityRows.sourceRows/targetRows` 展示 Source/Target，避免 DOCX/PDF 报告将译文误显示为原文。
+43. Translation Memory 已加入 `Use Translation Memory` 开关；关闭后本次翻译不复用本地 TM，也不写入新 TM，便于做干净复测。
+44. DOCX/PDF 的保护词检查会先剥离 Protected Terms；品牌名、公司名、型号等受保护词不会单独触发非目标语言残留。
+45. 俄语 DOCX 质量检查已区分三类残留：真实英文/模型残片为高风险；`Wi-Fi`、单位、血球代码、标准号、型号等技术保护项不误判；按钮/图标 UI 标签保留为低风险提示，提醒人工核对截图或界面替换。
+46. Translator 左侧旧 `Export Issue Report` 和 `Advanced Checks` 已清理；统一使用 Quality Report 面板的 `Export Report`、`Debug Package`、`Issue Draft`，Excel 专属的 `Apply Cleanup` / `Retry Placeholder Cells` 只在 Excel 场景显示。
+47. v0.0.75 修复了短保护词边界：`EN`、`CE` 这类短缩写只在独立 token 时保护，避免从 `Enter`、`access`、`process` 内部截取并污染俄语译文。
+48. DOCX retry 已改为使用原始 segment 重译，而不是把已污染译文再次送入模型；DOCX/PDF retry 与 Quality Check 使用同一套 UI 标签剥离逻辑。
+49. Quality Report Findings 已加入 `All / High / Medium / Low` 筛选，优先处理高风险项。
+50. Finding 人工修正按钮已改为 `Save & Apply`：DOCX/PDF 会把修正写回当前文档对象并刷新质量检查；之后下载的文件会包含该修正。Excel 目前仍只保存问题样本，直接写回表格尚未接入。
+51. Live Data Preview 对 DOCX/PDF 已改用 segment 数据；点击 `Jump` 后会聚焦对应 segment 的原文/译文上下文，而不是跳到空的 Excel 风格预览。
+52. v0.0.76 修复 DOCX 多 run 回写断词：原文 run 在单词内部切开时，译文写入首个 run 并清空后续 run，避免西语 `mult i funciona l`、`D e claración`、`Pr efacio`。
+53. UI 标签策略已确认：按钮、图标、页面名默认保持英文；如截图或设备 UI 后续本地化，再跟随截图语言调整。
+54. 翻译前已保护引号/括号中的 UI 标签和 `X button/icon/page/menu/status/tab` 这类上下文标签，减少按钮名被模型翻译。
+55. 后处理已压缩章节编号、标准号和版本号空格，`1. 1`、`7. 2. 10`、`USB 2. 0` 会恢复为紧凑形式，减少 DOCX 目录更新后的割裂。
+56. Quality Report 已继续降噪：单位/指标代码/URL 不再作为非目标语言或 high spacing 噪声，低优先级 UI 标签提示从真实 residual 统计中拆出。
 
 ## 真实回归基线
 
@@ -98,6 +119,8 @@ https://translation-tool-917.pages.dev
 
 - Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；统一 Quality Core 统计正常，仍有大量 spacing 类提示，需要后续分级优化。
 - DOCX 俄语：旧译文仍有英文残留，真实回归 manifest 会持续跟踪非目标语言段落、常见残留词和自动编号是否还带 CJK 格式。
+- DOCX 俄语最新复测：`EN/CE` 子串污染明显减少；后续重点转为目录/标题编号空格、UI 标签策略和真实残留降噪。
+- DOCX 西语最新复测：发现标题/目录编号空格、字母级 run 回写断词和个别语义错译；v0.0.76 已修 run split、UI 标签保护和编号空格，语义错译后续通过 issue case / sample review 沉淀。
 - PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但可能文本层为空。新导出的法语 PDF 已改为先写规范化文本层，并在下载日志暴露文本层覆盖率。
 
 ## 当前主要待办
@@ -106,6 +129,7 @@ https://translation-tool-917.pages.dev
 
 优先做：
 
+- 用 v0.0.76 重新翻译 DOCX 俄语/西语样本，确认目录编号、run split 和 UI 标签保护是否已稳定。
 - 将 GitHub Issue 与本地 issue cases 打通。
 - 将 Issue Draft 进一步升级为可直接创建 GitHub Issue 的入口，或接入 GitHub CLI/API。
 - 从问题样本转翻译记忆。

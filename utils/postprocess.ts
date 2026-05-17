@@ -76,6 +76,8 @@ const EN_EXACT_TOKEN_FIXES: Array<[RegExp, string]> = [
 ];
 const RUSSIAN_RESIDUE_FIXES: Array<[RegExp, string]> = [
   [/\b(\d+)-year\b/gi, "$1 год"],
+  [/(^|[\s(])в формате\s+(24|12)-hour\b/gi, "$1в $2-часовом формате"],
+  [/\b(\d{1,2})-hour\b/gi, "$1-часовой"],
   [/\bList\b/g, "Список"],
   [/\blist\b/g, "список"],
   [/\bHome\b/g, "Главная"],
@@ -252,6 +254,11 @@ const lowerFirst = (value: string) => {
 
 const fixSegmentSpacing = (segment: string) => {
   let result = segment;
+  for (let i = 0; i < 4; i += 1) {
+    const compacted = result.replace(/\b(\d+(?:\.\d+)*)\.\s+(\d+)(?=(?:\.|\b))/g, "$1.$2");
+    if (compacted === result) break;
+    result = compacted;
+  }
   result = result.replace(/\bCo\.\s*,\s*Ltd\.\s*\./g, "Co., Ltd.");
   result = result.replace(/\bCo\.\s*,\s*Ltd\./g, "Co., Ltd.");
   result = result.replace(/\bEHB\s+T-75\b/g, "EHBT-75");
@@ -265,7 +272,7 @@ const fixSegmentSpacing = (segment: string) => {
     return `${initial}.g.`;
   });
   result = result.replace(/\s+([,.;:!?])/g, "$1");
-  result = result.replace(/([,.;!?])(?![\s"')\]\}])/g, "$1 ");
+  result = result.replace(/([,.;!?])(?![\s"')\]\}\d])/g, "$1 ");
   result = result.replace(/:(?!\/\/)(?![\s"')\]\}])/g, ": ");
   result = result.replace(/([.!?])([A-Z])/g, "$1 $2");
   result = result.replace(/([a-z])([A-Z][a-z])/g, "$1 $2");

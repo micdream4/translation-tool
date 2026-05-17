@@ -16,10 +16,12 @@ const CJK_REGEX = /[\u4e00-\u9fff]/;
 const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
 const LATIN_WORD_REGEX = /[A-Za-z\u00C0-\u024F]/;
 const LATIN_TOKEN_REGEX = /\b[A-Za-z][A-Za-z0-9'-]{1,}\b/g;
+const URL_REGEX = /\bhttps?:\/\/[^\s"'<>]+/gi;
 const SHORT_CODE_REGEX = /^[A-Z0-9#%+_.\-\/]+$/;
 const SYMBOL_ONLY_REGEX = /^[\s\-–—=+<>↑↓*·•.()（）【】[\]{}\\/]+$/;
 const CODE_WITH_ARROW_REGEX = /^[A-Z]{1,6}[#%]?[↑↓]?$/
-const TECHNICAL_LATIN_TEXT_REGEX = /^[A-Za-z0-9#%+_.:/()[\]\-\s]+$/;
+const TECHNICAL_LATIN_TEXT_REGEX = /^[A-Za-z0-9#%^+_.:/()[\]\-\s]+$/;
+const TECHNICAL_SHORT_MARKER_REGEX = /^[A-Za-z]{1,8}[#%]$/;
 const TECHNICAL_RATIO_TOKEN_REGEX = /^[A-Za-z]{1,8}(?:\/[A-Za-z0-9#%]+)+$/;
 const TECHNICAL_UNDERSCORE_TOKEN_REGEX = /^[A-Z]{2,12}_\d{2,}$/;
 const DOT_COMPACT_NUMBER_REGEX = /^\d+(?:\.\d+)+[A-Za-z0-9/]*$/;
@@ -324,6 +326,8 @@ const tokenizeLatin = (text: string) =>
     .split(/[^a-z]+/g)
     .filter(Boolean);
 
+const stripUrls = (text: string) => String(text || "").replace(URL_REGEX, " ").replace(/ {2,}/g, " ");
+
 const scoreLanguage = (
   tokens: string[],
   hints: string[],
@@ -412,8 +416,9 @@ const isAllowedLatinTokenInNonLatinTarget = (token: string) => {
 };
 
 const isAllowedTechnicalLatinText = (text: string) => {
-  const stripped = stripProtectedTerms(stripPreservedUiLabels(text)).trim();
+  const stripped = stripProtectedTerms(stripPreservedUiLabels(stripUrls(text))).trim();
   if (!stripped) return true;
+  if (TECHNICAL_SHORT_MARKER_REGEX.test(stripped)) return true;
   if (!TECHNICAL_LATIN_TEXT_REGEX.test(stripped)) return false;
   const tokens = stripped.match(LATIN_TOKEN_REGEX) || [];
   if (!tokens.length) return true;
@@ -421,7 +426,7 @@ const isAllowedTechnicalLatinText = (text: string) => {
 };
 
 const hasDisallowedLatinResidue = (text: string, targetLang?: TargetLanguage) => {
-  const tokens = text.match(LATIN_TOKEN_REGEX) || [];
+  const tokens = stripUrls(text).match(LATIN_TOKEN_REGEX) || [];
   return tokens.some((token) => {
     if (targetLang && targetLangToCode(targetLang) === "ru" && isRussianDisallowedLatinResidue(token)) {
       return true;

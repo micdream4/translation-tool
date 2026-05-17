@@ -631,6 +631,9 @@ test("quality core adapters preserve existing row-based quality checks", async (
   const { runQualityChecks, runQualityChecksOnUnits } = await bundleTsModule(
     path.join(repoRoot, "utils/quality.ts")
   );
+  const { isLikelyIdentifier } = await bundleTsModule(
+    path.join(repoRoot, "utils/translationTokens.ts")
+  );
   const checksSource = fs.readFileSync(path.join(repoRoot, "quality/checks.ts"), "utf8");
   const compatibilitySource = fs.readFileSync(path.join(repoRoot, "utils/quality.ts"), "utf8");
   assert.match(checksSource, /runQualityChecksOnUnits/);
@@ -656,7 +659,7 @@ test("quality core adapters preserve existing row-based quality checks", async (
     runQualityChecksOnUnits(input, { targetLang: "Russian" }).issues.nonTargetLanguage.some((issue) => issue.value === "White blood cell"),
     true
   );
-  assert.equal(
+  assert.deepEqual(
     runQualityChecksOnUnits(
       segmentsToQualityUnits(
         [
@@ -670,6 +673,43 @@ test("quality core adapters preserve existing row-based quality checks", async (
       ),
       { targetLang: "Russian" }
     ).issues.nonTargetLanguage.length,
+    0
+  );
+  assert.equal(isLikelyIdentifier("Model: EHVT-75"), false);
+  assert.equal(isLikelyIdentifier("EHVT-75"), true);
+  assert.deepEqual(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [
+          { original: "Wi-Fi", translated: "Wi-Fi" },
+          { original: "NST/WBC%", translated: "NST/WBC%" },
+          { original: "BLOOD_002", translated: "BLOOD_002" },
+          { original: "Taenia Tapeworm Egg", translated: "Яйцо цепня Taenia" },
+          { original: "The device volume", translated: "Громкость device" },
+          { original: "Click the 'Save' button.", translated: "Нажмите кнопку «Save»." },
+          { original: "   ", translated: "   " }
+        ],
+        "docx",
+        (segment) => segment.translated,
+        (segment) => segment.original
+      ),
+      { targetLang: "Russian" }
+    ).issues.nonTargetLanguage.map((issue) => [issue.original, issue.severity || "blocking"]),
+    [
+      ["The device volume", "blocking"],
+      ["Click the 'Save' button.", "low"]
+    ]
+  );
+  assert.equal(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [{ original: "", translated: "   " }],
+        "docx",
+        (segment) => segment.translated,
+        (segment) => segment.original
+      ),
+      { targetLang: "Russian" }
+    ).issues.spacing.length,
     0
   );
   assert.deepEqual(
@@ -829,6 +869,14 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(isLikelyTargetLanguage("POCT QC: контроль качества", "Russian"), true);
   assert.equal(polishTranslation("", "Reports: Отчеты об исследовании", "Russian"), "Отчеты: Отчеты об исследовании");
   assert.equal(polishTranslation("", "Гарантия составляет 1-year.", "Russian").trim(), "Гарантия составляет 1 год.");
+  assert.equal(
+    polishTranslation("", "Это не только повыceет эффективность, но и сниceет ошибки в спиlisку.", "Russian").trim(),
+    "Это не только повышает эффективность, но и снижает ошибки в списку."
+  );
+  assert.equal(
+    polishTranslation("", "Ehome Health Technology Co. , Ltd. . поддерживает принтер A 4 и https://ozellemed. com/.", "Russian").trim(),
+    "Ehome Health Technology Co., Ltd. поддерживает принтер A4 и https://ozellemed.com/."
+  );
   assert.ok(getRussianResidueProfile().disallowedLatinResidueWords.includes("home"));
   assert.equal(isRussianDisallowedLatinResidue("Reports"), true);
   assert.equal(isRussianDisallowedLatinResidue("year"), true);

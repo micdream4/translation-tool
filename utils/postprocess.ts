@@ -6,7 +6,7 @@ const LATIN_CHAR_REGEX = /[A-Za-z]/;
 const NEWLINE_CAPTURE = /(\r?\n)/;
 const LONG_FORM_THRESHOLD = 60;
 const UI_MARKER_REGEX =
-  /([『「“"'《【\[])\s*([A-Za-z][A-Za-z0-9 _\-\/]{0,30})\s*([』」”"'》】\]])/g;
+  /([『「“"'《【\[«])\s*([A-Za-z][A-Za-z0-9 _\-\/]{0,30})\s*([』」”"'》】\]»])/g;
 const EN_WORD_GLUE_REGEX =
   /\b(on|in|to|for|with|by|of|and|or|the)(analyzer|interface|page|operation|maintenance|consumables|sample|collection|prepare|complete|range|work|itself|safety|manual|service|procedure)\b/gi;
 const EN_EXACT_TOKEN_FIXES: Array<[RegExp, string]> = [
@@ -77,9 +77,15 @@ const EN_EXACT_TOKEN_FIXES: Array<[RegExp, string]> = [
 const RUSSIAN_RESIDUE_FIXES: Array<[RegExp, string]> = [
   [/\b(\d+)-year\b/gi, "$1 год"],
   [/\bList\b/g, "Список"],
+  [/\blist\b/g, "список"],
   [/\bHome\b/g, "Главная"],
   [/\bOrders\b/g, "Заказы"],
   [/\bReports\b/g, "Отчеты"],
+  [/\bReferences\b/g, "Справочные сведения"],
+  [/\bProceed\b/g, "Продолжайте"],
+  [/\bdevice\b/gi, "устройства"],
+  [/\bsuccessful\b/gi, "успешного"],
+  [/\baccess\b/gi, "доступа"],
   [/\bservices\b/gi, "службы"],
   [/\bservice\b/gi, "обслуживание"],
   [/\breference\b/gi, "справка"],
@@ -98,6 +104,28 @@ const RUSSIAN_RESIDUE_FIXES: Array<[RegExp, string]> = [
   [/\bref(?=[\u0400-\u04FF])/gi, ""],
   [/\bWhite Blood Cell Count\b/g, "Количество лейкоцитов"],
   [/\bСрок\s+service\s+службы\b/gi, "Срок службы"]
+];
+const RUSSIAN_MODEL_ARTIFACT_FIXES: Array<[RegExp, string]> = [
+  [/повыceет/g, "повышает"],
+  [/сниceет/g, "снижает"],
+  [/каceа/g, "кала"],
+  [/обраceтки/g, "обработки"],
+  [/отмceнить/g, "отменить"],
+  [/отceнить/g, "отменить"],
+  [/проceсс/g, "процесс"],
+  [/доceтупа/g, "доступа"],
+  [/устройстce/g, "устройство"],
+  [/обслceживания/g, "обслуживания"],
+  [/сервиceной/g, "сервисной"],
+  [/сервиceному/g, "сервисному"],
+  [/сервиce/g, "сервис"],
+  [/клаceте/g, "кладите"],
+  [/спиlisку/g, "списку"],
+  [/спиlisке/g, "списке"],
+  [/спиlisок/g, "список"],
+  [/\blis\b/g, "списке"],
+  [/\s*\(ce\)/g, ""],
+  [/([\u0400-\u04FF])\s+ce\b/g, "$1"]
 ];
 const ANALYZER_PREFIX_WORDS = [
   "after",
@@ -183,6 +211,15 @@ const lowerFirst = (value: string) => {
 
 const fixSegmentSpacing = (segment: string) => {
   let result = segment;
+  result = result.replace(/\bCo\.\s*,\s*Ltd\.\s*\./g, "Co., Ltd.");
+  result = result.replace(/\bCo\.\s*,\s*Ltd\./g, "Co., Ltd.");
+  result = result.replace(/\bEHB\s+T-75\b/g, "EHBT-75");
+  result = result.replace(/\bozellemed\.\s+com\b/g, "ozellemed.com");
+  result = result.replace(/\[\s*\.\s*\.\s*\.\s*\]/g, "[...]");
+  result = result.replace(/\bIEEE\s+802\.\s+11\s*/g, "IEEE 802.11");
+  result = result.replace(/\bA\s+4\b/g, "A4");
+  result = result.replace(/\bA\s+1\b/g, "A1");
+  result = result.replace(/\bAMD\s+1\b/g, "AMD1");
   result = result.replace(/\b([eE])\s*\.\s*g\s*\./g, (_match, initial) => {
     return `${initial}.g.`;
   });
@@ -194,6 +231,15 @@ const fixSegmentSpacing = (segment: string) => {
   result = result.replace(/([0-9])([A-Za-z])/g, "$1 $2");
   result = result.replace(/([A-Za-z])([0-9])/g, "$1 $2");
   result = result.replace(/ {2,}/g, (match, offset) => (offset === 0 ? match : " "));
+  result = result.replace(/\bCo\s*\.\s*,\s*Ltd\s*\.\s*\./g, "Co., Ltd.");
+  result = result.replace(/\bCo\s*\.\s*,\s*Ltd\s*\./g, "Co., Ltd.");
+  result = result.replace(/\bEHB\s+T-75\b/g, "EHBT-75");
+  result = result.replace(/\bA\s+4\b/g, "A4");
+  result = result.replace(/\bA\s+1\b/g, "A1");
+  result = result.replace(/\bAMD\s+1\b/g, "AMD1");
+  result = result.replace(/\bIEEE\s+802\.\s+11\s*/g, "IEEE 802.11");
+  result = result.replace(/\[\s*\.\s*\.\s*\.\s*\]/g, "[...]");
+  result = result.replace(/\bozellemed\.\s+com\b/g, "ozellemed.com");
   return result;
 };
 
@@ -260,7 +306,7 @@ const preserveUiMarkerSymbols = (original: string, translated: string) => {
   markers.forEach(({ full, label }) => {
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const anyWrapped = new RegExp(
-      `[『「“"'《【\\[]\\s*${escaped}\\s*[』」”"'》】\\]]`,
+      `[『「“"'《【\\[«]\\s*${escaped}\\s*[』」”"'》】\\]»]`,
       "gi"
     );
     output = output.replace(anyWrapped, full);
@@ -324,6 +370,9 @@ const fixRussianEnglishResidue = (translated: string, targetLang?: TargetLanguag
   if (!translated || !String(targetLang || "").toLowerCase().includes("russian")) return translated;
   if (!/[\u0400-\u04FF]/.test(translated) || !/[A-Za-z]/.test(translated)) return translated;
   let output = translated;
+  RUSSIAN_MODEL_ARTIFACT_FIXES.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
   RUSSIAN_RESIDUE_FIXES.forEach(([pattern, replacement]) => {
     output = output.replace(pattern, replacement);
   });

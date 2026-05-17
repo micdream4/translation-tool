@@ -10,7 +10,13 @@ import type {
   QualityUnit
 } from './types';
 import { isLikelyTargetLanguage } from '../utils/language';
-import { isLikelyIdentifier, stripProtectedTerms } from '../utils/translationTokens';
+import {
+  getPreservedUiLabels,
+  isLikelyIdentifier,
+  isProtectedTerm,
+  stripProtectedTerms,
+  stripPreservedUiLabels
+} from '../utils/translationTokens';
 
 export type {
   QualityCheckInput,
@@ -30,6 +36,10 @@ const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
 const LETTER_DIGIT_SPACE_REGEX = /\b[A-Za-z]\s+\d{1,3}\b|\b\d{1,3}\s+[A-Za-z]\b/;
 const SAFE_MEDICAL_SPACING_REGEX = /\b(?:B\s*12|B\s*6|G\s*6|P\s*50)\b/i;
+const SAFE_NUMBER_UNIT_SPACING_REGEX =
+  /\b\d+(?:[.,]\d+)?\s+(?:V|Hz|Гц|kg|g|mg|mL|ml|L|mm|cm|pg|fL|dBA)\b/gi;
+const SAFE_STANDARD_SPACING_REGEX =
+  /\b(?:EN|IEC|ISO|GB|YY)\s+\d[\d-]*(?::\s?\d{4})?/gi;
 const GLUED_PUNCT_REGEX = /\b[A-Za-z]+[,.:][A-Za-z]+\b/;
 const CAMEL_GLUE_REGEX = /\b[a-z]{2,}[A-Z][a-z]+\b/;
 const UPPER_ABBR_GLUE_REGEX = /\b(?:[A-Z]{2,}\d*(?:\/[A-Z]+)?)(?:[A-Z][a-z]+|[a-z]{2,})\b/;
@@ -88,28 +98,34 @@ const createQualityIssues = (): QualityReport['issues'] => ({
 });
 
 export const hasSpacingIssue = (value: string) => {
-  if (SAFE_MEDICAL_SPACING_REGEX.test(value)) {
+  const checkValue = String(value || '')
+    .replace(SAFE_NUMBER_UNIT_SPACING_REGEX, ' ')
+    .replace(SAFE_STANDARD_SPACING_REGEX, ' ');
+  if (SAFE_MEDICAL_SPACING_REGEX.test(checkValue)) {
     return (
-      EG_REGEX.test(value) ||
-      EXTRA_SPACE_REGEX.test(value) ||
-      SPACE_BEFORE_PUNCT_REGEX.test(value)
+      EG_REGEX.test(checkValue) ||
+      EXTRA_SPACE_REGEX.test(checkValue) ||
+      SPACE_BEFORE_PUNCT_REGEX.test(checkValue)
     );
   }
   return (
-    EG_REGEX.test(value) ||
-    EXTRA_SPACE_REGEX.test(value) ||
-    SPACE_BEFORE_PUNCT_REGEX.test(value) ||
-    LETTER_DIGIT_SPACE_REGEX.test(value)
+    EG_REGEX.test(checkValue) ||
+    EXTRA_SPACE_REGEX.test(checkValue) ||
+    SPACE_BEFORE_PUNCT_REGEX.test(checkValue) ||
+    LETTER_DIGIT_SPACE_REGEX.test(checkValue)
   );
 };
 
 export const getSpacingSeverity = (value: string): QualitySeverity | null => {
   if (hasGlueIssue(value)) return 'high';
-  if (EXTRA_SPACE_REGEX.test(value) || SPACE_BEFORE_PUNCT_REGEX.test(value) || EG_REGEX.test(value)) {
+  const checkValue = String(value || '')
+    .replace(SAFE_NUMBER_UNIT_SPACING_REGEX, ' ')
+    .replace(SAFE_STANDARD_SPACING_REGEX, ' ');
+  if (EXTRA_SPACE_REGEX.test(checkValue) || SPACE_BEFORE_PUNCT_REGEX.test(checkValue) || EG_REGEX.test(checkValue)) {
     return 'medium';
   }
-  if (LETTER_DIGIT_SPACE_REGEX.test(value)) {
-    if (SAFE_MEDICAL_SPACING_REGEX.test(value)) return 'low';
+  if (LETTER_DIGIT_SPACE_REGEX.test(checkValue)) {
+    if (SAFE_MEDICAL_SPACING_REGEX.test(checkValue)) return 'low';
     return 'medium';
   }
   return null;
@@ -130,9 +146,23 @@ const shouldCheckTargetLanguage = (unit: QualityUnit) => {
   const translatedText = unit.translatedText.trim();
   if (!translatedText) return false;
   if (shouldLockCell(unit.columnKey, unit.originalValue)) return false;
-  const unprotectedText = stripProtectedTerms(translatedText).trim();
+  const unprotectedText = stripProtectedTerms(stripPreservedUiLabels(translatedText)).trim();
   if (!unprotectedText) return false;
   return !isLikelyIdentifier(unprotectedText);
+};
+
+const getTargetLanguageCheckText = (value: string) =>
+  stripProtectedTerms(stripPreservedUiLabels(value)).trim();
+
+const hasPreservedUiLabelAdvisory = (unit: QualityUnit, targetLang?: string) => {
+  if (!targetLang || String(targetLang).toLowerCase().includes('english')) return false;
+  const labels = getPreservedUiLabels(unit.translatedText);
+  if (!labels.length) return false;
+  return labels.some((label) => {
+    if (!/[A-Za-z]/.test(label)) return false;
+    if (isProtectedTerm(label) || isLikelyIdentifier(label)) return false;
+    return String(unit.originalText || '').toLowerCase().includes(label.toLowerCase());
+  });
 };
 
 export const runQualityChecksOnUnits = (
@@ -210,10 +240,11 @@ export const runQualityChecksOnUnits = (
       });
     }
 
+    const targetLanguageCheckText = getTargetLanguageCheckText(unit.translatedText);
     if (
       options.targetLang &&
       shouldCheckTargetLanguage(unit) &&
-      !isLikelyTargetLanguage(stripProtectedTerms(unit.translatedText), options.targetLang)
+      !isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang)
     ) {
       totals.nonTargetCells += 1;
       nonTargetRows.add(unit.rowIndex);
@@ -224,6 +255,22 @@ export const runQualityChecksOnUnits = (
         value: unit.translatedText,
         original: unit.originalText,
         type: 'nonTargetLanguage'
+      });
+    } else if (
+      options.targetLang &&
+      hasPreservedUiLabelAdvisory(unit, options.targetLang) &&
+      (!targetLanguageCheckText || isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang))
+    ) {
+      totals.nonTargetCells += 1;
+      nonTargetRows.add(unit.rowIndex);
+      issues.nonTargetLanguage.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        locationLabel: unit.locationLabel,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'nonTargetLanguage',
+        severity: 'low'
       });
     }
 
@@ -240,7 +287,8 @@ export const runQualityChecksOnUnits = (
       });
     }
 
-    const spacingSeverity = getSpacingSeverity(unit.translatedText);
+    const spacingText = unit.translatedText.trim();
+    const spacingSeverity = spacingText ? getSpacingSeverity(spacingText) : null;
     if (spacingSeverity) {
       totals.spacingIssues += 1;
       spacingRows.add(unit.rowIndex);

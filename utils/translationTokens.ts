@@ -3,19 +3,53 @@ import { getSeedProtectedTerms } from "./seedTerminology";
 
 const UUID_REGEX =
   /\b[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b/g;
-const UUID_TEST =
-  /\b[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b/;
 const ALPHANUM_HYPHEN_REGEX =
   /\b(?=[0-9A-Za-z-]*[A-Za-z])(?=[0-9A-Za-z-]*\d)[0-9A-Za-z]+(?:-[0-9A-Za-z]+)+\b/g;
 const ALPHANUM_HYPHEN_TEST =
-  /\b(?=[0-9A-Za-z-]*[A-Za-z])(?=[0-9A-Za-z-]*\d)[0-9A-Za-z]+(?:-[0-9A-Za-z]+)+\b/;
+  /^(?=[0-9A-Za-z-]*[A-Za-z])(?=[0-9A-Za-z-]*\d)[0-9A-Za-z]+(?:-[0-9A-Za-z]+)+$/;
+const UUID_TEST =
+  /^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/;
+const UI_LABEL_REGEX =
+  /([『「“"'《【\[«])\s*([A-Za-z][A-Za-z0-9 _.\-\/]{0,60})\s*([』」”"'》】\]»])/g;
 const DEFAULT_PROTECTED_TERMS = [
   "EHVT-75",
+  "EHBT-75",
   "Ehome",
   "Ehome Health Technology Co",
   "Ehome Health Technology",
   "Ehome Health Technology Co., Ltd.",
   "Ehome Health Technology Co. , Ltd.",
+  "Wi-Fi",
+  "SSID",
+  "IPP",
+  "IEEE",
+  "IEC",
+  "EN",
+  "EMC",
+  "in vitro",
+  "Sysmex",
+  "e-CHECK",
+  "Country",
+  "Garden",
+  "Smart",
+  "Park",
+  "Country Garden Smart Park",
+  "Xueshi",
+  "Yuelu",
+  "Changsha",
+  "Hunan",
+  "Yulian",
+  "Liandong",
+  "Valley",
+  "Liandong U Valley",
+  "Taenia",
+  "Brachylaime",
+  "Trichomonas",
+  "Giardia",
+  "Isospora",
+  "Toxoplasma",
+  "gondii",
+  "Toxoplasma gondii",
   ...getSeedProtectedTerms()
 ];
 
@@ -178,8 +212,10 @@ export const restoreTranslationTokens = (
   return restoreInlineTokens(normalized, placeholders);
 };
 
-export const isLikelyIdentifier = (value: string) =>
-  UUID_TEST.test(value) || ALPHANUM_HYPHEN_TEST.test(value);
+export const isLikelyIdentifier = (value: string) => {
+  const trimmed = String(value || "").trim();
+  return UUID_TEST.test(trimmed) || ALPHANUM_HYPHEN_TEST.test(trimmed);
+};
 
 export const isProtectedTerm = (value: string) =>
   effectiveProtectedTermsNorm.has(normalizeProtectedText(value));
@@ -197,3 +233,16 @@ export const stripProtectedTerms = (value: string) => {
   });
   return output.replace(/\s+/g, " ").trim();
 };
+
+export const getPreservedUiLabels = (value: string) => {
+  const labels: string[] = [];
+  String(value || "").replace(UI_LABEL_REGEX, (_match, _open, label) => {
+    const trimmed = String(label || "").trim();
+    if (trimmed) labels.push(trimmed);
+    return "";
+  });
+  return labels;
+};
+
+export const stripPreservedUiLabels = (value: string) =>
+  String(value || "").replace(UI_LABEL_REGEX, " ").replace(/\s+/g, " ").trim();

@@ -64,7 +64,8 @@ import {
   isLikelyIdentifier,
   containsProtectedTerm,
   setRuntimeProtectedTerms,
-  stripProtectedTerms
+  stripProtectedTerms,
+  stripPreservedUiLabels
 } from './utils/translationTokens';
 import {
   extractStructuredStringContent,
@@ -1269,7 +1270,7 @@ const App: React.FC = () => {
       const stripped = stripProtectedTerms(text).trim();
       if (!stripped) return true;
     }
-    const trimmed = stripProtectedTerms(text).trim();
+    const trimmed = stripProtectedTerms(stripPreservedUiLabels(text)).trim();
     if (!trimmed) return true;
     if (isNeutralToken(trimmed) || isLikelyIdentifier(trimmed)) return true;
     if (DOCX_WORD_REGEX.test(trimmed)) return true;
@@ -1285,9 +1286,9 @@ const App: React.FC = () => {
       const text = getDocxSegmentText(segment) || segment.original || '';
       const trimmed = text.trim();
       if (!trimmed) return;
-      const stripped = stripProtectedTerms(trimmed);
-      if (!stripped) return;
-      const hasSourceLanguage = !isLikelyTargetLanguage(stripped, targetLang);
+      const strippedForLanguage = stripProtectedTerms(stripPreservedUiLabels(trimmed)).trim();
+      if (!strippedForLanguage) return;
+      const hasSourceLanguage = !isLikelyTargetLanguage(strippedForLanguage, targetLang);
       const hasPlaceholderLeak =
         PLACEHOLDER_REGEX.test(trimmed) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(trimmed);
       const hasGlueLeak =
@@ -1300,7 +1301,7 @@ const App: React.FC = () => {
         locationLabel: `${segment.partLabel || 'DOCX'} segment ${idx + 1}`,
         text: trimmed,
         snippet: toDocxSnippet(trimmed),
-        chineseChars: countChineseChars(stripped),
+        chineseChars: countChineseChars(strippedForLanguage),
         lowPriority: hasPlaceholderLeak || hasGlueLeak ? false : isLowPriorityDocxIssue(trimmed),
         issueType: hasPlaceholderLeak ? 'placeholder' : hasGlueLeak ? 'glue' : 'source'
       });
@@ -1598,11 +1599,11 @@ const App: React.FC = () => {
       const original = String(segment.original || '').trim();
       const text = translated || original;
       if (!text) return;
-      const stripped = stripProtectedTerms(text).trim();
-      if (!stripped) return;
-      if (isNeutralToken(stripped) || isLikelyIdentifier(stripped)) return;
+      const strippedForLanguage = stripProtectedTerms(stripPreservedUiLabels(text)).trim();
+      if (!strippedForLanguage) return;
+      if (isNeutralToken(strippedForLanguage) || isLikelyIdentifier(strippedForLanguage)) return;
       const hasEmptyTranslation = Boolean(original) && !translated;
-      const hasSourceLanguage = hasEmptyTranslation || !isLikelyTargetLanguage(stripped, targetLang);
+      const hasSourceLanguage = hasEmptyTranslation || !isLikelyTargetLanguage(strippedForLanguage, targetLang);
       const hasPlaceholderLeak =
         PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text);
       const hasGlueLeak =
@@ -1615,7 +1616,7 @@ const App: React.FC = () => {
         locationLabel: `PDF page ${segment.pageNumber}, segment ${idx + 1}`,
         text,
         snippet: toDocxSnippet(text),
-        chineseChars: countChineseChars(stripped),
+        chineseChars: countChineseChars(strippedForLanguage),
         lowPriority: hasPlaceholderLeak || hasGlueLeak || hasEmptyTranslation
           ? false
           : isLowPriorityDocxIssue(text),
@@ -1993,7 +1994,8 @@ const App: React.FC = () => {
         .filter(Boolean)
         .filter((segment) => {
           const text = getDocxSegmentText(segment) || segment.original;
-          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(stripProtectedTerms(text), targetLang);
+          const languageText = stripProtectedTerms(stripPreservedUiLabels(text));
+          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(languageText, targetLang);
         });
       if (targets.length === 0) {
         addLog('Docx Retry: 占位符问题已清零。');
@@ -2168,7 +2170,8 @@ const App: React.FC = () => {
         .filter(Boolean)
         .filter((segment) => {
           const text = getPdfSegmentText(segment) || segment.original;
-          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(stripProtectedTerms(text), targetLang);
+          const languageText = stripProtectedTerms(stripPreservedUiLabels(text));
+          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(languageText, targetLang);
         });
       if (targets.length === 0) {
         addLog('PDF Retry: 占位符问题已清零。');

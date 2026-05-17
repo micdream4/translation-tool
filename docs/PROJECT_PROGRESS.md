@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.73
+
+- 针对 DOCX 英文转俄语 `Retry Missing Segments` 后仍反复提示的问题建立本地 issue 包：`local-data/issues/2026-05-17-docx-russian-residual-after-retry/`。
+- Quality Check 区分三类残留：真实英文/模型残片继续作为重译目标；`Wi-Fi`、单位、血球代码、标准号、科学名、公司/型号等技术保护项不再误判；按钮/图标 UI 标签保留为低优先级提示，提醒用户核对截图或界面替换，但不进入自动 Retry 目标。
+- 修复 ID mismatch 误判：`Model: EHVT-75` 这类含型号的普通句子不再按整段锁定字段处理，只有纯 ID/UUID/型号字段才触发锁定比较。
+- 俄语后处理新增常见模型残片修复：`повыceет`、`сниceет`、`проceсс`、`спиlisку`、`устройстce` 等会自动归一为俄语；同时修复 `Co. , Ltd. .`、`A 4`、`ozellemed. com`、`[. . .]` 等格式问题。
+- 回归测试覆盖技术代码误判、UI 标签低优先级提示、空白段不报格式、俄语残片后处理和 ID 句子误判。
+- 版本号更新为 `v0.0.73`。
+
 ## v0.0.72
 
 - 修复 DOCX 译文回写会覆盖 `segment.original` 的问题：Word 文本节点仍会写入译文，但语义段原文保持不可变，Quality Report finding 的 Source 能继续显示真实英文原文。

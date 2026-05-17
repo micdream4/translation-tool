@@ -119,7 +119,20 @@ export const buildQualityFindings = ({
     });
   };
 
-  appendQualityIssues('nonTarget', qualityReport.issues.nonTargetLanguage || [], '检测到非目标语言残留');
+  appendQualityIssues(
+    'nonTarget',
+    qualityReport.issues.nonTargetLanguage || [],
+    '检测到非目标语言残留'
+  );
+  (qualityReport.issues.nonTargetLanguage || []).forEach((item) => {
+    if (item.severity !== 'low') return;
+    const id = `nonTarget-${item.rowIndex}-${item.columnKey}`;
+    const existing = findingMap.get(id);
+    if (existing) {
+      existing.description = '受保护 UI 标签保留，请核对截图或界面替换';
+      existing.severity = 'low';
+    }
+  });
   appendQualityIssues('chinese', qualityReport.issues.chinese, '仍有中文残留');
   appendQualityIssues('emptyTranslation', qualityReport.issues.emptyTranslations, '原文可译，但目标单元格为空');
   appendQualityIssues('placeholder', qualityReport.issues.placeholders, '占位符泄漏');
@@ -182,7 +195,8 @@ export const buildQualityReportText = ({
     ...nonTargetIssueList
       .filter((item) => !legacyNonTargetKeys.has(`${item.rowIndex}:${item.columnKey}`))
       .map((item) => ({
-        type: 'Non-target language',
+        type: item.severity === 'low' ? 'Protected UI label retained' : 'Non-target language',
+        severity: item.severity,
         location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
         ...resolveFindingText(qualityRows, item.rowIndex, item.columnKey, item.original, item.value)
       })),

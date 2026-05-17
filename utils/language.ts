@@ -1,7 +1,7 @@
 import { POCTRecord, TargetLanguage } from "../types";
 import { hasProfileEnglishResidue, isRussianDisallowedLatinResidue } from "./languageProfiles";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
-import { isLikelyIdentifier, isProtectedTerm } from "./translationTokens";
+import { isLikelyIdentifier, isProtectedTerm, stripProtectedTerms, stripPreservedUiLabels } from "./translationTokens";
 
 export interface UntranslatedCell {
   rowIndex: number;
@@ -19,6 +19,10 @@ const LATIN_TOKEN_REGEX = /\b[A-Za-z][A-Za-z0-9'-]{1,}\b/g;
 const SHORT_CODE_REGEX = /^[A-Z0-9#%+_.\-\/]+$/;
 const SYMBOL_ONLY_REGEX = /^[\s\-–—=+<>↑↓*·•.()（）【】[\]{}\\/]+$/;
 const CODE_WITH_ARROW_REGEX = /^[A-Z]{1,6}[#%]?[↑↓]?$/
+const TECHNICAL_LATIN_TEXT_REGEX = /^[A-Za-z0-9#%+_.:/()[\]\-\s]+$/;
+const TECHNICAL_RATIO_TOKEN_REGEX = /^[A-Za-z]{1,8}(?:\/[A-Za-z0-9#%]+)+$/;
+const TECHNICAL_UNDERSCORE_TOKEN_REGEX = /^[A-Z]{2,12}_\d{2,}$/;
+const DOT_COMPACT_NUMBER_REGEX = /^\d+(?:\.\d+)+[A-Za-z0-9/]*$/;
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 const ID_TOKEN_REGEX = /^(id|uuid)$/i;
 const TAIWAN_SIMPLIFIED_RESIDUE_REGEX =
@@ -266,6 +270,19 @@ const ALLOWED_NON_LATIN_TARGET_LATIN_TOKENS = new Set([
   "usb",
   "xml",
   "zip",
+  "ac",
+  "amd",
+  "blood",
+  "blo",
+  "emc",
+  "en",
+  "enter",
+  "ieee",
+  "iec",
+  "ipp",
+  "ok",
+  "ssid",
+  "wi-fi",
   "cm",
   "dl",
   "fl",
@@ -384,10 +401,22 @@ const isAllowedLatinTokenInNonLatinTarget = (token: string) => {
   if (!normalized) return true;
   if (ALLOWED_NON_LATIN_TARGET_LATIN_TOKENS.has(normalized)) return true;
   if (isProtectedTerm(token) || isLikelyIdentifier(token)) return true;
+  if (TECHNICAL_RATIO_TOKEN_REGEX.test(token)) return true;
+  if (TECHNICAL_UNDERSCORE_TOKEN_REGEX.test(token)) return true;
+  if (DOT_COMPACT_NUMBER_REGEX.test(token)) return true;
   if (/^[A-Z]{2,8}s?$/.test(token)) return true;
   if (/^(?=.*\d)[A-Za-z0-9-]{2,}$/.test(token)) return true;
   if (/^[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*$/.test(token)) return true;
   return false;
+};
+
+const isAllowedTechnicalLatinText = (text: string) => {
+  const stripped = stripProtectedTerms(stripPreservedUiLabels(text)).trim();
+  if (!stripped) return true;
+  if (!TECHNICAL_LATIN_TEXT_REGEX.test(stripped)) return false;
+  const tokens = stripped.match(LATIN_TOKEN_REGEX) || [];
+  if (!tokens.length) return true;
+  return tokens.every(isAllowedLatinTokenInNonLatinTarget);
 };
 
 const hasDisallowedLatinResidue = (text: string, targetLang?: TargetLanguage) => {
@@ -420,7 +449,7 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   }
   if (targetCode === "ru") {
     if (CJK_REGEX.test(trimmed)) return false;
-    if (!CYRILLIC_REGEX.test(trimmed)) return false;
+    if (!CYRILLIC_REGEX.test(trimmed)) return isAllowedTechnicalLatinText(trimmed);
     return !hasDisallowedLatinResidue(trimmed, targetLang);
   }
 

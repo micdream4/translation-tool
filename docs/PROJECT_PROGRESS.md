@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.74
+
+- 清理 Translator 左侧 Quality Check 操作区：移除旧的 DOCX `Export Issue Report`，统一使用 Quality Report 面板的 `Export Report`、`Debug Package` 和 `Issue Draft`。
+- `Apply Cleanup` 和 `Retry Placeholder Cells` 保留为 Excel 专属修复入口，仅在 Excel 文件场景显示，避免 DOCX/PDF 上传后看到灰色按钮误以为功能失效。
+- 移除旧的 `Advanced Checks` 左栏入口和底部 `Advanced Signals` 展示；组合校验/多 AI 评审后续统一走独立的 Multi-AI Review Lab。
+- 操作说明同步更新：明确 cleanup 和 placeholder retry 是 Excel 文件功能。
+- 版本号更新为 `v0.0.74`。
+
 ## v0.0.73
 
 - 针对 DOCX 英文转俄语 `Retry Missing Segments` 后仍反复提示的问题建立本地 issue 包：`local-data/issues/2026-05-17-docx-russian-residual-after-retry/`。

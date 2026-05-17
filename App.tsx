@@ -28,8 +28,6 @@ import {
   type PdfSegment
 } from './utils/pdf';
 import { TranslationHub } from './services/translationHub';
-import { RuleEngine } from './services/ruleEngine';
-import { MultiAIJudge } from './services/multiAIJudge';
 import { ModelReviewService } from './services/modelReviewService';
 import { runPdfTranslationWorkflow } from './workflows/pdfTranslationWorkflow';
 import { segmentsToQualityRows, segmentsToQualityUnits } from './quality/adapters';
@@ -102,9 +100,6 @@ import {
 } from './utils/modelReview';
 import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
 import {
-  ClinicalRule,
-  CrossCheckResult,
-  MissingCombination,
   POCTRecord,
   ProcessingState,
   SampleReviewAIResult,
@@ -376,9 +371,7 @@ const applyPostprocessRow = (
 
 const createInitialStages = (): WorkflowStageState[] => ([
   { key: 'ingest', label: '导入文档', status: 'pending' },
-  { key: 'translate', label: '全局翻译', status: 'pending' },
-  { key: 'ruleCheck', label: '组合校验', status: 'pending' },
-  { key: 'aiValidate', label: '多 AI 核验', status: 'pending' }
+  { key: 'translate', label: '全局翻译', status: 'pending' }
 ]);
 
 const App: React.FC = () => {
@@ -397,9 +390,6 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const [showComparison, setShowComparison] = useState<boolean>(false); // New State for Comparison View
   const [workflowStages, setWorkflowStages] = useState<WorkflowStageState[]>(createInitialStages);
-  const [rules, setRules] = useState<ClinicalRule[]>([]);
-  const [missingCombinations, setMissingCombinations] = useState<MissingCombination[]>([]);
-  const [aiFindings, setAiFindings] = useState<CrossCheckResult[]>([]);
   const [translationIssues, setTranslationIssues] = useState<IssueSummaryState>(createIssueSummary());
   const [previewFocus, setPreviewFocus] = useState<{ rowIndex: number; columnKey: string } | null>(null);
   const [modelReviewCount, setModelReviewCount] = useState<number>(10);
@@ -489,8 +479,6 @@ const App: React.FC = () => {
       setTranslationModelPreference(AUTO_OPENROUTER_MODEL);
     }
   }, [usesDocumentQualityModels, openRouterModels, translationModelPreference]);
-  const ruleEngine = useMemo(() => new RuleEngine(), []);
-  const multiAIJudge = useMemo(() => new MultiAIJudge(), []);
   const modelReviewService = useMemo(() => new ModelReviewService(), []);
   const selectedStringTargetLangs = useMemo<TargetLanguage[]>(
     () =>
@@ -750,9 +738,6 @@ const App: React.FC = () => {
       setPdfIssueDetails([]);
       setData([]);
       setProcessedData([]);
-      setRules([]);
-      setMissingCombinations([]);
-      setAiFindings([]);
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags([]);
       setMissingRowIndices([]);
@@ -800,9 +785,6 @@ const App: React.FC = () => {
       setPdfIssueDetails([]);
       setData([]);
       setProcessedData([]);
-      setRules([]);
-      setMissingCombinations([]);
-      setAiFindings([]);
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags([]);
       setMissingRowIndices([]);
@@ -851,9 +833,6 @@ const App: React.FC = () => {
       setData(records);
       setExcelContext(context);
       setProcessedData([]);
-      setRules([]);
-      setMissingCombinations([]);
-      setAiFindings([]);
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags(Array(records.length).fill(false));
       setMissingRowIndices([]);
@@ -1307,37 +1286,6 @@ const App: React.FC = () => {
       });
     });
     return { pending, details };
-  };
-
-  const exportDocxIssueReport = () => {
-    if (!docxIssueDetails.length) {
-      addLog('Docx report: 当前没有可导出的审计问题。');
-      return;
-    }
-    const now = new Date();
-    const iso = now.toISOString();
-    const retryable = docxIssueDetails.filter((item) => !item.lowPriority).length;
-    const lowPriority = docxIssueDetails.length - retryable;
-    const lines: string[] = [
-      `Generated At: ${iso}`,
-      `Target Language: ${targetLang}`,
-      `Total Issues: ${docxIssueDetails.length}`,
-      `Retryable (recommended): ${retryable}`,
-      `Low Priority: ${lowPriority}`,
-      'Index Mapping: #N means the Nth semantic segment in document order (NOT page number).',
-      'Segment ID Mapping: docx-segment-(N-1) is the internal zero-based segment id.',
-      ''
-    ];
-    docxIssueDetails.forEach((item) => {
-      lines.push(
-        `#${item.index + 1} (${item.id}) [Type=${item.issueType}] [CJKChars=${item.chineseChars}] [${item.lowPriority ? 'LowPriority' : 'Retryable'}]`,
-        item.text || '(empty)',
-        ''
-      );
-    });
-    const safeStamp = iso.replace(/[:.]/g, '-');
-    downloadTextFile(`Docx_Issue_Report_${targetLang}_${safeStamp}.txt`, lines.join('\n'));
-    addLog(`Docx report: 已导出 ${docxIssueDetails.length} 段问题文本明细。`);
   };
 
   const getModelReviewSourceLabel = () => {
@@ -2675,16 +2623,11 @@ const App: React.FC = () => {
       setSavedSnapshot(null);
       snapshotPromptKeyRef.current = '';
       setProcessedData([]);
-      setRules([]);
-      setMissingCombinations([]);
-      setAiFindings([]);
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags([...initialFlags]);
       setMissingRowIndices([]);
       setWriteFailedRowIndices([]);
       setProcessingState(prev => ({ ...prev, status: 'processing', progress: 0, currentBatch: 0, total: data.length }));
-      updateStageStatus('ruleCheck', 'pending', '等待组合校验');
-      updateStageStatus('aiValidate', 'pending', '等待多 AI 核验');
       addLog(`Stage[translate]: 准备将 ${data.length} 行翻译为 [${targetLang}]`);
       if (translationMode === 'selective') {
         const skipped = initialFlags.filter(Boolean).length;
@@ -3015,33 +2958,6 @@ const App: React.FC = () => {
       setTranslationStatus('completed');
       await auditTranslation(latestResults);
     }
-  };
-
-  const runRuleCheck = async () => {
-    const sourceRecords = processedData.length > 0 ? processedData : data;
-    if (sourceRecords.length === 0) return;
-    setAiFindings([]);
-    updateStageStatus('aiValidate', 'pending', '等待多 AI 核验');
-
-    await runStage('ruleCheck', async () => {
-      const extracted = ruleEngine.extractRules(sourceRecords);
-      const missing = ruleEngine.detectMissingCombinations(extracted);
-      setRules(extracted);
-      setMissingCombinations(missing);
-      addLog(`Stage[ruleCheck]: Parsed ${extracted.length} rules, detected ${missing.length} coverage gaps.`);
-    });
-  };
-
-  const runAiValidation = async () => {
-    if (rules.length === 0) {
-      addLog('Stage[aiValidate]: 无可用规则，请先执行组合校验。');
-      return;
-    }
-    await runStage('aiValidate', async () => {
-      const results = await multiAIJudge.crossValidate(rules, { maxItems: 50 });
-      setAiFindings(results);
-      addLog(`Stage[aiValidate]: Generated ${results.length} AI findings.`);
-    });
   };
 
   const auditTranslation = async (records: POCTRecord[]) => {
@@ -3616,32 +3532,6 @@ const App: React.FC = () => {
   const handlePause = () => {
     if (translationStatus !== 'running' || activeStage !== 'translate') return;
     pauseRequestedRef.current = true;
-  };
-
-  const getStageBadgeClass = (status: WorkflowStageState['status']) => {
-    switch (status) {
-      case 'running':
-        return 'text-indigo-300 border border-indigo-500/40';
-      case 'completed':
-        return 'text-emerald-300 border border-emerald-500/40';
-      case 'error':
-        return 'text-rose-300 border border-rose-500/40';
-      default:
-        return 'text-slate-500 border border-slate-700/50';
-    }
-  };
-
-  const describeStageStatus = (status: WorkflowStageState['status']) => {
-    switch (status) {
-      case 'running':
-        return '运行中';
-      case 'completed':
-        return '完成';
-      case 'error':
-        return '异常';
-      default:
-        return '待处理';
-    }
   };
 
   // Helper to determine if a value differs significantly (for highlighting)
@@ -4684,13 +4574,6 @@ const App: React.FC = () => {
                   >
                     Retry Missing Segments
                   </button>
-                  <button
-                    onClick={exportDocxIssueReport}
-                    className={`w-full py-2 rounded-lg font-semibold transition-all ${isLight ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200' : 'bg-slate-700 hover:bg-slate-600 text-slate-100'}`}
-                    disabled={translationStatus === 'running' || docxIssueDetails.length === 0}
-                  >
-                    Export Issue Report
-                  </button>
                 </div>
               )}
               {hasPdfIssues && (
@@ -4737,12 +4620,13 @@ const App: React.FC = () => {
                 >
                   Run Quality Check
                 </button>
+                {documentKind === 'excel' && (
                 <div className="grid grid-cols-1 gap-2">
                   <button
                     onClick={applyQualityFixes}
-                    disabled={documentKind !== 'excel' || processedData.length === 0}
+                    disabled={processedData.length === 0}
                     className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                      documentKind !== 'excel' || processedData.length === 0
+                      processedData.length === 0
                         ? disabledButtonClass
                         : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_12px_26px_rgba(5,150,105,0.18)]'
                     }`}
@@ -4766,42 +4650,8 @@ const App: React.FC = () => {
                     </p>
                   )}
                 </div>
+                )}
               </div>
-
-              <details className={`mt-2 border rounded-xl p-3 ${isLight ? 'border-slate-200/80 bg-slate-50/80' : 'border-white/[0.07] bg-white/[0.025]'}`}>
-                <summary className={`cursor-pointer text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>
-                  Advanced Checks
-                </summary>
-                <div className="mt-3 space-y-2">
-                  <button
-                    onClick={runRuleCheck}
-                    disabled={data.length === 0 || isTranslating}
-                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl font-semibold transition-all shadow-lg ${
-                      data.length === 0 || isTranslating
-                        ? disabledButtonClass
-                        : 'bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white shadow-[0_12px_26px_rgba(217,119,6,0.18)] active:scale-[0.99]'
-                    }`}
-                  >
-                    {activeStage === 'ruleCheck' ? 'Analyzing...' : 'Run Combination Check'}
-                  </button>
-
-                  <button
-                    onClick={runAiValidation}
-                    disabled={rules.length === 0 || isTranslating}
-                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl font-semibold transition-all shadow-lg ${
-                      rules.length === 0 || isTranslating
-                        ? disabledButtonClass
-                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_12px_26px_rgba(5,150,105,0.18)] active:scale-[0.99]'
-                    }`}
-                  >
-                    {activeStage === 'aiValidate' ? 'Cross-checking...' : 'Run Multi-AI Validation'}
-                  </button>
-
-                </div>
-                <p className={`text-[11px] mt-2 ${mutedTextClass}`}>
-                  用于组合校验与多 AI 核验，非必需步骤。
-                </p>
-              </details>
             </div>
           </section>
 
@@ -5199,47 +5049,6 @@ const App: React.FC = () => {
           </section>
           </details>
 
-          <details className={detailsCardClass}>
-            <summary className={`cursor-pointer list-none px-6 py-4 flex items-center justify-between text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
-              <span>Advanced Signals</span>
-              <span className="text-[10px] text-slate-500">Combination / AI Cross-check</span>
-            </summary>
-          <section className={`p-6 border-t ${sectionDividerClass}`}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${headingMutedClass}`}>Missing Combination Highlights</h3>
-                {missingCombinations.length === 0 ? (
-                  <p className="text-slate-500 text-sm">尚未检测到缺失组合。</p>
-                ) : (
-                  <ul className="space-y-2 max-h-48 overflow-auto pr-2">
-                    {missingCombinations.slice(0, 5).map(item => (
-                      <li key={item.id} className={isLight ? 'bg-amber-50 border border-amber-200 rounded-lg p-3' : 'bg-slate-950/40 border border-amber-500/30 rounded-lg p-3'}>
-                        <p className={`text-sm font-medium ${isLight ? 'text-amber-800' : 'text-amber-200'}`}>{item.indicator}</p>
-                        <p className={`text-xs mt-1 ${headingMutedClass}`}>{item.suggestion}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div>
-                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${headingMutedClass}`}>AI Cross-Check Signals</h3>
-                {aiFindings.length === 0 ? (
-                  <p className="text-slate-500 text-sm">等待 AI 核验结果...</p>
-                ) : (
-                  <ul className="space-y-2 max-h-48 overflow-auto pr-2">
-                    {aiFindings.slice(0, 5).map(item => (
-                      <li key={item.ruleId} className={isLight ? 'bg-indigo-50 border border-indigo-100 rounded-lg p-3' : 'bg-slate-950/40 border border-indigo-500/20 rounded-lg p-3'}>
-                        <p className={`text-sm font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>Rule {item.ruleId}</p>
-                        <p className={`text-xs mt-1 ${headingMutedClass}`}>{item.aggregatedSummary}</p>
-                        <p className={`text-[11px] mt-2 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>{item.finalRecommendation}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </section>
-          </details>
         </div>
       </main>
       )}

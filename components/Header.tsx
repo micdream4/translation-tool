@@ -206,8 +206,8 @@ const Header: React.FC<HeaderProps> = ({
                   <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>质检修复</h3>
                   <ol className="space-y-2 list-decimal list-inside">
                     <li>导出前建议运行 Run Quality Check，并在 Quality Report 查看摘要和问题详情。</li>
-                    <li>Apply Cleanup 用于自动修复常见空格、格式和术语清理问题。</li>
-                    <li>Retry Placeholder Cells 用于重译占位符异常单元格，例如坏 token 或残留占位符。</li>
+                    <li>Excel 文件可使用 Apply Cleanup 自动修复常见空格、格式和术语清理问题。</li>
+                    <li>Excel 文件可使用 Retry Placeholder Cells 重译占位符异常单元格，例如坏 token 或残留占位符。</li>
                   </ol>
                 </section>
                 <section>

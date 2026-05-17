@@ -110,8 +110,9 @@ Commit: 057364a
 52. v0.0.76 修复 DOCX 多 run 回写断词：原文 run 在单词内部切开时，译文写入首个 run 并清空后续 run，避免西语 `mult i funciona l`、`D e claración`、`Pr efacio`。
 53. UI 标签策略已调整：按钮、图标、页面名等自然语言 UI label 默认翻译成目标语言，同时保留 `「」`、`【】`、`«»` 等外层符号，方便后续替换截图时核对。
 54. 翻译前 token 保护只覆盖代码型 UI 标签、缩写、型号、ID、URL/单位等不可翻译锚点；`CBC`、`QC`、`USB2.0` 等保留，`Save`、`Home`、`Login` 这类普通按钮/页面名不再整体保护。v0.0.78 起，即使上传的是已翻译 DOCX、没有英文原文对照，译文中的 `«Save»` 这类英文 UI label 也会被 Smart Fill / Quality Check / Retry Missing Segments 检出。
-55. 后处理已压缩章节编号、标准号和版本号空格，`1. 1`、`7. 2. 10`、`USB 2. 0` 会恢复为紧凑形式，减少 DOCX 目录更新后的割裂。
-56. Quality Report 已继续降噪：单位/指标代码/URL 不再作为非目标语言或 high spacing 噪声；自然语言 UI label 若仍残留源文，会按普通非目标语言问题处理。
+55. v0.0.79 收紧 UI label 残留检测：只有明确英文 UI 词表命中的 label 才触发，如 `New Account`、`Save`；`"ozelle"` 这类密码/字面值即使被引号包裹，也不会被误判为英文 UI label。
+56. 后处理已压缩章节编号、标准号和版本号空格，`1. 1`、`7. 2. 10`、`USB 2. 0` 会恢复为紧凑形式，减少 DOCX 目录更新后的割裂。
+57. Quality Report 已继续降噪：单位/指标代码/URL 不再作为非目标语言或 high spacing 噪声；自然语言 UI label 若仍残留源文，会按普通非目标语言问题处理。
 
 ## 真实回归基线
 

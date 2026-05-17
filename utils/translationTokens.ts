@@ -68,6 +68,7 @@ const UI_CODE_TOKEN_REGEX =
   /^(?:[A-Z]{1,10}\d[A-Z0-9#%+_.\/-]*|[A-Z0-9#%+_.\/-]*\d[A-Z0-9#%+_.\/-]*|[A-Z]{2,10}(?:\/[A-Z0-9#%]+)+|[A-Z]{1,10}[#%])$/;
 const UI_ALWAYS_PROTECTED_LABELS = new Set(["id", "uuid"]);
 const ENGLISH_UI_LABEL_WORDS = new Set([
+  "account",
   "add",
   "apply",
   "back",
@@ -87,6 +88,7 @@ const ENGLISH_UI_LABEL_WORDS = new Set([
   "login",
   "logout",
   "menu",
+  "new",
   "next",
   "ok",
   "open",
@@ -315,7 +317,7 @@ export const hasUntranslatedUiLabelResidue = (
   if (!translated.trim()) return false;
 
   const sourceLabels = getSourceUiLabelCandidates(sourceText).filter(
-    (label) => /[A-Za-z]/.test(label) && !isProtectedUiLabel(label)
+    (label) => isLikelyEnglishUiLabelResidue(label)
   );
   const hasSourceLabelResidue = sourceLabels.some((label) => {
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

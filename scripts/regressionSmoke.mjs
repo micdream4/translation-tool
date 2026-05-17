@@ -791,6 +791,22 @@ test("quality core adapters preserve existing row-based quality checks", async (
   assert.equal(hasUntranslatedUiLabelResidue("Haga clic en «Save».", "", "Spanish"), true);
   assert.equal(hasUntranslatedUiLabelResidue("Haga clic en «Guardar».", "", "Spanish"), false);
   assert.equal(hasUntranslatedUiLabelResidue("Abra la pestaña «QC».", "", "Spanish"), false);
+  assert.equal(
+    hasUntranslatedUiLabelResidue(
+      'Haga clic en 【New Account】 para crear una cuenta nueva. La contraseña predeterminada es "ozelle".',
+      'Click 【New Account】 to create a new account. The default password is "ozelle".',
+      "Spanish"
+    ),
+    true
+  );
+  assert.equal(
+    hasUntranslatedUiLabelResidue(
+      'Haga clic en 【Nueva cuenta】 para crear una cuenta nueva. La contraseña predeterminada es "ozelle".',
+      'Click 【New Account】 to create a new account. The default password is "ozelle".',
+      "Spanish"
+    ),
+    false
+  );
   assert.match(appSource, /hasUntranslatedUiLabelResidue\(trimmed, '', target\)/);
   assert.match(appSource, /hasUntranslatedUiLabelResidue\(\s*trimmed,\s*segment\.original \|\| '',\s*targetLang/s);
   assert.deepEqual(
@@ -857,6 +873,23 @@ test("quality core adapters preserve existing row-based quality checks", async (
       { targetLang: "Spanish" }
     ).issues.nonTargetLanguage.map((issue) => issue.value),
     ["Haga clic en «Save»."]
+  );
+  assert.equal(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [
+          {
+            original: 'Click 【New Account】 to create a new account. The default password is "ozelle".',
+            translated: 'Haga clic en 【Nueva cuenta】 para crear una cuenta nueva. La contraseña predeterminada es "ozelle".'
+          }
+        ],
+        "docx",
+        (segment) => segment.translated,
+        (segment) => segment.original
+      ),
+      { targetLang: "Spanish" }
+    ).issues.nonTargetLanguage.length,
+    0
   );
   assert.equal(
     russianNoiseReport.issues.spacing.some((issue) => issue.original === "Website: https://ozellemed.com/"),

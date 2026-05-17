@@ -1,5 +1,12 @@
 # 项目进度
 
+## v0.0.79
+
+- 修复西语已翻译 DOCX 的 UI label 误判：`【Nueva cuenta】` 已翻译时，旁边保留的 `"ozelle"` 密码字面值不再被当作英文 UI label 残留。
+- UI label 残留检测收紧为明确英文 UI 词表命中；`【New Account】`、`«Save»` 仍会被抓，未知字面值/密码/品牌不触发 non-target。
+- 回归测试补充 `New Account -> Nueva cuenta` + `"ozelle"` 保留场景。
+- 版本号更新为 `v0.0.79`。
+
 ## v0.0.78
 
 - 修复“上传已翻译 DOCX 后 Smart Fill / Quality Check 漏检按钮英文残留”的问题：没有英文原文对照时，也会直接扫描译文里 `「」`、`【】`、`«»` 等包裹的英文 UI label。

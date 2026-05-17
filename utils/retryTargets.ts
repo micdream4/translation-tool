@@ -1,5 +1,10 @@
 import type { POCTRecord } from '../types';
-import type { UntranslatedCell } from './language';
+import type { TargetLanguage } from '../types';
+import { isLikelyTargetLanguage, isNeutralToken, type UntranslatedCell } from './language';
+import {
+  hasUntranslatedUiLabelResidue,
+  isLikelyIdentifier
+} from './translationTokens';
 
 export type RetryCellTarget = {
   rowIdx: number;
@@ -19,6 +24,24 @@ export type RetryableCellContext = {
 export type GuardedTranslationTokens = {
   sanitized: string;
   placeholders?: Record<string, string> | null;
+};
+
+export const shouldTranslateCellValue = (
+  key: string,
+  value: unknown,
+  targetLang: TargetLanguage,
+  options: {
+    ignoreLock?: boolean;
+    shouldLockCell?: (key: string, value: unknown) => boolean;
+  } = {}
+) => {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (isNeutralToken(trimmed) || isLikelyIdentifier(trimmed)) return false;
+  if (!options.ignoreLock && options.shouldLockCell?.(key, value)) return false;
+  if (hasUntranslatedUiLabelResidue(trimmed, '', targetLang)) return true;
+  return !isLikelyTargetLanguage(trimmed, targetLang);
 };
 
 export type TextSegmentIssueDetail = {

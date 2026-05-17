@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.80
+
+- 收口 DOCX/PDF 问题来源：`buildDocxIssueDetails` 和 `buildPdfIssueDetails` 改为从 Quality Core 的 `runQualityChecksOnUnits` 结果映射，避免 Quality Check、审计和 Retry Missing Segments 使用不同判断。
+- Smart Fill、Excel retry 和单元格候选判断统一复用 `shouldTranslateCellValue`，按钮英文残留、锁定字段、纯代码/符号和目标语言判断不再分散实现。
+- DOCX/PDF 本地占位符修复后的剩余重译目标改为复用重新生成的 issue details，避免修复后过滤条件与 Quality Core 再次分叉。
+- 回归测试覆盖已翻译西语按钮残留、密码字面值误判、共用 Smart Fill helper 和 DOCX/PDF issue details 使用 Quality Core。
+- 版本号更新为 `v0.0.80`。
+
 ## v0.0.79
 
 - 修复西语已翻译 DOCX 的 UI label 误判：`【Nueva cuenta】` 已翻译时，旁边保留的 `"ozelle"` 密码字面值不再被当作英文 UI label 残留。

@@ -37,7 +37,8 @@ import { summarizeUntranslated } from './utils/untranslated';
 import {
   buildExcelRetryTargets,
   buildRetryableExcelSummary,
-  buildTextSegmentRetryPlan
+  buildTextSegmentRetryPlan,
+  shouldTranslateCellValue
 } from './quality/retryTargets';
 import {
   loadTranslationProgress,
@@ -62,10 +63,6 @@ import {
   isLikelyIdentifier,
   containsProtectedTerm,
   setRuntimeProtectedTerms,
-  getSourceUiLabelCandidates,
-  hasUntranslatedUiLabelResidue,
-  isProtectedUiLabel,
-  stripUiLabels,
   stripProtectedTerms,
   stripPreservedUiLabels
 } from './utils/translationTokens';
@@ -102,7 +99,14 @@ import {
   type ModelReviewSample,
   type ModelReviewStyle
 } from './utils/modelReview';
-import { collectPlaceholderIssues, hasGlueIssue, hasSpacingIssue, runQualityChecks, PLACEHOLDER_REGEX, type QualitySeverity } from './utils/quality';
+import {
+  collectPlaceholderIssues,
+  hasSpacingIssue,
+  runQualityChecks,
+  runQualityChecksOnUnits,
+  PLACEHOLDER_REGEX,
+  type QualitySeverity
+} from './utils/quality';
 import {
   POCTRecord,
   ProcessingState,
@@ -326,13 +330,7 @@ const cellNeedsTranslation = (
   value: unknown,
   targetLang: TargetLanguage
 ) => {
-  if (typeof value !== 'string') return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (isNeutralToken(trimmed) || isLikelyIdentifier(trimmed)) return false;
-  if (shouldLockCell(key, value)) return false;
-  if (hasUntranslatedUiLabelResidue(trimmed, '', targetLang)) return true;
-  return !isLikelyTargetLanguage(trimmed, targetLang);
+  return shouldTranslateCellValue(key, value, targetLang, { shouldLockCell });
 };
 
 const rowNeedsTranslation = (row: POCTRecord, targetLang: TargetLanguage) => {
@@ -340,11 +338,7 @@ const rowNeedsTranslation = (row: POCTRecord, targetLang: TargetLanguage) => {
 };
 
 const valueNeedsTranslation = (value: unknown, target: TargetLanguage) => {
-  if (typeof value !== 'string') return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  if (hasUntranslatedUiLabelResidue(trimmed, '', target)) return true;
-  return !isLikelyTargetLanguage(trimmed, target);
+  return shouldTranslateCellValue('', value, target, { ignoreLock: true });
 };
 
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
@@ -1264,46 +1258,106 @@ const App: React.FC = () => {
     return false;
   };
 
-  const getDocumentTargetLanguageCheckText = (translatedText: string, sourceText = '') => {
-    const protectedStripped = stripProtectedTerms(stripPreservedUiLabels(translatedText)).trim();
-    if (!protectedStripped) return '';
-    const sourceUiLabels = getSourceUiLabelCandidates(sourceText).filter(isProtectedUiLabel);
-    return stripUiLabels(protectedStripped, sourceUiLabels).trim();
+  const buildDocumentIssueDetailsFromQuality = <T extends { id: string; original: string }>({
+    segments,
+    kind,
+    getText,
+    getOriginal,
+    getLocationLabel,
+    includeEmptyTranslations = false
+  }: {
+    segments: T[];
+    kind: 'docx' | 'pdf';
+    getText: (segment: T, index: number) => string;
+    getOriginal: (segment: T, index: number) => string;
+    getLocationLabel: (segment: T, index: number) => string;
+    includeEmptyTranslations?: boolean;
+  }) => {
+    const report = runQualityChecksOnUnits(
+      segmentsToQualityUnits<T>(
+        segments,
+        kind,
+        getText,
+        getOriginal,
+        getLocationLabel
+      ),
+      { targetLang }
+    );
+    const byIndex = new Map<number, DocxIssueDetail>();
+    const priorities = new Map<number, number>();
+    const priorityFor = (issueType: DocxIssueDetail['issueType']) =>
+      issueType === 'placeholder' ? 3 : issueType === 'glue' ? 2 : 1;
+    const addIssue = (
+      rowIndex: number,
+      issueType: DocxIssueDetail['issueType'],
+      lowPriority: boolean,
+      issueText?: string,
+      locationLabel?: string
+    ) => {
+      const segment = segments[rowIndex];
+      if (!segment) return;
+      const text = String(issueText || getText(segment, rowIndex) || getOriginal(segment, rowIndex) || '').trim();
+      if (!text) return;
+      const nextPriority = priorityFor(issueType);
+      const existingPriority = priorities.get(rowIndex) || 0;
+      if (existingPriority > nextPriority) return;
+      priorities.set(rowIndex, nextPriority);
+      byIndex.set(rowIndex, {
+        index: rowIndex,
+        id: segment.id,
+        locationLabel: locationLabel || getLocationLabel(segment, rowIndex),
+        text,
+        snippet: toDocxSnippet(text),
+        chineseChars: countChineseChars(text),
+        lowPriority,
+        issueType
+      });
+    };
+
+    report.issues.nonTargetLanguage.forEach((issue) => {
+      const text = issue.value || getText(segments[issue.rowIndex], issue.rowIndex);
+      addIssue(
+        issue.rowIndex,
+        'source',
+        issue.severity === 'low' || isLowPriorityDocxIssue(text),
+        text,
+        issue.locationLabel
+      );
+    });
+    report.issues.placeholders.forEach((issue) => {
+      addIssue(issue.rowIndex, 'placeholder', false, issue.value, issue.locationLabel);
+    });
+    report.issues.spacing
+      .filter((issue) => issue.severity === 'high')
+      .forEach((issue) => {
+        addIssue(issue.rowIndex, 'glue', false, issue.value, issue.locationLabel);
+      });
+    if (includeEmptyTranslations) {
+      segments.forEach((segment, index) => {
+        const original = String(getOriginal(segment, index) || '').trim();
+        const translated = String(getText(segment, index) || '').trim();
+        if (original && !translated) {
+          addIssue(index, 'source', false, original, getLocationLabel(segment, index));
+        }
+      });
+    }
+
+    const details = Array.from(byIndex.values()).sort((a, b) => a.index - b.index);
+    return {
+      pending: details.map((item) => item.index),
+      details,
+      qualityReport: report
+    };
   };
 
   const buildDocxIssueDetails = (context: DocxContext) => {
-    const pending: number[] = [];
-    const details: DocxIssueDetail[] = [];
-    context.segments.forEach((segment, idx) => {
-      const text = getDocxSegmentText(segment) || segment.original || '';
-      const trimmed = text.trim();
-      if (!trimmed) return;
-      const strippedForLanguage = getDocumentTargetLanguageCheckText(trimmed, segment.original || '');
-      if (!strippedForLanguage) return;
-      const hasSourceLanguage = !isLikelyTargetLanguage(strippedForLanguage, targetLang);
-      const hasUiLabelResidue = hasUntranslatedUiLabelResidue(
-        trimmed,
-        segment.original || '',
-        targetLang
-      );
-      const hasPlaceholderLeak =
-        PLACEHOLDER_REGEX.test(trimmed) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(trimmed);
-      const hasGlueLeak =
-        String(targetLang || '').toLowerCase().includes('english') && hasGlueIssue(trimmed);
-      if (!hasSourceLanguage && !hasUiLabelResidue && !hasPlaceholderLeak && !hasGlueLeak) return;
-      pending.push(idx);
-      details.push({
-        index: idx,
-        id: segment.id,
-        locationLabel: `${segment.partLabel || 'DOCX'} segment ${idx + 1}`,
-        text: trimmed,
-        snippet: toDocxSnippet(trimmed),
-        chineseChars: countChineseChars(strippedForLanguage),
-        lowPriority: hasPlaceholderLeak || hasGlueLeak || hasUiLabelResidue ? false : isLowPriorityDocxIssue(trimmed),
-        issueType: hasPlaceholderLeak ? 'placeholder' : hasGlueLeak ? 'glue' : 'source'
-      });
+    return buildDocumentIssueDetailsFromQuality<DocxSegment>({
+      segments: context.segments,
+      kind: 'docx',
+      getText: (segment) => getDocxSegmentText(segment),
+      getOriginal: (segment) => segment.original,
+      getLocationLabel: (segment, index) => `${segment.partLabel || 'DOCX'} segment ${index + 1}`
     });
-    return { pending, details };
   };
 
   const getModelReviewSourceLabel = () => {
@@ -1558,39 +1612,14 @@ const App: React.FC = () => {
   };
 
   const buildPdfIssueDetails = (context: PdfContext) => {
-    const pending: number[] = [];
-    const details: DocxIssueDetail[] = [];
-    context.segments.forEach((segment, idx) => {
-      const translated = String(segment.translated || '').trim();
-      const original = String(segment.original || '').trim();
-      const text = translated || original;
-      if (!text) return;
-      const strippedForLanguage = getDocumentTargetLanguageCheckText(text, original);
-      if (!strippedForLanguage) return;
-      if (isNeutralToken(strippedForLanguage) || isLikelyIdentifier(strippedForLanguage)) return;
-      const hasEmptyTranslation = Boolean(original) && !translated;
-      const hasSourceLanguage = hasEmptyTranslation || !isLikelyTargetLanguage(strippedForLanguage, targetLang);
-      const hasUiLabelResidue = hasUntranslatedUiLabelResidue(text, original, targetLang);
-      const hasPlaceholderLeak =
-        PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text);
-      const hasGlueLeak =
-        String(targetLang || '').toLowerCase().includes('english') && hasGlueIssue(text);
-      if (!hasSourceLanguage && !hasUiLabelResidue && !hasPlaceholderLeak && !hasGlueLeak) return;
-      pending.push(idx);
-      details.push({
-        index: idx,
-        id: segment.id,
-        locationLabel: `PDF page ${segment.pageNumber}, segment ${idx + 1}`,
-        text,
-        snippet: toDocxSnippet(text),
-        chineseChars: countChineseChars(strippedForLanguage),
-        lowPriority: hasPlaceholderLeak || hasGlueLeak || hasEmptyTranslation || hasUiLabelResidue
-          ? false
-          : isLowPriorityDocxIssue(text),
-        issueType: hasPlaceholderLeak ? 'placeholder' : hasGlueLeak ? 'glue' : 'source'
-      });
+    return buildDocumentIssueDetailsFromQuality<PdfSegment>({
+      segments: context.segments,
+      kind: 'pdf',
+      getText: (segment) => getPdfSegmentText(segment),
+      getOriginal: (segment) => segment.original,
+      getLocationLabel: (segment, index) => `PDF page ${segment.pageNumber}, segment ${index + 1}`,
+      includeEmptyTranslations: true
     });
-    return { pending, details };
   };
 
   const auditPdfTranslation = () => {
@@ -1956,14 +1985,11 @@ const App: React.FC = () => {
       const { pending, details } = buildDocxIssueDetails(context);
       setDocxIssueIndices(pending);
       setDocxIssueDetails(details);
+      const remaining = new Set(details.map((item) => item.index));
       targets = targetIndices
+        .filter((index) => remaining.has(index))
         .map(index => context.segments[index])
-        .filter(Boolean)
-        .filter((segment) => {
-          const text = getDocxSegmentText(segment) || segment.original;
-          const languageText = getDocumentTargetLanguageCheckText(text, segment.original || '');
-          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(languageText, targetLang);
-        });
+        .filter(Boolean);
       if (targets.length === 0) {
         addLog('Docx Retry: 占位符问题已清零。');
         setTranslationStatus('completed');
@@ -2132,14 +2158,11 @@ const App: React.FC = () => {
       const { pending, details } = buildPdfIssueDetails(context);
       setPdfIssueIndices(pending);
       setPdfIssueDetails(details);
+      const remaining = new Set(details.map((item) => item.index));
       targets = targetIndices
+        .filter((index) => remaining.has(index))
         .map(index => context.segments[index])
-        .filter(Boolean)
-        .filter((segment) => {
-          const text = getPdfSegmentText(segment) || segment.original;
-          const languageText = getDocumentTargetLanguageCheckText(text, segment.original || '');
-          return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(languageText, targetLang);
-        });
+        .filter(Boolean);
       if (targets.length === 0) {
         addLog('PDF Retry: 占位符问题已清零。');
         setPdfStats({

@@ -807,8 +807,8 @@ test("quality core adapters preserve existing row-based quality checks", async (
     ),
     false
   );
-  assert.match(appSource, /hasUntranslatedUiLabelResidue\(trimmed, '', target\)/);
-  assert.match(appSource, /hasUntranslatedUiLabelResidue\(\s*trimmed,\s*segment\.original \|\| '',\s*targetLang/s);
+  assert.match(appSource, /shouldTranslateCellValue\('', value, target/);
+  assert.match(appSource, /buildDocumentIssueDetailsFromQuality/);
   assert.deepEqual(
     runQualityChecksOnUnits(
       segmentsToQualityUnits(
@@ -941,8 +941,10 @@ test("retry target helpers reuse quality issue details across document kinds", a
   const {
     buildExcelRetryTargets,
     buildRetryableExcelSummary,
-    buildTextSegmentRetryPlan
+    buildTextSegmentRetryPlan,
+    shouldTranslateCellValue
   } = await bundleTsModule(path.join(repoRoot, "utils/retryTargets.ts"));
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
 
   const sourceRows = [
     { id: "A-001", content: "List контрольных образцов", unit: "2-8°C" },
@@ -960,6 +962,29 @@ test("retry target helpers reuse quality issue details across document kinds", a
     sanitized: value.replace("Home", "__TKN_1__"),
     placeholders: value.includes("Home") ? { "__TKN_1__": "Home" } : null
   });
+
+  assert.equal(
+    shouldTranslateCellValue("content", "Haga clic en «Save».", "Spanish"),
+    true
+  );
+  assert.equal(
+    shouldTranslateCellValue("content", "Haga clic en «Guardar».", "Spanish"),
+    false
+  );
+  assert.equal(
+    shouldTranslateCellValue("content", "Abra la pestaña «QC».", "Spanish"),
+    false
+  );
+  assert.equal(
+    shouldTranslateCellValue("id", "A-001", "Spanish", {
+      shouldLockCell: (key) => key === "id"
+    }),
+    false
+  );
+  assert.match(appSource, /buildDocumentIssueDetailsFromQuality/);
+  assert.match(appSource, /runQualityChecksOnUnits\(/);
+  assert.match(appSource, /shouldTranslateCellValue\(key,\s*value,\s*targetLang/);
+  assert.doesNotMatch(appSource, /const hasSourceLanguage =/);
 
   const summary = buildRetryableExcelSummary({
     details,

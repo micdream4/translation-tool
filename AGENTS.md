@@ -37,6 +37,8 @@ local-data/issues/YYYY-MM-DD-documentkind-targetlang-short-problem/
 
 如果能安全生成截图、渲染图、Debug Package、Regression JSONL 或 Asset JSON，也应放入同一个 issue 包。不要把原始敏感文件复制进 GitHub Issue；`local-data/` 继续只作为本地受控问题资产区。
 
+用户侧反馈流程保持最简：用户只需要把原文放 `local-data/inbox/`，译文或结果放 `local-data/done/`，Quality Report / Debug Package 放 `local-data/debug-packages/`，截图放 `local-data/screenshots/`。Codex 负责从这些入口材料中建立或更新 `local-data/issues/` 问题包，并判断是否需要沉淀为回归测试、术语、翻译记忆或 QA 规则。不要要求用户手动分类到所有子目录。
+
 ## Codex 固定工作流
 
 处理任何翻译质量、导出、补译、模型路由或文档结构问题时，按这个顺序执行：

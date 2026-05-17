@@ -10,7 +10,7 @@ import type {
   QualityUnit
 } from './types';
 import { isLikelyTargetLanguage } from '../utils/language';
-import { isLikelyIdentifier } from '../utils/translationTokens';
+import { isLikelyIdentifier, stripProtectedTerms } from '../utils/translationTokens';
 
 export type {
   QualityCheckInput,
@@ -130,7 +130,9 @@ const shouldCheckTargetLanguage = (unit: QualityUnit) => {
   const translatedText = unit.translatedText.trim();
   if (!translatedText) return false;
   if (shouldLockCell(unit.columnKey, unit.originalValue)) return false;
-  return !isLikelyIdentifier(translatedText);
+  const unprotectedText = stripProtectedTerms(translatedText).trim();
+  if (!unprotectedText) return false;
+  return !isLikelyIdentifier(unprotectedText);
 };
 
 export const runQualityChecksOnUnits = (
@@ -211,7 +213,7 @@ export const runQualityChecksOnUnits = (
     if (
       options.targetLang &&
       shouldCheckTargetLanguage(unit) &&
-      !isLikelyTargetLanguage(unit.translatedText, options.targetLang)
+      !isLikelyTargetLanguage(stripProtectedTerms(unit.translatedText), options.targetLang)
     ) {
       totals.nonTargetCells += 1;
       nonTargetRows.add(unit.rowIndex);

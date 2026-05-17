@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.72
+
+- 修复 DOCX 译文回写会覆盖 `segment.original` 的问题：Word 文本节点仍会写入译文，但语义段原文保持不可变，Quality Report finding 的 Source 能继续显示真实英文原文。
+- Quality Check 的非目标语言检测改为先剥离 Protected Terms；品牌名、公司名、型号等受保护词不会再单独触发非目标语言残留。
+- Translation Memory 增加 `Use Translation Memory` 开关；关闭后本次翻译既不复用本地 TM，也不写入新 TM，便于干净复测。
+- 简化本地问题反馈流程：用户只需放原文、译文、Debug Package/Quality Report 和截图，Codex 负责后续归类到本地 issue 包。
+- 版本号更新为 `v0.0.72`。
+
 ## v0.0.71
 
 - 修复 Quality Report finding 的 Source / Target 展示策略：所有 finding 和导出报告优先从 `qualityRows.sourceRows/targetRows` 读取原文与译文，避免 DOCX/PDF 报告把译文误显示为原文。

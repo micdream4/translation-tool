@@ -33,27 +33,26 @@ local-data/failed/             # 需要继续分析的失败样本
 
 这些目录不提交到 git。仓库只提交规则、脚本、测试和脱敏后的 fixture。
 
-## Mac 本地发现问题
+## 用户侧最简流程
 
-推荐流程：
+为了减少操作成本，用户只需要把材料放到四类入口；后续分类、复制、归档由 Codex 处理：
 
-1. 在页面上完成翻译或导出。
-2. 点击 `Run Quality Check`。
-3. 如果 Quality Report 发现问题：
-   - 对具体 finding 使用 `Save Correction` 保存人工修正样本。
-   - 导出 `Debug Package` 到 `local-data/debug-packages/`。
-   - 导出 `Regression JSONL` 到 `local-data/regression-jsonl/`。
-   - 必要时导出 `Asset JSON` 到 `local-data/issue-assets/`。
-4. 如果 Quality Report 没发现、但肉眼发现问题：
-   - 保存脱敏截图到 `local-data/screenshots/`。
-   - 手动记录原文、错译、期望译文、目标语言、文件类型、版本和模型。
-5. 为这次问题建立本地目录：
+1. 原文或待测文件放到 `local-data/inbox/`。
+2. 译后结果如果基本满意放到 `local-data/done/`；如果明显失败，也可以先放到 `local-data/done/` 并在对话里说明问题，Codex 会再归类。
+3. 页面导出的 Quality Report / Debug Package 放到 `local-data/debug-packages/`。
+4. 截图或录屏放到 `local-data/screenshots/`。
+
+用户不需要手动建立 `issues/`、`regression-jsonl/` 或 `issue-assets/`。这些目录由 Codex 根据反馈自动整理。
+
+## Codex 归档流程
+
+Codex 收到反馈后，为这次问题建立本地目录：
 
 ```text
 local-data/issues/2026-05-16-docx-russian-list-residual/
 ```
 
-建议包含：
+根据 `inbox/`、`done/`、`debug-packages/`、`screenshots/` 中的材料，复制或生成：
 
 ```text
 README.md

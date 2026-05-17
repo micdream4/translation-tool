@@ -394,14 +394,12 @@ const adjustSplitIndex = (
 export const setDocxSegmentText = (segment: DocxSegment, text: string) => {
   const nodes = segment.nodes;
   if (!nodes.length) {
-    segment.original = text;
     return;
   }
 
   if (nodes.length === 1) {
     nodes[0].textContent = text;
     ensurePreserveSpace(nodes[0]);
-    segment.original = text;
     return;
   }
 
@@ -424,7 +422,6 @@ export const setDocxSegmentText = (segment: DocxSegment, text: string) => {
     node.textContent = parts[idx] || "";
     ensurePreserveSpace(node);
   });
-  segment.original = text;
 };
 
 const shouldInsertBoundarySpace = (left: string, right: string) => {

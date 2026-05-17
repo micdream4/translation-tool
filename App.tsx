@@ -122,6 +122,7 @@ const STRING_TARGET_LANGS: TargetLanguage[] = STRING_RESOURCE_TARGET_LANGS;
 const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
 const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
 const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
+const TRANSLATION_MEMORY_ENABLED_STORAGE_KEY = 'poct.translation_memory_enabled';
 const PACKAGE_VERSION = String((packageJson as { version?: string }).version || '').trim();
 const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || PACKAGE_VERSION).trim();
 const DEFAULT_OPENROUTER_MODELS = [
@@ -428,6 +429,10 @@ const App: React.FC = () => {
   const [runtimeProtectedTermsRaw, setRuntimeProtectedTermsRaw] = useState<string>('');
   const [stringHistoryCount, setStringHistoryCount] = useState<number>(0);
   const [translationMemoryCount, setTranslationMemoryCount] = useState<number>(0);
+  const [translationMemoryEnabled, setTranslationMemoryEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem(TRANSLATION_MEMORY_ENABLED_STORAGE_KEY) !== 'false';
+  });
   const [processingState, setProcessingState] = useState<ProcessingState>({
     status: 'idle',
     progress: 0,
@@ -562,6 +567,7 @@ const App: React.FC = () => {
     lang: TargetLanguage = targetLang
   ) => {
     const output = new Map<string, string>();
+    if (!translationMemoryEnabled) return output;
     const lookupItems = new Map<string, string>();
 
     sourceTexts.forEach((sourceText) => {
@@ -597,6 +603,7 @@ const App: React.FC = () => {
     pairs: TranslationMemoryPair[],
     stats?: TranslationMemoryStats
   ) => {
+    if (!translationMemoryEnabled) return;
     const uniquePairs = new Map<string, TranslationMemoryPair>();
     pairs.forEach((pair) => {
       if (!isUsableMemoryTarget(pair.targetText, pair.targetLang)) return;
@@ -974,6 +981,18 @@ const App: React.FC = () => {
   useEffect(() => {
     void refreshTranslationMemoryCount();
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(
+        TRANSLATION_MEMORY_ENABLED_STORAGE_KEY,
+        translationMemoryEnabled ? 'true' : 'false'
+      );
+    }
+    if (!translationMemoryEnabled) {
+      translationMemorySessionRef.current.clear();
+    }
+  }, [translationMemoryEnabled]);
 
   const persistProgress = (
     records: POCTRecord[],
@@ -4483,20 +4502,34 @@ const App: React.FC = () => {
                 </p>
               </div>
 
-              <div className={`flex items-center justify-between gap-3 text-xs ${mutedTextClass}`}>
-                <span>Translation Memory: {translationMemoryCount} 条本地记忆</span>
-                <button
-                  type="button"
-                  onClick={clearTranslationMemoryData}
-                  disabled={isTranslating || translationMemoryCount === 0}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                    isTranslating || translationMemoryCount === 0
-                      ? disabledButtonClass
-                      : neutralButtonClass
-                  }`}
-                >
-                  Clear TM
-                </button>
+              <div className={`space-y-2 text-xs ${mutedTextClass}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={translationMemoryEnabled}
+                      onChange={(e) => setTranslationMemoryEnabled(e.target.checked)}
+                      disabled={isTranslating}
+                      className="h-4 w-4 accent-indigo-500"
+                    />
+                    <span>Use Translation Memory</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={clearTranslationMemoryData}
+                    disabled={isTranslating || translationMemoryCount === 0}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                      isTranslating || translationMemoryCount === 0
+                        ? disabledButtonClass
+                        : neutralButtonClass
+                    }`}
+                  >
+                    Clear TM
+                  </button>
+                </div>
+                <p>
+                  Translation Memory: {translationMemoryCount} 条本地记忆；关闭后本次翻译不会复用，也不会写入新记忆。
+                </p>
               </div>
               </div>
 

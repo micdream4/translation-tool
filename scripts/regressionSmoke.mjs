@@ -278,6 +278,7 @@ test("DOCX parser covers body, headers, footers, footnotes, endnotes, and commen
   assert.match(docxSource, /parts\.forEach\(\(part\) =>/);
   assert.match(appSource, /DOCX coverage:/);
   assert.match(appSource, /Docx coverage: 导出覆盖/);
+  assert.doesNotMatch(docxSource, /segment\.original\s*=\s*text/);
 });
 
 test("production proxy builds do not inject server-side model keys into the browser bundle", () => {
@@ -311,6 +312,9 @@ test("translation memory supports exact reuse and in-file dedupe", async () => {
   assert.match(appSource, /Translation Memory: 复用/);
   assert.match(appSource, /followers\.get\(leader\.memoryKey\)/);
   assert.match(appSource, /Clear TM/);
+  assert.match(appSource, /translationMemoryEnabled/);
+  assert.match(appSource, /Use Translation Memory/);
+  assert.match(appSource, /不会复用，也不会写入新记忆/);
 });
 
 test("quality issue cases can be saved and exported from quality findings", async () => {
@@ -631,6 +635,7 @@ test("quality core adapters preserve existing row-based quality checks", async (
   const compatibilitySource = fs.readFileSync(path.join(repoRoot, "utils/quality.ts"), "utf8");
   assert.match(checksSource, /runQualityChecksOnUnits/);
   assert.match(checksSource, /isLikelyTargetLanguage/);
+  assert.match(checksSource, /stripProtectedTerms/);
   assert.match(compatibilitySource, /from '..\/quality\/checks'/);
 
   const sourceRows = [
@@ -650,6 +655,22 @@ test("quality core adapters preserve existing row-based quality checks", async (
   assert.equal(
     runQualityChecksOnUnits(input, { targetLang: "Russian" }).issues.nonTargetLanguage.some((issue) => issue.value === "White blood cell"),
     true
+  );
+  assert.equal(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [
+          {
+            original: "Ehome Health Technology Co., Ltd. reserves the right.",
+            translated: "Ehome Health Technology Co., Ltd. оставляет за собой право."
+          }
+        ],
+        "docx",
+        (segment) => segment.translated
+      ),
+      { targetLang: "Russian" }
+    ).issues.nonTargetLanguage.length,
+    0
   );
   assert.deepEqual(
     qualityRowsToUnits({ sourceRows, targetRows }, "docx").units.map((unit) => unit.documentKind).every((kind) => kind === "docx"),

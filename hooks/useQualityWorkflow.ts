@@ -4,7 +4,9 @@ import type { QualityRows } from '../quality/types';
 import type { TranslationMemoryPair } from '../utils/translationMemory';
 import type { UntranslatedCell } from '../utils/language';
 import type { DocxContext } from '../utils/docx';
+import { setDocxSegmentText } from '../utils/docx';
 import type { PdfContext } from '../utils/pdf';
+import { setPdfSegmentText } from '../utils/pdf';
 import { serializeDebugPackage, serializeGitHubIssueMarkdown, type DebugFormatSnapshot, type DebugPackageInput } from '../utils/debugPackage';
 import {
   clearTranslationIssueCases,
@@ -358,10 +360,48 @@ export const useQualityWorkflow = ({
     addLog('Quality Report: 已清除当前检查结果。');
   };
 
+  const applyFindingCorrectionToDocument = (finding: QualityFinding, corrected: string) => {
+    if (documentKind === 'docx') {
+      const context = getDocxContext();
+      const segment = context?.segments[finding.rowIndex];
+      if (!segment || finding.columnKey !== 'content') return false;
+      setDocxSegmentText(segment, corrected);
+      const { pending, details } = buildDocxIssueDetails(context);
+      setDocxIssueIndices(pending);
+      setDocxIssueDetails(details);
+      syncDocumentIssueSummary(details);
+      const qualityInput = buildDocumentQualityInput();
+      if (qualityInput) {
+        setQualityReport(runQualityChecksOnUnits(qualityInput, { targetLang }));
+      }
+      setPreviewFocus({ rowIndex: finding.rowIndex, columnKey: finding.columnKey });
+      return true;
+    }
+
+    if (documentKind === 'pdf') {
+      const context = getPdfContext();
+      const segment = context?.segments[finding.rowIndex];
+      if (!segment || finding.columnKey !== 'content') return false;
+      setPdfSegmentText(segment, corrected);
+      const { pending, details } = buildPdfIssueDetails(context);
+      setPdfIssueIndices(pending);
+      setPdfIssueDetails(details);
+      syncDocumentIssueSummary(details);
+      const qualityInput = buildDocumentQualityInput();
+      if (qualityInput) {
+        setQualityReport(runQualityChecksOnUnits(qualityInput, { targetLang }));
+      }
+      setPreviewFocus({ rowIndex: finding.rowIndex, columnKey: finding.columnKey });
+      return true;
+    }
+
+    return false;
+  };
+
   const saveQualityFindingCorrection = async (finding: QualityFinding) => {
     if (typeof window === 'undefined') return;
     const suggested = finding.translated || '';
-    const corrected = window.prompt('输入人工修正译文。保存后会进入本地问题样本库。', suggested);
+    const corrected = window.prompt('输入人工修正译文。DOCX/PDF 会立即写回当前文档，并保存到本地问题样本库。', suggested);
     if (corrected === null) return;
     const trimmed = corrected.trim();
     if (!trimmed) {
@@ -384,6 +424,12 @@ export const useQualityWorkflow = ({
     });
     refreshIssueCaseCount();
     addLog(`Issue Case: 已保存 ${issueCase.issueType} 样本（${finding.locationLabel}）。`);
+    const applied = applyFindingCorrectionToDocument(finding, trimmed);
+    if (applied) {
+      addLog(`Issue Case: 已将人工修正写回当前 ${documentKind.toUpperCase()}，下载文件会包含该修正。`);
+    } else if (documentKind === 'excel') {
+      addLog('Issue Case: Excel 当前仅保存问题样本；表格写回会在后续统一接入。');
+    }
 
     if (
       finding.original.trim() &&

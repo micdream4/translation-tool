@@ -272,6 +272,7 @@ const ALLOWED_NON_LATIN_TARGET_LATIN_TOKENS = new Set([
   "zip",
   "ac",
   "amd",
+  "admin",
   "blood",
   "blo",
   "emc",

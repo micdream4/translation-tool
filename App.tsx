@@ -62,6 +62,8 @@ import {
   isLikelyIdentifier,
   containsProtectedTerm,
   setRuntimeProtectedTerms,
+  getSourceUiLabelCandidates,
+  stripUiLabels,
   stripProtectedTerms,
   stripPreservedUiLabels
 } from './utils/translationTokens';
@@ -1258,6 +1260,13 @@ const App: React.FC = () => {
     return false;
   };
 
+  const getDocumentTargetLanguageCheckText = (translatedText: string, sourceText = '') => {
+    const protectedStripped = stripProtectedTerms(stripPreservedUiLabels(translatedText)).trim();
+    if (!protectedStripped) return '';
+    const sourceUiLabels = getSourceUiLabelCandidates(sourceText);
+    return stripUiLabels(protectedStripped, sourceUiLabels).trim();
+  };
+
   const buildDocxIssueDetails = (context: DocxContext) => {
     const pending: number[] = [];
     const details: DocxIssueDetail[] = [];
@@ -1265,7 +1274,7 @@ const App: React.FC = () => {
       const text = getDocxSegmentText(segment) || segment.original || '';
       const trimmed = text.trim();
       if (!trimmed) return;
-      const strippedForLanguage = stripProtectedTerms(stripPreservedUiLabels(trimmed)).trim();
+      const strippedForLanguage = getDocumentTargetLanguageCheckText(trimmed, segment.original || '');
       if (!strippedForLanguage) return;
       const hasSourceLanguage = !isLikelyTargetLanguage(strippedForLanguage, targetLang);
       const hasPlaceholderLeak =
@@ -1547,7 +1556,7 @@ const App: React.FC = () => {
       const original = String(segment.original || '').trim();
       const text = translated || original;
       if (!text) return;
-      const strippedForLanguage = stripProtectedTerms(stripPreservedUiLabels(text)).trim();
+      const strippedForLanguage = getDocumentTargetLanguageCheckText(text, original);
       if (!strippedForLanguage) return;
       if (isNeutralToken(strippedForLanguage) || isLikelyIdentifier(strippedForLanguage)) return;
       const hasEmptyTranslation = Boolean(original) && !translated;
@@ -1942,7 +1951,7 @@ const App: React.FC = () => {
         .filter(Boolean)
         .filter((segment) => {
           const text = getDocxSegmentText(segment) || segment.original;
-          const languageText = stripProtectedTerms(stripPreservedUiLabels(text));
+          const languageText = getDocumentTargetLanguageCheckText(text, segment.original || '');
           return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(languageText, targetLang);
         });
       if (targets.length === 0) {
@@ -1979,7 +1988,7 @@ const App: React.FC = () => {
           let translatedBatch: POCTRecord[];
           try {
             const payload = chunk.map((segment) => {
-              const rawText = getDocxSegmentText(segment) || segment.original;
+              const rawText = segment.original || getDocxSegmentText(segment);
               const { sanitized, placeholders } = guardTranslationTokens(rawText);
               if (placeholders) {
                 docxPlaceholderStore.current.set(segment.id, placeholders);
@@ -2001,7 +2010,7 @@ const App: React.FC = () => {
 
           chunk.forEach((segment, index) => {
             const translatedRecord = translatedBatch[index] || {};
-            const rawText = getDocxSegmentText(segment) || segment.original;
+            const rawText = segment.original || getDocxSegmentText(segment);
             const placeholders = docxPlaceholderStore.current.get(segment.id);
             const sanitizedResult =
               typeof translatedRecord.content === 'string'
@@ -2118,7 +2127,7 @@ const App: React.FC = () => {
         .filter(Boolean)
         .filter((segment) => {
           const text = getPdfSegmentText(segment) || segment.original;
-          const languageText = stripProtectedTerms(stripPreservedUiLabels(text));
+          const languageText = getDocumentTargetLanguageCheckText(text, segment.original || '');
           return PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text) || !isLikelyTargetLanguage(languageText, targetLang);
         });
       if (targets.length === 0) {
@@ -3756,7 +3765,14 @@ const App: React.FC = () => {
     rememberTranslationPairs,
     downloadTextFile
   });
-  const previewData = processedData.length > 0 ? processedData : data;
+  const previewSourceRows =
+    documentKind === 'docx' || documentKind === 'pdf'
+      ? qualityRowsForDisplay.sourceRows
+      : data;
+  const previewData =
+    documentKind === 'docx' || documentKind === 'pdf'
+      ? qualityRowsForDisplay.targetRows
+      : processedData.length > 0 ? processedData : data;
   const previewRowIndices = useMemo(() => {
     if (!previewData.length) return [];
     if (previewFocus) {
@@ -3770,15 +3786,15 @@ const App: React.FC = () => {
   const previewColumnKeys = useMemo(() => {
     if (!previewData.length) return [];
     const rowIndex = previewFocus?.rowIndex ?? previewRowIndices[0] ?? 0;
-    const mergedKeys = Object.keys({ ...(data[rowIndex] || {}), ...(previewData[rowIndex] || {}) });
+    const mergedKeys = Object.keys({ ...(previewSourceRows[rowIndex] || {}), ...(previewData[rowIndex] || {}) });
     if (!previewFocus) return mergedKeys.slice(0, 6);
     const base = mergedKeys.slice(0, 5);
     return Array.from(new Set([...base, previewFocus.columnKey])).slice(0, 6);
-  }, [previewData, previewFocus, previewRowIndices, data]);
+  }, [previewData, previewFocus, previewRowIndices, previewSourceRows]);
   const focusedPreviewCell = useMemo(() => {
     if (!previewFocus) return null;
     const translatedRecord = previewData[previewFocus.rowIndex] || {};
-    const originalRecord = data[previewFocus.rowIndex] || {};
+    const originalRecord = previewSourceRows[previewFocus.rowIndex] || {};
     const translatedValue = translatedRecord?.[previewFocus.columnKey];
     const originalValue = originalRecord?.[previewFocus.columnKey];
     return {
@@ -3789,7 +3805,7 @@ const App: React.FC = () => {
         originalValue === undefined || originalValue === null ? '' : String(originalValue),
       changed: hasChanged(originalValue, translatedValue)
     };
-  }, [previewFocus, previewData, data]);
+  }, [previewFocus, previewData, previewSourceRows]);
   const severityBadgeClass = (severity?: QualitySeverity) => {
     switch (severity) {
       case 'high':
@@ -4996,7 +5012,7 @@ const App: React.FC = () => {
                   <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-slate-800'}>
                     {previewRowIndices.map((actualIndex) => {
                       const record = previewData[actualIndex] || {};
-                      const originalRecord = data[actualIndex] || {};
+                      const originalRecord = previewSourceRows[actualIndex] || {};
                       const isFocusedRow = previewFocus?.rowIndex === actualIndex;
 
                       return (

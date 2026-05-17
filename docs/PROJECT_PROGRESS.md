@@ -1,5 +1,15 @@
 # 项目进度
 
+## v0.0.75
+
+- 修复短保护词边界：如 `EN`、`CE` 这类标准/认证缩写只在独立 token 时保护，避免误切 `Enter`、`access`、`process` 后污染俄语译文。
+- DOCX/PDF 质量检查与 retry 使用同一套 UI 标签剥离逻辑；截图按钮/图标名保留会降为低风险提示，普通说明书英文残留继续作为高风险项。
+- DOCX retry 改为使用原始 segment 重译，避免把已污染译文继续送回模型。
+- Quality Report Findings 增加 All/High/Medium/Low 筛选，方便先处理高风险项。
+- Finding 的人工修正按钮改为 `Save & Apply`：DOCX/PDF 修正会写回当前文档对象，并刷新质量检查；导出文件会包含该修正。
+- Live Data Preview 对 DOCX/PDF 改用 segment 数据，Jump 后能看到对应原文和译文上下文。
+- 版本号更新为 `v0.0.75`。
+
 ## v0.0.74
 
 - 清理 Translator 左侧 Quality Check 操作区：移除旧的 DOCX `Export Issue Report`，统一使用 Quality Report 面板的 `Export Report`、`Debug Package` 和 `Issue Draft`。

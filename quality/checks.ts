@@ -11,9 +11,11 @@ import type {
 } from './types';
 import { isLikelyTargetLanguage } from '../utils/language';
 import {
+  getSourceUiLabelCandidates,
   getPreservedUiLabels,
   isLikelyIdentifier,
   isProtectedTerm,
+  stripUiLabels,
   stripProtectedTerms,
   stripPreservedUiLabels
 } from '../utils/translationTokens';
@@ -141,22 +143,29 @@ export const hasGlueIssue = (value: string) => {
   );
 };
 
+const stripTargetLanguageNoise = (translatedText: string, originalText = '') => {
+  const sourceLabels = getSourceUiLabelCandidates(originalText);
+  return stripUiLabels(stripProtectedTerms(stripPreservedUiLabels(translatedText)), sourceLabels).trim();
+};
+
 const shouldCheckTargetLanguage = (unit: QualityUnit) => {
   if (typeof unit.translatedValue !== 'string') return false;
   const translatedText = unit.translatedText.trim();
   if (!translatedText) return false;
   if (shouldLockCell(unit.columnKey, unit.originalValue)) return false;
-  const unprotectedText = stripProtectedTerms(stripPreservedUiLabels(translatedText)).trim();
+  const unprotectedText = stripTargetLanguageNoise(translatedText, unit.originalText);
   if (!unprotectedText) return false;
   return !isLikelyIdentifier(unprotectedText);
 };
 
-const getTargetLanguageCheckText = (value: string) =>
-  stripProtectedTerms(stripPreservedUiLabels(value)).trim();
-
 const hasPreservedUiLabelAdvisory = (unit: QualityUnit, targetLang?: string) => {
   if (!targetLang || String(targetLang).toLowerCase().includes('english')) return false;
-  const labels = getPreservedUiLabels(unit.translatedText);
+  const labels = Array.from(new Set([
+    ...getPreservedUiLabels(unit.translatedText),
+    ...getSourceUiLabelCandidates(unit.originalText).filter((label) =>
+      new RegExp(`\\b${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(unit.translatedText)
+    )
+  ]));
   if (!labels.length) return false;
   return labels.some((label) => {
     if (!/[A-Za-z]/.test(label)) return false;
@@ -240,7 +249,7 @@ export const runQualityChecksOnUnits = (
       });
     }
 
-    const targetLanguageCheckText = getTargetLanguageCheckText(unit.translatedText);
+    const targetLanguageCheckText = stripTargetLanguageNoise(unit.translatedText, unit.originalText);
     if (
       options.targetLang &&
       shouldCheckTargetLanguage(unit) &&

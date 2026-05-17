@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import type { QualityReport, QualitySeverity } from '../utils/quality';
 import type { QualityFinding } from '../quality/report';
 import type { SampleReviewAIResult } from '../types';
@@ -126,8 +126,21 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   reviewRiskBadgeClass,
   reviewVerdictBadgeClass
 }) => {
+  const [findingSeverityFilter, setFindingSeverityFilter] = useState<'all' | QualitySeverity>('all');
   const residualCells = Math.max(currentIssueSummary.cells, qualityReport?.totals.nonTargetCells || 0);
   const residualRows = Math.max(currentIssueSummary.rows, qualityReport?.totals.nonTargetRows || 0);
+  const findingCounts = useMemo(() => {
+    const counts = { all: qualityFindings.length, high: 0, medium: 0, low: 0 };
+    qualityFindings.forEach((finding) => {
+      const severity = finding.severity || 'high';
+      counts[severity] += 1;
+    });
+    return counts;
+  }, [qualityFindings]);
+  const filteredQualityFindings = useMemo(() => {
+    if (findingSeverityFilter === 'all') return qualityFindings;
+    return qualityFindings.filter((finding) => (finding.severity || 'high') === findingSeverityFilter);
+  }, [findingSeverityFilter, qualityFindings]);
 
   return (
     <section className={`${panelClass} space-y-5`}>
@@ -237,7 +250,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             <div>
               <h4 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Loop</h4>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                本地问题样本库：{issueCaseCount} 条。点击每条 finding 的 Save Correction 可保存人工修正，后续可转术语、翻译记忆、QA 规则或回归测试。
+                本地问题样本库：{issueCaseCount} 条。点击每条 finding 的 Save & Apply 可保存人工修正；DOCX/PDF 会同步写回当前文档。
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -301,16 +314,36 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             </summary>
             <div className="space-y-3 mt-4">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Findings</h4>
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Findings</h4>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(['all', 'high', 'medium', 'low'] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setFindingSeverityFilter(filter)}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide transition-all ${
+                          findingSeverityFilter === filter
+                            ? 'bg-indigo-600 text-white'
+                            : isLight
+                              ? 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                              : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
+                        }`}
+                      >
+                        {filter} {findingCounts[filter]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <span className="text-[11px] text-slate-500">
-                  {qualityFindings.length} items
+                  {filteredQualityFindings.length} / {qualityFindings.length} items
                 </span>
               </div>
-              {qualityFindings.length === 0 ? (
+              {filteredQualityFindings.length === 0 ? (
                 <p className="text-xs text-slate-500">当前未发现需要定位的问题。</p>
               ) : (
                 <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
-                  {qualityFindings.slice(0, 40).map((finding) => (
+                  {filteredQualityFindings.slice(0, 40).map((finding) => (
                     <div key={finding.id} className={subCardClass}>
                       <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-1">
@@ -339,7 +372,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                             onClick={() => saveQualityFindingCorrection(finding)}
                             className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
                           >
-                            Save Correction
+                            Save & Apply
                           </button>
                           <button
                             onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}

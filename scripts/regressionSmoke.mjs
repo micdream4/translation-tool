@@ -375,7 +375,9 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(serializeTranslationIssueCasesJsonl([issueCase]), /Список контрольных образцов/);
   assert.match(issueCaseSource, /poct\.translation_issue_cases\.v1/);
   assert.match(appSource, /<QualityReportPanel/);
-  assert.match(qualityPanelSource, /Save Correction/);
+  assert.match(qualityPanelSource, /Save & Apply/);
+  assert.match(qualityPanelSource, /findingSeverityFilter/);
+  assert.match(qualityPanelSource, /\['all', 'high', 'medium', 'low'\]/);
   assert.match(qualityPanelSource, /Export Cases/);
   assert.match(qualityPanelSource, /Promote TM/);
   assert.match(qualityPanelSource, /Asset JSON/);
@@ -388,6 +390,9 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(appSource, /exportIssueDraft/);
   assert.match(appSource, /exportRegressionCases/);
   assert.match(qualityHookSource, /saveTranslationIssueCase/);
+  assert.match(qualityHookSource, /setDocxSegmentText/);
+  assert.match(qualityHookSource, /setPdfSegmentText/);
+  assert.match(qualityHookSource, /applyFindingCorrectionToDocument/);
   assert.match(qualityHookSource, /rememberTranslationPairs/);
   assert.match(qualityHookSource, /serializeDebugPackage/);
   assert.match(qualityHookSource, /serializeGitHubIssueMarkdown/);
@@ -631,7 +636,7 @@ test("quality core adapters preserve existing row-based quality checks", async (
   const { runQualityChecks, runQualityChecksOnUnits } = await bundleTsModule(
     path.join(repoRoot, "utils/quality.ts")
   );
-  const { isLikelyIdentifier } = await bundleTsModule(
+  const { guardTranslationTokens, isLikelyIdentifier, restoreTranslationTokens } = await bundleTsModule(
     path.join(repoRoot, "utils/translationTokens.ts")
   );
   const checksSource = fs.readFileSync(path.join(repoRoot, "quality/checks.ts"), "utf8");
@@ -677,6 +682,10 @@ test("quality core adapters preserve existing row-based quality checks", async (
   );
   assert.equal(isLikelyIdentifier("Model: EHVT-75"), false);
   assert.equal(isLikelyIdentifier("EHVT-75"), true);
+  const guardedEnglish = guardTranslationTokens("Enter access process CE EN");
+  assert.equal(guardedEnglish.sanitized.includes("Enter access process"), true);
+  assert.equal(guardedEnglish.sanitized.includes("__ID_"), true);
+  assert.equal(restoreTranslationTokens(guardedEnglish.sanitized, guardedEnglish.placeholders), "Enter access process CE EN");
   assert.deepEqual(
     runQualityChecksOnUnits(
       segmentsToQualityUnits(
@@ -872,6 +881,18 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(
     polishTranslation("", "Это не только повыceет эффективность, но и сниceет ошибки в спиlisку.", "Russian").trim(),
     "Это не только повышает эффективность, но и снижает ошибки в списку."
+  );
+  assert.equal(
+    polishTranslation("", "ВвеEnте URL-адрес, нажмите En Enter, чтобы полуceить доступ к проceсс.", "Russian").trim(),
+    "Введите URL-адрес, нажмите Enter, чтобы получить доступ к процесс."
+  );
+  assert.equal(
+    polishTranslation("", "Нажмите на значок Account Management, чтобы перейти. Запись entry прибора instrument.", "Russian").trim(),
+    "Нажмите на значок управление учетными записями, чтобы перейти. Запись прибора прибор."
+  );
+  assert.equal(
+    polishTranslation("", "Интерфейс питания DCce", "Russian").trim(),
+    "Интерфейс питания DC"
   );
   assert.equal(
     polishTranslation("", "Ehome Health Technology Co. , Ltd. . поддерживает принтер A 4 и https://ozellemed. com/.", "Russian").trim(),

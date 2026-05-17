@@ -11,6 +11,10 @@ const UUID_TEST =
   /^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/;
 const UI_LABEL_REGEX =
   /([『「“"'《【\[«])\s*([A-Za-z][A-Za-z0-9 _.\-\/]{0,60})\s*([』」”"'》】\]»])/g;
+const SOURCE_UI_LABEL_CONTEXT_REGEX =
+  /\b([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,4})\s+(?:button|icon|status|page|tab|menu)\b/g;
+const SOURCE_UI_BUTTON_CONTEXT_REGEX =
+  /\b(?:button|icon|status|page|tab|menu)\s+([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,4})\b/g;
 const DEFAULT_PROTECTED_TERMS = [
   "EHVT-75",
   "EHBT-75",
@@ -62,6 +66,15 @@ const normalizeProtectedText = (value: string) =>
 
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildProtectedTermPattern = (value: string) => {
+  const escaped = escapeRegex(value).replace(/\\ /g, "\\s+");
+  const trimmed = String(value || "").trim();
+  if (/^[A-Za-z0-9#%+_.\/-]{1,12}$/.test(trimmed)) {
+    return new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "gi");
+  }
+  return new RegExp(escaped, "gi");
+};
 
 const buildPlaceholderVariantPattern = (key: string) => {
   const match = key.match(/^__([A-Z]+)_(\d+)__$/i);
@@ -132,7 +145,7 @@ let effectiveProtectedTermsNorm = new Set(
 let effectiveProtectedTermPatterns = effectiveProtectedTerms
   .slice()
   .sort((a, b) => b.length - a.length)
-  .map((item) => new RegExp(escapeRegex(item), "gi"));
+  .map(buildProtectedTermPattern);
 
 const rebuildEffectiveTerms = () => {
   const merged = [...BASE_PROTECTED_TERMS, ...runtimeProtectedTerms];
@@ -145,7 +158,7 @@ const rebuildEffectiveTerms = () => {
   effectiveProtectedTermPatterns = effectiveProtectedTerms
     .slice()
     .sort((a, b) => b.length - a.length)
-    .map((item) => new RegExp(escapeRegex(item), "gi"));
+    .map(buildProtectedTermPattern);
 };
 
 export const setRuntimeProtectedTerms = (terms: string[]) => {
@@ -242,6 +255,29 @@ export const getPreservedUiLabels = (value: string) => {
     return "";
   });
   return labels;
+};
+
+export const getSourceUiLabelCandidates = (value: string) => {
+  const labels = new Set<string>();
+  getPreservedUiLabels(value).forEach((label) => labels.add(label));
+  String(value || '').replace(SOURCE_UI_LABEL_CONTEXT_REGEX, (_match, label) => {
+    if (label) labels.add(String(label).trim());
+    return '';
+  });
+  String(value || '').replace(SOURCE_UI_BUTTON_CONTEXT_REGEX, (_match, label) => {
+    if (label) labels.add(String(label).trim());
+    return '';
+  });
+  return Array.from(labels).filter((label) => label.length > 1);
+};
+
+export const stripUiLabels = (value: string, labels: string[]) => {
+  let output = String(value || '');
+  labels.forEach((label) => {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    output = output.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), ' ');
+  });
+  return output.replace(/\s+/g, ' ').trim();
 };
 
 export const stripPreservedUiLabels = (value: string) =>

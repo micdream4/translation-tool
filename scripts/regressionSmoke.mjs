@@ -720,9 +720,15 @@ test("quality core adapters preserve existing row-based quality checks", async (
   const { runQualityChecks, runQualityChecksOnUnits } = await bundleTsModule(
     path.join(repoRoot, "utils/quality.ts")
   );
-  const { guardTranslationTokens, isLikelyIdentifier, restoreTranslationTokens } = await bundleTsModule(
+  const {
+    guardTranslationTokens,
+    hasUntranslatedUiLabelResidue,
+    isLikelyIdentifier,
+    restoreTranslationTokens
+  } = await bundleTsModule(
     path.join(repoRoot, "utils/translationTokens.ts")
   );
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const checksSource = fs.readFileSync(path.join(repoRoot, "quality/checks.ts"), "utf8");
   const compatibilitySource = fs.readFileSync(path.join(repoRoot, "utils/quality.ts"), "utf8");
   assert.match(checksSource, /runQualityChecksOnUnits/);
@@ -782,6 +788,11 @@ test("quality core adapters preserve existing row-based quality checks", async (
     restoreTranslationTokens(guardedCodeUi.sanitized, guardedCodeUi.placeholders),
     "Open the 'QC' tab and connect [USB2.0]."
   );
+  assert.equal(hasUntranslatedUiLabelResidue("Haga clic en «Save».", "", "Spanish"), true);
+  assert.equal(hasUntranslatedUiLabelResidue("Haga clic en «Guardar».", "", "Spanish"), false);
+  assert.equal(hasUntranslatedUiLabelResidue("Abra la pestaña «QC».", "", "Spanish"), false);
+  assert.match(appSource, /hasUntranslatedUiLabelResidue\(trimmed, '', target\)/);
+  assert.match(appSource, /hasUntranslatedUiLabelResidue\(\s*trimmed,\s*segment\.original \|\| '',\s*targetLang/s);
   assert.deepEqual(
     runQualityChecksOnUnits(
       segmentsToQualityUnits(
@@ -832,6 +843,21 @@ test("quality core adapters preserve existing row-based quality checks", async (
   );
   assert.equal(russianNoiseReport.totals.nonTargetCells, 2);
   assert.equal(russianNoiseReport.totals.nonTargetRows, 2);
+  assert.deepEqual(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [
+          { original: "Haga clic en «Save».", translated: "Haga clic en «Save»." },
+          { original: "Abra la pestaña «QC».", translated: "Abra la pestaña «QC»." }
+        ],
+        "docx",
+        (segment) => segment.translated,
+        (segment) => segment.original
+      ),
+      { targetLang: "Spanish" }
+    ).issues.nonTargetLanguage.map((issue) => issue.value),
+    ["Haga clic en «Save»."]
+  );
   assert.equal(
     russianNoiseReport.issues.spacing.some((issue) => issue.original === "Website: https://ozellemed.com/"),
     false

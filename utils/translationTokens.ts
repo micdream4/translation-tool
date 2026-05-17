@@ -67,6 +67,43 @@ const normalizeProtectedText = (value: string) =>
 const UI_CODE_TOKEN_REGEX =
   /^(?:[A-Z]{1,10}\d[A-Z0-9#%+_.\/-]*|[A-Z0-9#%+_.\/-]*\d[A-Z0-9#%+_.\/-]*|[A-Z]{2,10}(?:\/[A-Z0-9#%]+)+|[A-Z]{1,10}[#%])$/;
 const UI_ALWAYS_PROTECTED_LABELS = new Set(["id", "uuid"]);
+const ENGLISH_UI_LABEL_WORDS = new Set([
+  "add",
+  "apply",
+  "back",
+  "cancel",
+  "close",
+  "confirm",
+  "delete",
+  "download",
+  "edit",
+  "exit",
+  "export",
+  "finish",
+  "help",
+  "home",
+  "import",
+  "information",
+  "login",
+  "logout",
+  "menu",
+  "next",
+  "ok",
+  "open",
+  "print",
+  "report",
+  "reset",
+  "return",
+  "save",
+  "search",
+  "select",
+  "setting",
+  "settings",
+  "start",
+  "stop",
+  "submit",
+  "upload"
+]);
 
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -253,6 +290,40 @@ export const isProtectedUiLabel = (value: string) => {
   if (isProtectedTerm(trimmed) || isLikelyIdentifier(trimmed)) return true;
   if (UI_ALWAYS_PROTECTED_LABELS.has(normalizeProtectedText(trimmed))) return true;
   return UI_CODE_TOKEN_REGEX.test(trimmed);
+};
+
+export const isLikelyEnglishUiLabelResidue = (value: string) => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || isProtectedUiLabel(trimmed)) return false;
+  if (!/[A-Za-z]/.test(trimmed)) return false;
+  const normalized = trimmed
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const tokens = normalized.split(/[^a-z]+/g).filter(Boolean);
+  if (!tokens.length || tokens.length > 5) return false;
+  return tokens.some((token) => ENGLISH_UI_LABEL_WORDS.has(token));
+};
+
+export const hasUntranslatedUiLabelResidue = (
+  translatedText: string,
+  sourceText = "",
+  targetLang = ""
+) => {
+  if (!targetLang || String(targetLang).toLowerCase().includes("english")) return false;
+  const translated = String(translatedText || "");
+  if (!translated.trim()) return false;
+
+  const sourceLabels = getSourceUiLabelCandidates(sourceText).filter(
+    (label) => /[A-Za-z]/.test(label) && !isProtectedUiLabel(label)
+  );
+  const hasSourceLabelResidue = sourceLabels.some((label) => {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`, "i").test(translated);
+  });
+  if (hasSourceLabelResidue) return true;
+
+  return getPreservedUiLabels(translated).some(isLikelyEnglishUiLabelResidue);
 };
 
 export const containsProtectedTerm = (value: string) => {

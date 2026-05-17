@@ -63,6 +63,8 @@ import {
   containsProtectedTerm,
   setRuntimeProtectedTerms,
   getSourceUiLabelCandidates,
+  hasUntranslatedUiLabelResidue,
+  isProtectedUiLabel,
   stripUiLabels,
   stripProtectedTerms,
   stripPreservedUiLabels
@@ -329,6 +331,7 @@ const cellNeedsTranslation = (
   if (!trimmed) return false;
   if (isNeutralToken(trimmed) || isLikelyIdentifier(trimmed)) return false;
   if (shouldLockCell(key, value)) return false;
+  if (hasUntranslatedUiLabelResidue(trimmed, '', targetLang)) return true;
   return !isLikelyTargetLanguage(trimmed, targetLang);
 };
 
@@ -340,6 +343,7 @@ const valueNeedsTranslation = (value: unknown, target: TargetLanguage) => {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
+  if (hasUntranslatedUiLabelResidue(trimmed, '', target)) return true;
   return !isLikelyTargetLanguage(trimmed, target);
 };
 
@@ -1263,7 +1267,7 @@ const App: React.FC = () => {
   const getDocumentTargetLanguageCheckText = (translatedText: string, sourceText = '') => {
     const protectedStripped = stripProtectedTerms(stripPreservedUiLabels(translatedText)).trim();
     if (!protectedStripped) return '';
-    const sourceUiLabels = getSourceUiLabelCandidates(sourceText);
+    const sourceUiLabels = getSourceUiLabelCandidates(sourceText).filter(isProtectedUiLabel);
     return stripUiLabels(protectedStripped, sourceUiLabels).trim();
   };
 
@@ -1277,11 +1281,16 @@ const App: React.FC = () => {
       const strippedForLanguage = getDocumentTargetLanguageCheckText(trimmed, segment.original || '');
       if (!strippedForLanguage) return;
       const hasSourceLanguage = !isLikelyTargetLanguage(strippedForLanguage, targetLang);
+      const hasUiLabelResidue = hasUntranslatedUiLabelResidue(
+        trimmed,
+        segment.original || '',
+        targetLang
+      );
       const hasPlaceholderLeak =
         PLACEHOLDER_REGEX.test(trimmed) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(trimmed);
       const hasGlueLeak =
         String(targetLang || '').toLowerCase().includes('english') && hasGlueIssue(trimmed);
-      if (!hasSourceLanguage && !hasPlaceholderLeak && !hasGlueLeak) return;
+      if (!hasSourceLanguage && !hasUiLabelResidue && !hasPlaceholderLeak && !hasGlueLeak) return;
       pending.push(idx);
       details.push({
         index: idx,
@@ -1290,7 +1299,7 @@ const App: React.FC = () => {
         text: trimmed,
         snippet: toDocxSnippet(trimmed),
         chineseChars: countChineseChars(strippedForLanguage),
-        lowPriority: hasPlaceholderLeak || hasGlueLeak ? false : isLowPriorityDocxIssue(trimmed),
+        lowPriority: hasPlaceholderLeak || hasGlueLeak || hasUiLabelResidue ? false : isLowPriorityDocxIssue(trimmed),
         issueType: hasPlaceholderLeak ? 'placeholder' : hasGlueLeak ? 'glue' : 'source'
       });
     });
@@ -1561,11 +1570,12 @@ const App: React.FC = () => {
       if (isNeutralToken(strippedForLanguage) || isLikelyIdentifier(strippedForLanguage)) return;
       const hasEmptyTranslation = Boolean(original) && !translated;
       const hasSourceLanguage = hasEmptyTranslation || !isLikelyTargetLanguage(strippedForLanguage, targetLang);
+      const hasUiLabelResidue = hasUntranslatedUiLabelResidue(text, original, targetLang);
       const hasPlaceholderLeak =
         PLACEHOLDER_REGEX.test(text) || DOCX_PLACEHOLDER_VARIANT_REGEX.test(text);
       const hasGlueLeak =
         String(targetLang || '').toLowerCase().includes('english') && hasGlueIssue(text);
-      if (!hasSourceLanguage && !hasPlaceholderLeak && !hasGlueLeak) return;
+      if (!hasSourceLanguage && !hasUiLabelResidue && !hasPlaceholderLeak && !hasGlueLeak) return;
       pending.push(idx);
       details.push({
         index: idx,
@@ -1574,7 +1584,7 @@ const App: React.FC = () => {
         text,
         snippet: toDocxSnippet(text),
         chineseChars: countChineseChars(strippedForLanguage),
-        lowPriority: hasPlaceholderLeak || hasGlueLeak || hasEmptyTranslation
+        lowPriority: hasPlaceholderLeak || hasGlueLeak || hasEmptyTranslation || hasUiLabelResidue
           ? false
           : isLowPriorityDocxIssue(text),
         issueType: hasPlaceholderLeak ? 'placeholder' : hasGlueLeak ? 'glue' : 'source'

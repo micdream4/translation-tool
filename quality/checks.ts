@@ -12,6 +12,7 @@ import type {
 import { isLikelyTargetLanguage } from '../utils/language';
 import {
   getSourceUiLabelCandidates,
+  hasUntranslatedUiLabelResidue,
   isLikelyIdentifier,
   isProtectedUiLabel,
   stripUiLabels,
@@ -161,19 +162,6 @@ const shouldCheckTargetLanguage = (unit: QualityUnit) => {
   return !isLikelyIdentifier(unprotectedText);
 };
 
-const hasUntranslatedUiLabelResidue = (unit: QualityUnit, targetLang?: string) => {
-  if (!targetLang || String(targetLang).toLowerCase().includes('english')) return false;
-  const labels = getSourceUiLabelCandidates(unit.originalText).filter((label) => {
-    if (!/[A-Za-z]/.test(label)) return false;
-    return !isProtectedUiLabel(label);
-  });
-  if (!labels.length) return false;
-  return labels.some((label) => {
-    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`\\b${escaped}\\b`, 'i').test(unit.translatedText);
-  });
-};
-
 export const runQualityChecksOnUnits = (
   input: QualityCheckInput,
   options: QualityCheckOptions = {}
@@ -250,7 +238,11 @@ export const runQualityChecksOnUnits = (
     }
 
     const targetLanguageCheckText = stripTargetLanguageNoise(unit.translatedText, unit.originalText);
-    const hasUiLabelResidue = hasUntranslatedUiLabelResidue(unit, options.targetLang);
+    const hasUiLabelResidue = hasUntranslatedUiLabelResidue(
+      unit.translatedText,
+      unit.originalText,
+      options.targetLang
+    );
     if (
       options.targetLang &&
       shouldCheckTargetLanguage(unit) &&

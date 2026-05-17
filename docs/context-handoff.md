@@ -108,10 +108,10 @@ Commit: 057364a
 50. Finding 人工修正按钮已改为 `Save & Apply`：DOCX/PDF 会把修正写回当前文档对象并刷新质量检查；之后下载的文件会包含该修正。Excel 目前仍只保存问题样本，直接写回表格尚未接入。
 51. Live Data Preview 对 DOCX/PDF 已改用 segment 数据；点击 `Jump` 后会聚焦对应 segment 的原文/译文上下文，而不是跳到空的 Excel 风格预览。
 52. v0.0.76 修复 DOCX 多 run 回写断词：原文 run 在单词内部切开时，译文写入首个 run 并清空后续 run，避免西语 `mult i funciona l`、`D e claración`、`Pr efacio`。
-53. UI 标签策略已确认：按钮、图标、页面名默认保持英文；如截图或设备 UI 后续本地化，再跟随截图语言调整。
-54. 翻译前已保护引号/括号中的 UI 标签和 `X button/icon/page/menu/status/tab` 这类上下文标签，减少按钮名被模型翻译。
+53. UI 标签策略已调整：按钮、图标、页面名等自然语言 UI label 默认翻译成目标语言，同时保留 `「」`、`【】` 等外层符号，方便后续替换截图时核对。
+54. 翻译前 token 保护只覆盖代码型 UI 标签、缩写、型号、ID、URL/单位等不可翻译锚点；`CBC`、`QC`、`USB2.0` 等保留，`Save`、`Home`、`Login` 这类普通按钮/页面名不再整体保护。
 55. 后处理已压缩章节编号、标准号和版本号空格，`1. 1`、`7. 2. 10`、`USB 2. 0` 会恢复为紧凑形式，减少 DOCX 目录更新后的割裂。
-56. Quality Report 已继续降噪：单位/指标代码/URL 不再作为非目标语言或 high spacing 噪声，低优先级 UI 标签提示从真实 residual 统计中拆出。
+56. Quality Report 已继续降噪：单位/指标代码/URL 不再作为非目标语言或 high spacing 噪声；自然语言 UI label 若仍残留源文，会按普通非目标语言问题处理。
 
 ## 真实回归基线
 
@@ -120,7 +120,7 @@ Commit: 057364a
 - Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；统一 Quality Core 统计正常，仍有大量 spacing 类提示，需要后续分级优化。
 - DOCX 俄语：旧译文仍有英文残留，真实回归 manifest 会持续跟踪非目标语言段落、常见残留词和自动编号是否还带 CJK 格式。
 - DOCX 俄语最新复测：`EN/CE` 子串污染明显减少；后续重点转为目录/标题编号空格、UI 标签策略和真实残留降噪。
-- DOCX 西语最新复测：发现标题/目录编号空格、字母级 run 回写断词和个别语义错译；v0.0.76 已修 run split、UI 标签保护和编号空格，语义错译后续通过 issue case / sample review 沉淀。
+- DOCX 西语最新复测：发现标题/目录编号空格、字母级 run 回写断词和个别语义错译；v0.0.76 已修 run split 和编号空格，v0.0.77 已将自然语言 UI 标签改为默认翻译，语义错译后续通过 issue case / sample review 沉淀。
 - PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但可能文本层为空。新导出的法语 PDF 已改为先写规范化文本层，并在下载日志暴露文本层覆盖率。
 
 ## 当前主要待办
@@ -129,7 +129,7 @@ Commit: 057364a
 
 优先做：
 
-- 用 v0.0.76 重新翻译 DOCX 俄语/西语样本，确认目录编号、run split 和 UI 标签保护是否已稳定。
+- 用 v0.0.77 重新翻译 DOCX 俄语/西语样本，确认目录编号、run split 和 UI 标签翻译策略是否已稳定。
 - 将 GitHub Issue 与本地 issue cases 打通。
 - 将 Issue Draft 进一步升级为可直接创建 GitHub Issue 的入口，或接入 GitHub CLI/API。
 - 从问题样本转翻译记忆。

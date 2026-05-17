@@ -12,9 +12,8 @@ import type {
 import { isLikelyTargetLanguage } from '../utils/language';
 import {
   getSourceUiLabelCandidates,
-  getPreservedUiLabels,
   isLikelyIdentifier,
-  isProtectedTerm,
+  isProtectedUiLabel,
   stripUiLabels,
   stripProtectedTerms,
   stripPreservedUiLabels
@@ -148,7 +147,7 @@ export const hasGlueIssue = (value: string) => {
 };
 
 const stripTargetLanguageNoise = (translatedText: string, originalText = '') => {
-  const sourceLabels = getSourceUiLabelCandidates(originalText);
+  const sourceLabels = getSourceUiLabelCandidates(originalText).filter(isProtectedUiLabel);
   return stripUiLabels(stripProtectedTerms(stripPreservedUiLabels(translatedText)), sourceLabels).trim();
 };
 
@@ -162,19 +161,16 @@ const shouldCheckTargetLanguage = (unit: QualityUnit) => {
   return !isLikelyIdentifier(unprotectedText);
 };
 
-const hasPreservedUiLabelAdvisory = (unit: QualityUnit, targetLang?: string) => {
+const hasUntranslatedUiLabelResidue = (unit: QualityUnit, targetLang?: string) => {
   if (!targetLang || String(targetLang).toLowerCase().includes('english')) return false;
-  const labels = Array.from(new Set([
-    ...getPreservedUiLabels(unit.translatedText),
-    ...getSourceUiLabelCandidates(unit.originalText).filter((label) =>
-      new RegExp(`\\b${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(unit.translatedText)
-    )
-  ]));
+  const labels = getSourceUiLabelCandidates(unit.originalText).filter((label) => {
+    if (!/[A-Za-z]/.test(label)) return false;
+    return !isProtectedUiLabel(label);
+  });
   if (!labels.length) return false;
   return labels.some((label) => {
-    if (!/[A-Za-z]/.test(label)) return false;
-    if (isProtectedTerm(label) || isLikelyIdentifier(label)) return false;
-    return String(unit.originalText || '').toLowerCase().includes(label.toLowerCase());
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(unit.translatedText);
   });
 };
 
@@ -254,10 +250,11 @@ export const runQualityChecksOnUnits = (
     }
 
     const targetLanguageCheckText = stripTargetLanguageNoise(unit.translatedText, unit.originalText);
+    const hasUiLabelResidue = hasUntranslatedUiLabelResidue(unit, options.targetLang);
     if (
       options.targetLang &&
       shouldCheckTargetLanguage(unit) &&
-      !isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang)
+      (!isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang) || hasUiLabelResidue)
     ) {
       totals.nonTargetCells += 1;
       nonTargetRows.add(unit.rowIndex);
@@ -268,20 +265,6 @@ export const runQualityChecksOnUnits = (
         value: unit.translatedText,
         original: unit.originalText,
         type: 'nonTargetLanguage'
-      });
-    } else if (
-      options.targetLang &&
-      hasPreservedUiLabelAdvisory(unit, options.targetLang) &&
-      (!targetLanguageCheckText || isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang))
-    ) {
-      issues.nonTargetLanguage.push({
-        rowIndex: unit.rowIndex,
-        columnKey: unit.columnKey,
-        locationLabel: unit.locationLabel,
-        value: unit.translatedText,
-        original: unit.originalText,
-        type: 'nonTargetLanguage',
-        severity: 'low'
       });
     }
 

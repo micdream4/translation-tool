@@ -517,7 +517,8 @@ Rules:
 - If content is mixed code + text, keep the code and translate the descriptive text.
 - Keep placeholders such as "__ID_0__" exactly unchanged.
 - Do not invent or introduce new placeholders; only keep those that exist in the input content.
-- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); do not replace them with straight quotes.
+- Translate natural-language UI labels, button names, menu names, and page names into {target_lang}; keep only code-like UI tokens and abbreviations unchanged.
+- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); translate the text inside them when it is natural language and do not replace wrappers with straight quotes.
 - Output must be valid JSON object: {{"records":[...]}} with same length and same keys.
 - No markdown, no explanation.
 

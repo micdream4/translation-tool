@@ -635,8 +635,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
     generatedAt: new Date("2026-01-01T00:00:00.000Z")
   });
   assert.match(advisoryReportText, /Non-target residual: 1 cells \/ 1 rows/);
-  assert.match(advisoryReportText, /Protected UI labels retained: 1 advisories \/ 1 rows/);
-  assert.match(advisoryReportText, /\[Protected UI label retained \/ LOW\] DOCX segment 2/);
+  assert.match(advisoryReportText, /\[Non-target language advisory \/ LOW\] DOCX segment 2/);
 
   const debugPackage = JSON.parse(
     serializeDebugPackage({
@@ -772,10 +771,16 @@ test("quality core adapters preserve existing row-based quality checks", async (
   assert.equal(guardedEnglish.sanitized.includes("__ID_"), true);
   assert.equal(restoreTranslationTokens(guardedEnglish.sanitized, guardedEnglish.placeholders), "Enter access process CE EN");
   const guardedUi = guardTranslationTokens("Click the 'Save' button and open the Clinic Information icon from [Home].");
-  assert.doesNotMatch(guardedUi.sanitized, /Save|Clinic Information|Home/);
+  assert.match(guardedUi.sanitized, /Save|Clinic Information|Home/);
+  const guardedCodeUi = guardTranslationTokens("Open the 'QC' tab and connect [USB2.0].");
+  assert.doesNotMatch(guardedCodeUi.sanitized, /QC|USB2\.0/);
   assert.equal(
     restoreTranslationTokens(guardedUi.sanitized, guardedUi.placeholders),
     "Click the 'Save' button and open the Clinic Information icon from [Home]."
+  );
+  assert.equal(
+    restoreTranslationTokens(guardedCodeUi.sanitized, guardedCodeUi.placeholders),
+    "Open the 'QC' tab and connect [USB2.0]."
   );
   assert.deepEqual(
     runQualityChecksOnUnits(
@@ -797,7 +802,7 @@ test("quality core adapters preserve existing row-based quality checks", async (
     ).issues.nonTargetLanguage.map((issue) => [issue.original, issue.severity || "blocking"]),
     [
       ["The device volume", "blocking"],
-      ["Click the 'Save' button.", "low"]
+      ["Click the 'Save' button.", "blocking"]
     ]
   );
   const russianNoiseReport = runQualityChecksOnUnits(
@@ -822,11 +827,11 @@ test("quality core adapters preserve existing row-based quality checks", async (
     russianNoiseReport.issues.nonTargetLanguage.map((issue) => [issue.original, issue.severity || "blocking"]),
     [
       ["Set 24-hour time display.", "blocking"],
-      ["Click the 'Save' button.", "low"]
+      ["Click the 'Save' button.", "blocking"]
     ]
   );
-  assert.equal(russianNoiseReport.totals.nonTargetCells, 1);
-  assert.equal(russianNoiseReport.totals.nonTargetRows, 1);
+  assert.equal(russianNoiseReport.totals.nonTargetCells, 2);
+  assert.equal(russianNoiseReport.totals.nonTargetRows, 2);
   assert.equal(
     russianNoiseReport.issues.spacing.some((issue) => issue.original === "Website: https://ozellemed.com/"),
     false

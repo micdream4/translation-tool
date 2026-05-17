@@ -198,7 +198,7 @@ export const buildQualityReportText = ({
   }> = [
     ...nonTargetDetails.map((item) => ({
       type: lowNonTargetKeys.has(getIssueKey(item.rowIndex, item.columnKey))
-        ? 'Protected UI label retained'
+        ? 'Non-target language advisory'
         : 'Non-target language',
       severity: lowNonTargetKeys.has(getIssueKey(item.rowIndex, item.columnKey)) ? 'low' as QualitySeverity : undefined,
       location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
@@ -208,7 +208,7 @@ export const buildQualityReportText = ({
     ...nonTargetIssueList
       .filter((item) => !legacyNonTargetKeys.has(`${item.rowIndex}:${item.columnKey}`))
       .map((item) => ({
-        type: item.severity === 'low' ? 'Protected UI label retained' : 'Non-target language',
+        type: item.severity === 'low' ? 'Non-target language advisory' : 'Non-target language',
         severity: item.severity,
         location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
         ...resolveFindingText(qualityRows, item.rowIndex, item.columnKey, item.original, item.value)
@@ -250,7 +250,6 @@ export const buildQualityReportText = ({
     `- Rows scanned: ${qualityReport.totals.rowsScanned}`,
     `- Cells scanned: ${qualityReport.totals.cellsScanned}`,
     `- Non-target residual: ${nonTargetCellCount} cells / ${nonTargetRows.size} rows`,
-    `- Protected UI labels retained: ${lowNonTargetIssueList.length} advisories / ${lowNonTargetRows.size} rows`,
     `- Chinese residue: ${qualityReport.totals.chineseCells} cells / ${qualityReport.totals.chineseRows} rows`,
     `- Empty translations: ${qualityReport.totals.emptyTranslations} cells / ${qualityReport.totals.emptyTranslationRows} rows`,
     `- Placeholders: ${qualityReport.totals.placeholderCells} cells / ${qualityReport.totals.placeholderRows} rows`,

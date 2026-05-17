@@ -64,6 +64,10 @@ const normalizeProtectedText = (value: string) =>
     .replace(/\s*,\s*/g, ",")
     .trim();
 
+const UI_CODE_TOKEN_REGEX =
+  /^(?:[A-Z]{1,10}\d[A-Z0-9#%+_.\/-]*|[A-Z0-9#%+_.\/-]*\d[A-Z0-9#%+_.\/-]*|[A-Z]{2,10}(?:\/[A-Z0-9#%]+)+|[A-Z]{1,10}[#%])$/;
+const UI_ALWAYS_PROTECTED_LABELS = new Set(["id", "uuid"]);
+
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -195,12 +199,14 @@ export const guardTranslationTokens = (
     });
   };
 
-  replaceTokens(UI_LABEL_REGEX);
+  sanitized = sanitized.replace(UI_LABEL_REGEX, (match, _open, label) => {
+    return isProtectedUiLabel(label) ? createPlaceholder(match) : match;
+  });
   sanitized = sanitized.replace(SOURCE_UI_LABEL_CONTEXT_REGEX, (match, label) =>
-    match.replace(label, createPlaceholder(label))
+    isProtectedUiLabel(label) ? match.replace(label, createPlaceholder(label)) : match
   );
   sanitized = sanitized.replace(SOURCE_UI_BUTTON_CONTEXT_REGEX, (match, label) =>
-    match.replace(label, createPlaceholder(label))
+    isProtectedUiLabel(label) ? match.replace(label, createPlaceholder(label)) : match
   );
   effectiveProtectedTermPatterns.forEach((regex) => {
     sanitized = sanitized.replace(regex, (match) => {
@@ -240,6 +246,14 @@ export const isLikelyIdentifier = (value: string) => {
 
 export const isProtectedTerm = (value: string) =>
   effectiveProtectedTermsNorm.has(normalizeProtectedText(value));
+
+export const isProtectedUiLabel = (value: string) => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return false;
+  if (isProtectedTerm(trimmed) || isLikelyIdentifier(trimmed)) return true;
+  if (UI_ALWAYS_PROTECTED_LABELS.has(normalizeProtectedText(trimmed))) return true;
+  return UI_CODE_TOKEN_REGEX.test(trimmed);
+};
 
 export const containsProtectedTerm = (value: string) => {
   const normalized = normalizeProtectedText(value);
@@ -289,4 +303,9 @@ export const stripUiLabels = (value: string, labels: string[]) => {
 };
 
 export const stripPreservedUiLabels = (value: string) =>
-  String(value || "").replace(UI_LABEL_REGEX, " ").replace(/\s+/g, " ").trim();
+  String(value || "")
+    .replace(UI_LABEL_REGEX, (match, _open, label) =>
+      isProtectedUiLabel(label) ? " " : match
+    )
+    .replace(/\s+/g, " ")
+    .trim();

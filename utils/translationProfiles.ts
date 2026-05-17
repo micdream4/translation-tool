@@ -69,8 +69,8 @@ ${localeInstruction}
 - If a cell mixes code + text, keep the code intact and only translate the descriptive part.
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark protected IDs, codes, or format placeholders.
 - Do not invent or introduce new placeholder tokens; only preserve placeholders already present in input.
-- Keep only true UI/code tokens unchanged (e.g., "Login", "admin", "START", button labels, product code literals). Do NOT keep full English prose unchanged when target is not English.
-- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); do not replace them with straight quotes.
+- Translate natural-language UI labels, button names, menu names, and page names into ${targetLabel}; keep only code-like UI tokens, account IDs, and product code literals unchanged.
+- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); translate the text inside them when it is natural language and do not replace wrappers with straight quotes.
 - Optimize spacing and punctuation to read naturally in ${targetLabel}.
 - Always return a valid JSON object: {"records":[...]} where records keeps the same length/keys. No explanations outside JSON.
 
@@ -96,9 +96,10 @@ ${glossaryRule}
 ${localeInstruction}
 - Translate any non-${targetLabel} natural-language text into ${targetLabel}.
 - If the input is already partly in ${targetLabel}, still translate residual English/common words into ${targetLabel}; do not leave words such as "List", "Building", "Street", "feces", "service", "reference", "establish", or "uncertain" in the output unless they are true product codes or protected terms.
-- Preserve warning severity, regulatory meaning, UI labels, model names, standards, numbers, units, IDs, and placeholder tokens exactly.
+- Preserve warning severity, regulatory meaning, model names, standards, numbers, units, IDs, and placeholder tokens exactly.
+- Translate natural-language UI labels, button names, menu names, and page names into ${targetLabel}; keep only code-like UI tokens and abbreviations unchanged.
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; do not invent or rename placeholders.
-- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); do not replace them with straight quotes.
+- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); translate the text inside them when it is natural language and do not replace wrappers with straight quotes.
 - Keep compact UI/table text compact; do not add explanations that are not present in the source.
 - Use natural IFU/operator-manual wording instead of word-by-word Chinese syntax.
 ${englishManualRule}
@@ -122,5 +123,5 @@ export const buildOpenRouterSystemPrompt = (
   profile: TranslationProfile = "spreadsheet"
 ) =>
   profile === "docx-manual"
-    ? "You translate IVD analyzer IFU/operator manual text while preserving structure, terminology, UI labels, placeholders, and segment boundaries."
+    ? "You translate IVD analyzer IFU/operator manual text while preserving structure, terminology, code-like tokens, placeholders, and segment boundaries."
     : "You translate medical POCT spreadsheets to the requested language while keeping structure unchanged.";

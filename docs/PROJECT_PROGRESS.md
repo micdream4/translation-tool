@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.81
+
+- 移除应用层邮箱白名单：后端不再读取 `ALLOWED_USER_EMAILS` / `ALLOWED_EMAILS`，只要求 Cloudflare Access 提供 `CF-Access-Authenticated-User-Email`。
+- `wrangler.toml` 删除 `ALLOWED_USER_EMAILS`，以后新增访问邮箱只需要在 Cloudflare Zero Trust Access Policy 中维护，不需要改代码或重新部署。
+- `/api/me` 返回 `accessControlledBy: "cloudflare-zero-trust"`，避免前端显示 blocked 的原因被应用白名单误导。
+- README、Cloudflare 部署文档、架构计划和交接文档同步更新。
+- 版本号更新为 `v0.0.81`。
+
 ## v0.0.80
 
 - 收口 DOCX/PDF 问题来源：`buildDocxIssueDetails` 和 `buildPdfIssueDetails` 改为从 Quality Core 的 `runQualityChecksOnUnits` 结果映射，避免 Quality Check、审计和 Retry Missing Segments 使用不同判断。

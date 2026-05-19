@@ -24,7 +24,6 @@ Required:
 
 Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[vars]`, so it remains readable and editable in git:
 - `VITE_TRANSLATION_MODE=proxy`
-- `ALLOWED_USER_EMAILS=...`
 - `OPENROUTER_MODELS=...`
 - `REQUIRE_CF_ACCESS_EMAIL=true`
 
@@ -38,7 +37,7 @@ Optional encrypted Secret:
 - 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。
 
 Public sharing (no Access) notes:
-- 不配置 `ALLOWED_USER_EMAILS` 且保持 `REQUIRE_CF_ACCESS_EMAIL` 为空或 `false`。
+- 保持 `REQUIRE_CF_ACCESS_EMAIL` 为空或 `false`。
 - 这样前端可直接调用 `/api/translate`，仅使用 `OPENROUTER_API_KEY`。
 
 ## 4. Protect Access (Recommended)
@@ -46,7 +45,7 @@ Use Cloudflare Zero Trust Access policy:
 - protect your site and/or `/api/*`
 - allow only your team emails
 
-The server reads `CF-Access-Authenticated-User-Email` and rejects non-whitelisted users.
+The server reads `CF-Access-Authenticated-User-Email` and requires a Cloudflare Access identity when `REQUIRE_CF_ACCESS_EMAIL=true`. Email allow/deny lists are managed only in the Cloudflare Zero Trust Access policy.
 The frontend reads `/api/me` to show the current user or blocked/guest state in the header. Use the same Access policy for the whole site if you want the UI itself hidden before login; use `/api/*` protection only if public viewing is acceptable but model calls must be gated.
 
 ## 5. Deploy

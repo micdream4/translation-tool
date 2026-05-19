@@ -67,12 +67,9 @@
    ```
    这样浏览器只调用 `/api/translate`，不直接携带模型 Key。
 
-3. 后端按邮箱分配 OpenRouter Key  
+3. 后端使用 Cloudflare Access 身份  
    在 Cloudflare Pages Functions 环境变量里配置：
    ```bash
-   # 邮箱白名单（逗号分隔）
-   ALLOWED_USER_EMAILS=user1@company.com,user2@company.com
-
    # 每个邮箱对应一把 Key（JSON）
    OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}
 
@@ -88,8 +85,8 @@
    # 可选：当你已配置 Cloudflare Access 时再开启
    REQUIRE_CF_ACCESS_EMAIL=true
    ```
-   当配置了 `ALLOWED_USER_EMAILS` 或开启 `REQUIRE_CF_ACCESS_EMAIL=true` 时，代码会读取
-   `CF-Access-Authenticated-User-Email` 并执行访问控制。
+   开启 `REQUIRE_CF_ACCESS_EMAIL=true` 后，代码会读取
+   `CF-Access-Authenticated-User-Email`；允许访问的邮箱只在 Cloudflare Zero Trust Access Policy 中维护。
    前端会调用 `/api/me` 显示当前访问状态；翻译、抽样审核和 Multi-AI Review API 使用同一套认证规则。
 
 4. 在 OpenRouter 给每把 Key 设置额度  

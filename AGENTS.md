@@ -125,9 +125,9 @@ Cloudflare Pages 非敏感配置在 `wrangler.toml` 的 `[vars]` 中维护，包
 
 - `VITE_TRANSLATION_MODE`
 - `REQUIRE_CF_ACCESS_EMAIL`
-- `ALLOWED_USER_EMAILS`
 - `OPENROUTER_MODELS`
 
+访问邮箱只在 Cloudflare Zero Trust Access Policy 中维护，应用层不再维护 `ALLOWED_USER_EMAILS` 白名单。
 `OPENROUTER_API_KEY` 继续作为 Cloudflare encrypted Secret，不写入仓库。
 
 ## 长对话迁移

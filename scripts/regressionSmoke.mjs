@@ -153,6 +153,9 @@ test("frontend upload copy stays aligned with supported formats", () => {
 test("frontend auth state is isolated in useAuth hook", () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const authHookSource = fs.readFileSync(path.join(repoRoot, "hooks/useAuth.ts"), "utf8");
+  const authFunctionSource = fs.readFileSync(path.join(repoRoot, "functions/_shared/auth.ts"), "utf8");
+  const meFunctionSource = fs.readFileSync(path.join(repoRoot, "functions/api/me.ts"), "utf8");
+  const wranglerSource = fs.readFileSync(path.join(repoRoot, "wrangler.toml"), "utf8");
   assert.match(appSource, /import \{ useAuth \} from '\.\/hooks\/useAuth'/);
   assert.match(appSource, /const authState = useAuth\(\)/);
   assert.doesNotMatch(appSource, /fetch\('\/api\/me'/);
@@ -160,6 +163,12 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(authHookSource, /status: 'authenticated'/);
   assert.match(authHookSource, /status: 'blocked'/);
   assert.match(authHookSource, /status: 'anonymous'/);
+  assert.match(wranglerSource, /REQUIRE_CF_ACCESS_EMAIL = "true"/);
+  assert.doesNotMatch(wranglerSource, /ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
+  assert.match(meFunctionSource, /accessControlledBy: "cloudflare-zero-trust"/);
+  assert.doesNotMatch(meFunctionSource, /whitelistEnabled|allowedEmails/);
+  assert.doesNotMatch(authFunctionSource, /parseAllowedEmails|ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
+  assert.doesNotMatch(authFunctionSource, /Forbidden: user not in whitelist/);
 });
 
 test("GitHub issue template captures debug packages with available labels", () => {

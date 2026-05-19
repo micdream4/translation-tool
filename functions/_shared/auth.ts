@@ -5,7 +5,6 @@ export type FunctionEnv = Record<string, unknown>;
 export interface AuthContext {
   accessEmail: string;
   userEmail: string;
-  allowedEmails: Set<string>;
   allowLocalWithoutAccess: boolean;
   requireAccessEmail: boolean;
   isLocalBypass: boolean;
@@ -24,14 +23,6 @@ export const jsonResponse = (data: unknown, status = 200) =>
   });
 
 export const normalizeEmail = (value: unknown) => String(value || "").trim().toLowerCase();
-
-export const parseAllowedEmails = (raw: unknown) =>
-  new Set(
-    String(raw || "")
-      .split(/[,\n;]+/)
-      .map((item) => normalizeEmail(item))
-      .filter(Boolean)
-  );
 
 export const parseUserKeyMap = (raw: unknown) => {
   if (!raw) return {} as Record<string, string>;
@@ -72,12 +63,10 @@ export const getAuthContext = (request: Request, env: FunctionEnv): AuthContext 
   const accessEmail = getAccessEmail(request);
   const localBypassEmail = allowLocalWithoutAccess ? getLocalBypassEmail(request, env) : "";
   const userEmail = accessEmail || localBypassEmail;
-  const allowedEmails = parseAllowedEmails(env.ALLOWED_USER_EMAILS || env.ALLOWED_EMAILS);
 
   return {
     accessEmail,
     userEmail,
-    allowedEmails,
     allowLocalWithoutAccess,
     requireAccessEmail,
     isLocalBypass: Boolean(!accessEmail && localBypassEmail)
@@ -90,17 +79,6 @@ export const enforceRequestAuth = (request: Request, env: FunctionEnv): AuthResu
     ? " Set LOCAL_DEV_EMAIL or send x-user-email for local testing."
     : "";
 
-  if (auth.allowedEmails.size > 0 && !auth.userEmail) {
-    return {
-      ok: false,
-      auth,
-      response: jsonResponse(
-        { error: `Unauthorized: missing user email for whitelist check.${localHint}` },
-        401
-      )
-    };
-  }
-
   if (!auth.userEmail && auth.requireAccessEmail) {
     return {
       ok: false,
@@ -109,14 +87,6 @@ export const enforceRequestAuth = (request: Request, env: FunctionEnv): AuthResu
         { error: `Unauthorized: missing Cloudflare Access user email.${localHint}` },
         401
       )
-    };
-  }
-
-  if (auth.allowedEmails.size > 0 && !auth.allowedEmails.has(auth.userEmail)) {
-    return {
-      ok: false,
-      auth,
-      response: jsonResponse({ error: "Forbidden: user not in whitelist." }, 403)
     };
   }
 

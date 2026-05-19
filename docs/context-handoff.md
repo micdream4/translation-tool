@@ -56,11 +56,11 @@ Commit: 057364a
 2. 非敏感 Pages 配置已迁入 `wrangler.toml` 的 `[vars]`，包括：
    - `VITE_TRANSLATION_MODE=proxy`
    - `REQUIRE_CF_ACCESS_EMAIL=true`
-   - `ALLOWED_USER_EMAILS`
    - `OPENROUTER_MODELS`
-3. `OPENROUTER_API_KEY` 仍作为 Cloudflare encrypted Secret，不写入仓库。
-4. 新增 `/api/me`，前端 Header 显示登录/访客/阻止状态。
-5. 新增 `npm run test:real-docs`，用 `local-data` 中真实 Excel/DOCX/PDF 做 smoke。
+3. 访问邮箱只在 Cloudflare Zero Trust Access Policy 中维护；应用层不再读取 `ALLOWED_USER_EMAILS`。
+4. `OPENROUTER_API_KEY` 仍作为 Cloudflare encrypted Secret，不写入仓库。
+5. 新增 `/api/me`，前端 Header 显示登录/访客/阻止状态。
+6. 新增 `npm run test:real-docs`，用 `local-data` 中真实 Excel/DOCX/PDF 做 smoke。
 6. PDF 新导出对 Latin-1 可覆盖文本优先写真实文本层，不支持字符集回退 PNG 文本块。
 7. DOCX/PDF 已接入 Quality Report 表面层；Quality Check Core 已开始抽离统一类型和 row adapter。
 8. Quality Report 已加入 `Save Correction`，可将 finding 保存为本地 issue case，并可选择同步写入 Translation Memory。

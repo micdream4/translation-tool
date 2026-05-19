@@ -3,21 +3,18 @@ import { getAuthContext, jsonResponse } from "../_shared/auth";
 export const onRequestGet = async (context: any) => {
   const env = (context.env || {}) as Record<string, unknown>;
   const auth = getAuthContext(context.request, env);
-  const whitelistEnabled = auth.allowedEmails.size > 0;
-  const allowed = !whitelistEnabled || (Boolean(auth.userEmail) && auth.allowedEmails.has(auth.userEmail));
-  const authenticated = Boolean(auth.userEmail) && allowed;
+  const authenticated = Boolean(auth.userEmail);
 
-  if ((whitelistEnabled || auth.requireAccessEmail) && !authenticated) {
+  if (auth.requireAccessEmail && !authenticated) {
     return jsonResponse(
       {
         authenticated: false,
         email: auth.userEmail,
         accessEmail: auth.accessEmail,
-        whitelistEnabled,
         requireAccessEmail: auth.requireAccessEmail,
-        allowed
+        accessControlledBy: "cloudflare-zero-trust"
       },
-      auth.userEmail ? 403 : 401
+      401
     );
   }
 
@@ -25,9 +22,8 @@ export const onRequestGet = async (context: any) => {
     authenticated,
     email: auth.userEmail,
     accessEmail: auth.accessEmail,
-    whitelistEnabled,
     requireAccessEmail: auth.requireAccessEmail,
-    allowed,
+    accessControlledBy: "cloudflare-zero-trust",
     localBypass: auth.isLocalBypass
   });
 };

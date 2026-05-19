@@ -95,7 +95,7 @@
 
 - Cloudflare Zero Trust 负责登录和邮箱身份。
 - Pages Functions 读取 `CF-Access-Authenticated-User-Email`。
-- `ALLOWED_USER_EMAILS` 控制白名单。
+- 邮箱 allow/deny 只在 Cloudflare Zero Trust Access Policy 中维护。
 - `OPENROUTER_KEYS_BY_EMAIL` 支持按用户分配模型 Key 和预算。
 - `/api/me` 供前端显示当前用户状态。
 

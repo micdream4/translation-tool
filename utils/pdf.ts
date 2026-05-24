@@ -29,6 +29,7 @@ export interface PdfSegment {
   width: number;
   height: number;
   fontSize: number;
+  backgroundColor?: [number, number, number];
 }
 
 export interface PdfImage {
@@ -48,6 +49,7 @@ export interface PdfPageContext {
   segments: PdfSegment[];
   imageCount: number;
   images: PdfImage[];
+  backgroundImage?: PdfImage;
 }
 
 export interface PdfContext {
@@ -401,6 +403,65 @@ const cropCanvasToPng = async (
   return new Uint8Array(await blob.arrayBuffer());
 };
 
+const canvasToPng = async (source: HTMLCanvasElement) => {
+  const blob = await new Promise<Blob | null>((resolve) => source.toBlob(resolve, 'image/png'));
+  if (!blob) return null;
+  return new Uint8Array(await blob.arrayBuffer());
+};
+
+const sampleCanvasBackgroundColor = (
+  source: HTMLCanvasElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): [number, number, number] => {
+  const ctx = source.getContext('2d');
+  if (!ctx) return [255, 255, 255];
+  const samplePoints = [
+    [x + width * 0.5, y + height * 0.5],
+    [x + width * 0.08, y + height * 0.08],
+    [x + width * 0.92, y + height * 0.08],
+    [x + width * 0.08, y + height * 0.92],
+    [x + width * 0.92, y + height * 0.92]
+  ];
+  const samples = samplePoints.map(([sampleX, sampleY]) => {
+    const px = Math.max(0, Math.min(source.width - 1, Math.round(sampleX)));
+    const py = Math.max(0, Math.min(source.height - 1, Math.round(sampleY)));
+    const data = ctx.getImageData(px, py, 1, 1).data;
+    return [data[0], data[1], data[2]];
+  });
+  const channels = [0, 1, 2].map((channel) => {
+    const values = samples.map((sample) => sample[channel]).sort((a, b) => a - b);
+    return values[Math.floor(values.length / 2)] || 255;
+  });
+  return [channels[0], channels[1], channels[2]];
+};
+
+const attachSegmentBackgroundColors = (
+  segments: PdfSegment[],
+  renderedCanvas: HTMLCanvasElement,
+  renderedViewport: any,
+  pageViewport: any
+) => {
+  const scaleX = renderedViewport.width / Math.max(1, pageViewport.width);
+  const scaleY = renderedViewport.height / Math.max(1, pageViewport.height);
+  segments.forEach((segment) => {
+    const padding = Math.max(2, segment.fontSize * 0.2);
+    const x = Math.max(0, (segment.x - padding) * scaleX);
+    const y = Math.max(0, (segment.y - padding) * scaleY);
+    const width = Math.min(
+      renderedCanvas.width - x,
+      Math.max(1, (segment.width + padding * 2) * scaleX)
+    );
+    const height = Math.min(
+      renderedCanvas.height - y,
+      Math.max(1, (segment.height + padding * 2) * scaleY)
+    );
+    segment.backgroundColor = sampleCanvasBackgroundColor(renderedCanvas, x, y, width, height);
+  });
+};
+
 const extractPageImages = async (
   page: any,
   renderedCanvas: HTMLCanvasElement,
@@ -486,6 +547,24 @@ const renderPageForImageObjects = async (page: any) => {
   return { canvas, viewport };
 };
 
+const getPageBackgroundImage = async (
+  renderedCanvas: HTMLCanvasElement,
+  pageNumber: number,
+  pageViewport: any
+): Promise<PdfImage | null> => {
+  const png = await canvasToPng(renderedCanvas);
+  if (!png) return null;
+  return {
+    id: `pdf-page-${pageNumber}-background`,
+    pageNumber,
+    x: 0,
+    y: 0,
+    width: pageViewport.width,
+    height: pageViewport.height,
+    data: png
+  };
+};
+
 export async function parsePdfFile(file: File): Promise<PdfContext> {
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({ data }).promise;
@@ -501,10 +580,13 @@ export async function parsePdfFile(file: File): Promise<PdfContext> {
     const operatorList = await page.getOperatorList();
     const imageCount = operatorList.fnArray.filter((fn) => IMAGE_OPERATORS.has(fn)).length;
     totalImages += imageCount;
-    const rendered = imageCount > 0 ? await renderPageForImageObjects(page) : null;
+    const rendered = await renderPageForImageObjects(page);
     const pageImages = rendered
       ? await extractPageImages(page, rendered.canvas, rendered.viewport, operatorList, pageNumber)
       : [];
+    const backgroundImage = rendered
+      ? await getPageBackgroundImage(rendered.canvas, pageNumber, viewport)
+      : undefined;
     images.push(...pageImages);
 
     const positionedSegments = getPositionedPageSegments(
@@ -526,6 +608,9 @@ export async function parsePdfFile(file: File): Promise<PdfContext> {
             height: 18,
             fontSize: 11
           }));
+    if (rendered) {
+      attachSegmentBackgroundColors(pageSegments, rendered.canvas, rendered.viewport, viewport);
+    }
     pageSegments.forEach((segment) => segments.push(segment));
 
     pages.push({
@@ -534,7 +619,8 @@ export async function parsePdfFile(file: File): Promise<PdfContext> {
       height: viewport.height,
       segments: pageSegments,
       imageCount,
-      images: pageImages
+      images: pageImages,
+      backgroundImage: backgroundImage || undefined
     });
   }
 
@@ -657,6 +743,20 @@ const wrapCanvasText = (
   maxWidth: number
 ) => {
   const output: string[] = [];
+  const pushToken = (token: string, current: string) => {
+    let line = current;
+    Array.from(token).forEach((char) => {
+      const candidate = line ? `${line}${char}` : char;
+      if (ctx.measureText(candidate).width <= maxWidth || !line) {
+        line = candidate;
+        return;
+      }
+      output.push(line);
+      line = char;
+    });
+    return line;
+  };
+
   const paragraphs = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   paragraphs.forEach((paragraph) => {
     const words = paragraph.split(/\s+/).filter(Boolean);
@@ -664,11 +764,11 @@ const wrapCanvasText = (
     words.forEach((word) => {
       const candidate = current ? `${current} ${word}` : word;
       if (ctx.measureText(candidate).width <= maxWidth || !current) {
-        current = candidate;
+        current = ctx.measureText(candidate).width <= maxWidth ? candidate : pushToken(word, "");
         return;
       }
       output.push(current);
-      current = word;
+      current = ctx.measureText(word).width <= maxWidth ? word : pushToken(word, "");
     });
     if (current) output.push(current);
   });
@@ -721,7 +821,8 @@ const renderTextBlockToPng = async (
   text: string,
   widthPoints: number,
   fontSizePoints: number,
-  maxHeightPoints?: number
+  maxHeightPoints?: number,
+  backgroundColor: [number, number, number] = [255, 255, 255]
 ) => {
   const width = Math.max(24, Math.ceil(widthPoints * PDF_TEXT_CANVAS_SCALE));
   const requestedFontSize = Math.max(PDF_TEXT_MIN_FONT_SIZE, fontSizePoints) * PDF_TEXT_CANVAS_SCALE;
@@ -746,7 +847,7 @@ const renderTextBlockToPng = async (
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = `rgb(${backgroundColor[0]}, ${backgroundColor[1]}, ${backgroundColor[2]})`;
   ctx.fillRect(0, 0, width, height);
   ctx.font = `${fontSize}px Arial, Helvetica, sans-serif`;
   ctx.fillStyle = "#202430";
@@ -780,7 +881,8 @@ const drawSelectablePdfText = (
   y: number,
   maxWidth: number,
   maxHeight: number,
-  fontSizePoints: number
+  fontSizePoints: number,
+  backgroundColor: [number, number, number] = [255, 255, 255]
 ) => {
   const textLayerText = normalizePdfTextLayerText(text);
   if (!PDF_TEXT_LAYER_SAFE_REGEX.test(textLayerText)) return false;
@@ -806,7 +908,7 @@ const drawSelectablePdfText = (
   const maxLines = Math.max(1, Math.floor((maxHeight - verticalPadding * 2) / lineHeight));
   const visibleLines = lines.slice(0, maxLines);
   if (!visibleLines.length) return false;
-  output.setFillColor(255, 255, 255);
+  output.setFillColor(backgroundColor[0], backgroundColor[1], backgroundColor[2]);
   output.rect(x, y, maxWidth, maxHeight, "F");
   output.setTextColor(32, 36, 48);
   output.setFont("helvetica", "normal");
@@ -839,12 +941,16 @@ export async function exportPdfTranslationAsPdf(
       output.addPage([pageWidth, pageHeight], pageWidth > pageHeight ? "landscape" : "portrait");
     }
 
-    output.setFillColor(255, 255, 255);
-    output.rect(0, 0, pageWidth, pageHeight, "F");
-
-    for (const image of pageContext.images) {
-      const dataUrl = await bytesToPngDataUrl(image.data);
-      output.addImage(dataUrl, "PNG", image.x, image.y, image.width, image.height);
+    if (pageContext.backgroundImage) {
+      const dataUrl = await bytesToPngDataUrl(pageContext.backgroundImage.data);
+      output.addImage(dataUrl, "PNG", 0, 0, pageWidth, pageHeight);
+    } else {
+      output.setFillColor(255, 255, 255);
+      output.rect(0, 0, pageWidth, pageHeight, "F");
+      for (const image of pageContext.images) {
+        const dataUrl = await bytesToPngDataUrl(image.data);
+        output.addImage(dataUrl, "PNG", image.x, image.y, image.width, image.height);
+      }
     }
 
     for (const segment of pageContext.segments) {
@@ -852,15 +958,16 @@ export async function exportPdfTranslationAsPdf(
       if (!text) continue;
       const fontSize = Math.min(PDF_TEXT_MAX_FONT_SIZE, Math.max(PDF_TEXT_MIN_FONT_SIZE, segment.fontSize || 10));
       const maxWidth = Math.max(24, Math.min(pageWidth - segment.x - 8, segment.width || pageWidth - segment.x - 8));
-      const maxHeight = Math.max(fontSize * 1.15, segment.height ? segment.height * 1.08 : fontSize * 1.4);
+      const maxHeight = Math.max(fontSize * 1.4, segment.height ? segment.height * 1.25 : fontSize * 1.8);
       const x = Math.max(0, segment.x);
       const y = Math.max(0, segment.y);
       const width = Math.min(pageWidth - segment.x, maxWidth);
       const height = Math.min(pageHeight - segment.y, maxHeight);
-      if (drawSelectablePdfText(output, text, x, y, width, height, fontSize)) {
+      const backgroundColor = segment.backgroundColor || [255, 255, 255];
+      if (drawSelectablePdfText(output, text, x, y, width, height, fontSize, backgroundColor)) {
         continue;
       }
-      const textImage = await renderTextBlockToPng(text, maxWidth, fontSize, maxHeight);
+      const textImage = await renderTextBlockToPng(text, maxWidth, fontSize, maxHeight, backgroundColor);
       if (!textImage) continue;
       output.addImage(
         textImage.dataUrl,

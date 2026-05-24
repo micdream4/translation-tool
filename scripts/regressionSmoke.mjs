@@ -202,6 +202,10 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(pdfSource, /getPositionedPageSegments/);
   assert.match(pdfSource, /renderTextBlockToPng/);
   assert.match(pdfSource, /drawSelectablePdfText/);
+  assert.match(pdfSource, /backgroundImage/);
+  assert.match(pdfSource, /getPageBackgroundImage/);
+  assert.match(pdfSource, /attachSegmentBackgroundColors/);
+  assert.match(pdfSource, /pushToken/);
   assert.match(pdfTextLayerSource, /PDF_TEXT_LAYER_SAFE_REGEX/);
   assert.match(pdfTextLayerSource, /normalizePdfTextLayerText/);
   assert.match(pdfSource, /from '.\/pdfTextLayer'/);
@@ -1049,15 +1053,27 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   const languageSource = fs.readFileSync(path.join(repoRoot, "utils/language.ts"), "utf8");
   const profileSource = fs.readFileSync(path.join(repoRoot, "utils/translationProfiles.ts"), "utf8");
   const modelReviewSource = fs.readFileSync(path.join(repoRoot, "functions/api/model-review.ts"), "utf8");
-  const { TARGET_LANGUAGE_OPTIONS, STRING_RESOURCE_TARGET_LANGS, getTargetLanguageLabel, getTargetLocaleInstruction } =
+  const { TARGET_LANGUAGE_OPTIONS, STRING_RESOURCE_TARGET_LANGS, getTargetLanguageLabel, getTargetLocaleInstruction, isChineseTarget } =
     await transpileTsModule(path.join(repoRoot, "utils/targetLanguage.ts"));
+  const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "quality/checks.ts"));
 
   assert.ok(TARGET_LANGUAGE_OPTIONS.includes("Traditional Chinese (Taiwan)"));
   assert.ok(STRING_RESOURCE_TARGET_LANGS.includes("Traditional Chinese (Taiwan)"));
+  assert.equal(isChineseTarget("Chinese"), true);
+  assert.equal(isChineseTarget("Traditional Chinese (Taiwan)"), true);
+  assert.equal(isChineseTarget("French"), false);
   assert.equal(
     getTargetLanguageLabel("Traditional Chinese (Taiwan)"),
     "Traditional Chinese (Taiwan) / 繁體中文（台灣）"
   );
+  const chineseTargetReport = runQualityChecks(
+    [{ content: "Build an AI-native startup", empty: "This should be translated" }],
+    [{ content: "打造 AI 原生初创企业", empty: "" }],
+    { targetLang: "Chinese" }
+  );
+  assert.equal(chineseTargetReport.totals.chineseCells, 0);
+  assert.equal(chineseTargetReport.issues.chinese.length, 0);
+  assert.equal(chineseTargetReport.totals.emptyTranslations, 1);
   assert.match(getTargetLocaleInstruction("Traditional Chinese (Taiwan)"), /Taiwan/);
   assert.match(getTargetLocaleInstruction("Traditional Chinese (Taiwan)"), /品質/);
   assert.match(getTargetLocaleInstruction("Traditional Chinese (Taiwan)"), /Simplified Chinese/);

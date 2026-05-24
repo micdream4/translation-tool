@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.82
+
+- PDF 导出改为保守版式保真策略：解析时保存每页原始渲染背景，导出时先铺原页背景，再在原文本区域覆盖背景色并叠加译文，减少复杂 PDF 丢封面底色、logo、章节视觉层级和插图的问题。
+- 修复中文 PDF 译文横向溢出：Canvas 文本换行支持无空格的中文长句按字符拆行。
+- 修复英文源文翻中文的质量检查误报：目标语言为中文或繁体中文时，不再把中文译文统计为 `Chinese residue`。
+- 空白漏翻检查不再假设源文必须包含中文，英文源文翻中文或其他语言时也能检查空白目标段。
+- 建立本地 issue 包 `local-data/issues/2026-05-24-pdf-chinese-layout-and-quality-residue/`，记录真实 PDF 排版和质量检查边界问题。
+- 版本号更新为 `v0.0.82`。
+
 ## v0.0.81
 
 - 移除应用层邮箱白名单：后端不再读取 `ALLOWED_USER_EMAILS` / `ALLOWED_EMAILS`，只要求 Cloudflare Access 提供 `CF-Access-Authenticated-User-Email`。

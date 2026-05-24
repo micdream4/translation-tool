@@ -19,6 +19,7 @@ import {
   stripProtectedTerms,
   stripPreservedUiLabels
 } from '../utils/translationTokens';
+import { isChineseTarget } from '../utils/targetLanguage';
 
 export type {
   QualityCheckInput,
@@ -62,11 +63,11 @@ const shouldLockCell = (key: string, value: unknown) => {
   return isLikelyIdentifier(value);
 };
 
-const isTranslatableSourceCell = (value: unknown) => {
+const isTranslatableSourceCell = (key: string, value: unknown) => {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
-  if (!CHINESE_REGEX.test(trimmed)) return false;
+  if (shouldLockCell(key, value)) return false;
   return !isLikelyIdentifier(trimmed);
 };
 
@@ -205,7 +206,7 @@ export const runQualityChecksOnUnits = (
       });
     }
 
-    if (isTranslatableSourceCell(unit.originalValue)) {
+    if (isTranslatableSourceCell(unit.columnKey, unit.originalValue)) {
       const translatedText = unit.translatedText.trim();
       if (!translatedText) {
         totals.emptyTranslations += 1;
@@ -224,7 +225,7 @@ export const runQualityChecksOnUnits = (
     if (typeof unit.translatedValue !== 'string') return;
     totals.cellsScanned += 1;
 
-    if (CHINESE_REGEX.test(unit.translatedText)) {
+    if (!isChineseTarget(options.targetLang) && CHINESE_REGEX.test(unit.translatedText)) {
       totals.chineseCells += 1;
       chineseRows.add(unit.rowIndex);
       issues.chinese.push({

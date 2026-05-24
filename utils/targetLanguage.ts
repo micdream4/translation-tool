@@ -38,6 +38,10 @@ export const isTraditionalChineseTaiwanTarget = (targetLang?: TargetLanguage) =>
   String(targetLang || "").includes("臺灣") ||
   String(targetLang || "").includes("台灣");
 
+export const isChineseTarget = (targetLang?: TargetLanguage) =>
+  String(targetLang || "").toLowerCase() === "chinese" ||
+  isTraditionalChineseTaiwanTarget(targetLang);
+
 export const getTargetLocaleInstruction = (targetLang: TargetLanguage) => {
   if (!isTraditionalChineseTaiwanTarget(targetLang)) return "";
   return `- Target locale is Traditional Chinese for Taiwan. Use natural Taiwanese Traditional Chinese medical/technical wording, not Simplified Chinese converted character-by-character.
@@ -45,4 +49,3 @@ export const getTargetLocaleInstruction = (targetLang: TargetLanguage) => {
 - Use Traditional Chinese punctuation and phrasing. Avoid Mainland Simplified Chinese expressions such as 质量, 信息, 启用, 打印, 样本 when Taiwanese usage is more appropriate.
 - Preserve protected terms, model names, codes, units, placeholders, and English abbreviations exactly.`;
 };
-

@@ -6,9 +6,9 @@ import {
   Paragraph,
   TextRun
 } from 'docx';
-import { jsPDF } from 'jspdf';
+import { PDFDocument, rgb, StandardFonts, type PDFFont } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
 import {
-  canDrawSelectablePdfText,
   hasUsefulPdfTextLayer,
   normalizePdfTextLayerText,
   PDF_TEXT_LAYER_SAFE_REGEX
@@ -95,7 +95,6 @@ const PDF_TEXT_LINE_Y_TOLERANCE = 4;
 const PDF_TEXT_SAME_LINE_MAX_GAP_MULTIPLIER = 3.5;
 const PDF_BLOCK_X_TOLERANCE = 18;
 const PDF_BLOCK_GAP_MULTIPLIER = 1.45;
-const PDF_TEXT_CANVAS_SCALE = 2;
 const PDF_TEXT_MIN_FONT_SIZE = 4.5;
 const PDF_TEXT_MAX_FONT_SIZE = 18;
 
@@ -726,28 +725,39 @@ const sanitizePdfText = (value: string) =>
     .replace(/\u0000/g, "")
     .trim();
 
-const blobToDataUrl = (blob: Blob) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Failed to read blob."));
-    reader.readAsDataURL(blob);
-  });
+let pdfFontBytesPromise: Promise<ArrayBuffer> | null = null;
 
-const bytesToPngDataUrl = (data: Uint8Array) =>
-  blobToDataUrl(new Blob([data], { type: "image/png" }));
+const loadPdfMultilingualFontBytes = () => {
+  if (!pdfFontBytesPromise) {
+    pdfFontBytesPromise = fetch("/fonts/NotoSansHans-Regular.otf").then((response) => {
+      if (!response.ok) {
+        throw new Error(`PDF 字体加载失败：${response.status}`);
+      }
+      return response.arrayBuffer();
+    });
+  }
+  return pdfFontBytesPromise;
+};
 
-const wrapCanvasText = (
-  ctx: CanvasRenderingContext2D,
+const getStandardPdfTextLayerText = (text: string) => {
+  const textLayerText = normalizePdfTextLayerText(text);
+  if (!PDF_TEXT_LAYER_SAFE_REGEX.test(textLayerText)) return "";
+  if (!hasUsefulPdfTextLayer(text, textLayerText)) return "";
+  return textLayerText;
+};
+
+const wrapPdfText = (
+  font: PDFFont,
   text: string,
-  maxWidth: number
+  maxWidth: number,
+  fontSize: number
 ) => {
   const output: string[] = [];
   const pushToken = (token: string, current: string) => {
     let line = current;
     Array.from(token).forEach((char) => {
       const candidate = line ? `${line}${char}` : char;
-      if (ctx.measureText(candidate).width <= maxWidth || !line) {
+      if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth || !line) {
         line = candidate;
         return;
       }
@@ -763,159 +773,96 @@ const wrapCanvasText = (
     let current = "";
     words.forEach((word) => {
       const candidate = current ? `${current} ${word}` : word;
-      if (ctx.measureText(candidate).width <= maxWidth || !current) {
-        current = ctx.measureText(candidate).width <= maxWidth ? candidate : pushToken(word, "");
+      if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth || !current) {
+        current = font.widthOfTextAtSize(candidate, fontSize) <= maxWidth
+          ? candidate
+          : pushToken(word, "");
         return;
       }
       output.push(current);
-      current = ctx.measureText(word).width <= maxWidth ? word : pushToken(word, "");
+      current = font.widthOfTextAtSize(word, fontSize) <= maxWidth ? word : pushToken(word, "");
     });
     if (current) output.push(current);
   });
   return output.length ? output : [text];
 };
 
-const measureTextBlock = (
+const measurePdfTextBlock = (
+  font: PDFFont,
   text: string,
   width: number,
   fontSize: number,
   horizontalPadding: number,
   verticalPadding: number
 ) => {
-  const measureCanvas = document.createElement("canvas");
-  const measureCtx = measureCanvas.getContext("2d");
-  if (!measureCtx) return null;
-  measureCtx.font = `${fontSize}px Arial, Helvetica, sans-serif`;
-  const lines = wrapCanvasText(measureCtx, text, Math.max(8, width - horizontalPadding * 2));
+  const lines = wrapPdfText(font, text, Math.max(8, width - horizontalPadding * 2), fontSize);
   const lineHeight = fontSize * 1.18;
   const height = Math.max(
-    Math.ceil(lines.length * lineHeight + verticalPadding * 2),
-    Math.ceil(fontSize + verticalPadding * 2)
+    lines.length * lineHeight + verticalPadding * 2,
+    fontSize + verticalPadding * 2
   );
   return { lines, lineHeight, height };
 };
 
-const fitTextFontSize = (
-  text: string,
-  width: number,
-  requestedFontSize: number,
-  maxHeight: number | undefined,
-  horizontalPadding: number,
-  verticalPadding: number
-) => {
-  const minFontSize = PDF_TEXT_MIN_FONT_SIZE * PDF_TEXT_CANVAS_SCALE;
-  const maxFontSize = PDF_TEXT_MAX_FONT_SIZE * PDF_TEXT_CANVAS_SCALE;
-  let fontSize = Math.min(maxFontSize, Math.max(minFontSize, requestedFontSize));
-  let measured = measureTextBlock(text, width, fontSize, horizontalPadding, verticalPadding);
-  if (!maxHeight || !measured) return { fontSize, measured };
-  const targetHeight = Math.max(8, maxHeight * PDF_TEXT_CANVAS_SCALE);
-  while (fontSize > minFontSize && measured.height > targetHeight) {
-    fontSize = Math.max(minFontSize, fontSize - 0.5 * PDF_TEXT_CANVAS_SCALE);
-    measured = measureTextBlock(text, width, fontSize, horizontalPadding, verticalPadding);
-    if (!measured) break;
-  }
-  return { fontSize, measured };
-};
-
-const renderTextBlockToPng = async (
-  text: string,
-  widthPoints: number,
-  fontSizePoints: number,
-  maxHeightPoints?: number,
-  backgroundColor: [number, number, number] = [255, 255, 255]
-) => {
-  const width = Math.max(24, Math.ceil(widthPoints * PDF_TEXT_CANVAS_SCALE));
-  const requestedFontSize = Math.max(PDF_TEXT_MIN_FONT_SIZE, fontSizePoints) * PDF_TEXT_CANVAS_SCALE;
-  const horizontalPadding = 3 * PDF_TEXT_CANVAS_SCALE;
-  const verticalPadding = 2 * PDF_TEXT_CANVAS_SCALE;
-  const { fontSize, measured } = fitTextFontSize(
-    text,
-    width,
-    requestedFontSize,
-    maxHeightPoints,
-    horizontalPadding,
-    verticalPadding
-  );
-  if (!measured) return null;
-  const { lines, lineHeight } = measured;
-  const maxHeight = maxHeightPoints ? Math.ceil(maxHeightPoints * PDF_TEXT_CANVAS_SCALE) : 0;
-  const height = maxHeight
-    ? Math.max(Math.ceil(fontSize + verticalPadding * 2), Math.min(measured.height, maxHeight))
-    : measured.height;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.fillStyle = `rgb(${backgroundColor[0]}, ${backgroundColor[1]}, ${backgroundColor[2]})`;
-  ctx.fillRect(0, 0, width, height);
-  ctx.font = `${fontSize}px Arial, Helvetica, sans-serif`;
-  ctx.fillStyle = "#202430";
-  ctx.textBaseline = "top";
-  lines.forEach((line, index) => {
-    ctx.fillText(line, horizontalPadding, verticalPadding + index * lineHeight);
-  });
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!blob) return null;
-  return {
-    dataUrl: canvas.toDataURL("image/png"),
-    widthPoints: canvas.width / PDF_TEXT_CANVAS_SCALE,
-    heightPoints: canvas.height / PDF_TEXT_CANVAS_SCALE
-  };
-};
-
 export const getPdfTextLayerStats = (context: PdfContext) => {
   const textSegments = context.segments.filter((segment) => sanitizePdfText(getPdfSegmentText(segment)));
-  const selectableSegments = textSegments.filter((segment) => canDrawSelectablePdfText(getPdfSegmentText(segment)));
   return {
     totalSegments: textSegments.length,
-    selectableSegments: selectableSegments.length,
-    imageFallbackSegments: Math.max(0, textSegments.length - selectableSegments.length)
+    selectableSegments: textSegments.length,
+    imageFallbackSegments: 0
   };
 };
 
-const drawSelectablePdfText = (
-  output: jsPDF,
+const drawEmbeddedPdfText = (
+  page: ReturnType<PDFDocument['addPage']>,
   text: string,
   x: number,
-  y: number,
+  topY: number,
   maxWidth: number,
   maxHeight: number,
   fontSizePoints: number,
+  font: PDFFont,
+  pageHeight: number,
   backgroundColor: [number, number, number] = [255, 255, 255]
 ) => {
-  const textLayerText = normalizePdfTextLayerText(text);
-  if (!PDF_TEXT_LAYER_SAFE_REGEX.test(textLayerText)) return false;
-  if (!hasUsefulPdfTextLayer(text, textLayerText)) return false;
   const horizontalPadding = 3;
   const verticalPadding = 2;
   const availableWidth = Math.max(8, maxWidth - horizontalPadding * 2);
   let fontSize = Math.min(PDF_TEXT_MAX_FONT_SIZE, Math.max(PDF_TEXT_MIN_FONT_SIZE, fontSizePoints));
-  let lines: string[] = [];
-  let lineHeight = fontSize * 1.18;
 
-  output.setFont("helvetica", "normal");
+  let measured = measurePdfTextBlock(font, text, maxWidth, fontSize, horizontalPadding, verticalPadding);
   while (fontSize >= PDF_TEXT_MIN_FONT_SIZE) {
-    output.setFontSize(fontSize);
-    lines = output.splitTextToSize(textLayerText, availableWidth).map((line) => String(line || ""));
-    lineHeight = fontSize * 1.18;
-    if (lines.length * lineHeight + verticalPadding * 2 <= maxHeight || fontSize <= PDF_TEXT_MIN_FONT_SIZE) {
+    measured = measurePdfTextBlock(font, text, maxWidth, fontSize, horizontalPadding, verticalPadding);
+    if (measured.height <= maxHeight || fontSize <= PDF_TEXT_MIN_FONT_SIZE) {
       break;
     }
     fontSize = Math.max(PDF_TEXT_MIN_FONT_SIZE, fontSize - 0.5);
   }
 
+  const lines = measured.lines;
+  const lineHeight = measured.lineHeight;
   const maxLines = Math.max(1, Math.floor((maxHeight - verticalPadding * 2) / lineHeight));
   const visibleLines = lines.slice(0, maxLines);
   if (!visibleLines.length) return false;
-  output.setFillColor(backgroundColor[0], backgroundColor[1], backgroundColor[2]);
-  output.rect(x, y, maxWidth, maxHeight, "F");
-  output.setTextColor(32, 36, 48);
-  output.setFont("helvetica", "normal");
-  output.setFontSize(fontSize);
-  output.text(visibleLines, x + horizontalPadding, y + verticalPadding + fontSize * 0.85, {
-    lineHeightFactor: 1.18,
-    maxWidth: availableWidth
+
+  page.drawRectangle({
+    x,
+    y: pageHeight - topY - maxHeight,
+    width: maxWidth,
+    height: maxHeight,
+    color: rgb(backgroundColor[0] / 255, backgroundColor[1] / 255, backgroundColor[2] / 255)
+  });
+
+  visibleLines.forEach((line, index) => {
+    page.drawText(line, {
+      x: x + horizontalPadding,
+      y: pageHeight - topY - verticalPadding - fontSize - index * lineHeight,
+      size: fontSize,
+      font,
+      color: rgb(32 / 255, 36 / 255, 48 / 255),
+      maxWidth: availableWidth,
+      lineHeight
+    });
   });
   return true;
 };
@@ -924,64 +871,71 @@ export async function exportPdfTranslationAsPdf(
   context: PdfContext,
   filename: string
 ) {
-  let output: jsPDF | null = null;
+  const output = await PDFDocument.create();
+  output.registerFontkit(fontkit);
+  const latinFont = await output.embedFont(StandardFonts.Helvetica);
+  const multilingualFont = await output.embedFont(await loadPdfMultilingualFontBytes(), {
+    subset: true
+  });
 
   for (const pageContext of context.pages) {
     const pageWidth = pageContext.width;
     const pageHeight = pageContext.height;
-
-    if (!output) {
-      output = new jsPDF({
-        orientation: pageWidth > pageHeight ? "landscape" : "portrait",
-        unit: "pt",
-        format: [pageWidth, pageHeight],
-        compress: true
-      });
-    } else {
-      output.addPage([pageWidth, pageHeight], pageWidth > pageHeight ? "landscape" : "portrait");
-    }
+    const page = output.addPage([pageWidth, pageHeight]);
 
     if (pageContext.backgroundImage) {
-      const dataUrl = await bytesToPngDataUrl(pageContext.backgroundImage.data);
-      output.addImage(dataUrl, "PNG", 0, 0, pageWidth, pageHeight);
+      const background = await output.embedPng(pageContext.backgroundImage.data);
+      page.drawImage(background, { x: 0, y: 0, width: pageWidth, height: pageHeight });
     } else {
-      output.setFillColor(255, 255, 255);
-      output.rect(0, 0, pageWidth, pageHeight, "F");
+      page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: rgb(1, 1, 1) });
       for (const image of pageContext.images) {
-        const dataUrl = await bytesToPngDataUrl(image.data);
-        output.addImage(dataUrl, "PNG", image.x, image.y, image.width, image.height);
+        const png = await output.embedPng(image.data);
+        page.drawImage(png, {
+          x: image.x,
+          y: pageHeight - image.y - image.height,
+          width: image.width,
+          height: image.height
+        });
       }
     }
 
     for (const segment of pageContext.segments) {
       const text = sanitizePdfText(getPdfSegmentText(segment));
       if (!text) continue;
+      const standardText = getStandardPdfTextLayerText(text);
+      const textToDraw = standardText || text;
       const fontSize = Math.min(PDF_TEXT_MAX_FONT_SIZE, Math.max(PDF_TEXT_MIN_FONT_SIZE, segment.fontSize || 10));
       const maxWidth = Math.max(24, Math.min(pageWidth - segment.x - 8, segment.width || pageWidth - segment.x - 8));
       const maxHeight = Math.max(fontSize * 1.4, segment.height ? segment.height * 1.25 : fontSize * 1.8);
       const x = Math.max(0, segment.x);
-      const y = Math.max(0, segment.y);
+      const topY = Math.max(0, segment.y);
       const width = Math.min(pageWidth - segment.x, maxWidth);
       const height = Math.min(pageHeight - segment.y, maxHeight);
       const backgroundColor = segment.backgroundColor || [255, 255, 255];
-      if (drawSelectablePdfText(output, text, x, y, width, height, fontSize, backgroundColor)) {
-        continue;
-      }
-      const textImage = await renderTextBlockToPng(text, maxWidth, fontSize, maxHeight, backgroundColor);
-      if (!textImage) continue;
-      output.addImage(
-        textImage.dataUrl,
-        "PNG",
+      const font = standardText ? latinFont : multilingualFont;
+      drawEmbeddedPdfText(
+        page,
+        textToDraw,
         x,
-        y,
-        Math.min(pageWidth - segment.x, textImage.widthPoints),
-        Math.min(pageHeight - segment.y, textImage.heightPoints)
+        topY,
+        width,
+        height,
+        fontSize,
+        font,
+        pageHeight,
+        backgroundColor
       );
     }
   }
 
-  if (!output) {
-    throw new Error("PDF 导出失败：没有可渲染的页面。");
-  }
-  output.save(filename.endsWith(".pdf") ? filename : `${filename}.pdf`);
+  const bytes = await output.save();
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

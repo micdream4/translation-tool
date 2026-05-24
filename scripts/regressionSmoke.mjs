@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { PDFDocument, rgb } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
 import * as esbuild from "esbuild";
 import ts from "typescript";
 import * as XLSX from "xlsx";
@@ -195,13 +198,17 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(pdfSource, /exportPdfTranslationAsDocx/);
   assert.match(pdfSource, /exportPdfTranslationAsPdf/);
   assert.match(pdfSource, /Packer\.toBlob/);
-  assert.match(pdfSource, /jsPDF/);
+  assert.match(pdfSource, /PDFDocument\.create/);
+  assert.match(pdfSource, /registerFontkit/);
+  assert.match(pdfSource, /\/fonts\/NotoSansHans-Regular\.otf/);
+  assert.match(pdfSource, /embedFont\(await loadPdfMultilingualFontBytes/);
+  assert.doesNotMatch(pdfSource, /from 'jspdf'/);
   assert.match(appSource, /Download Translated PDF/);
   assert.match(appSource, /Download Review DOCX/);
   assert.match(pdfSource, /ImageRun/);
   assert.match(pdfSource, /getPositionedPageSegments/);
-  assert.match(pdfSource, /renderTextBlockToPng/);
-  assert.match(pdfSource, /drawSelectablePdfText/);
+  assert.match(pdfSource, /drawEmbeddedPdfText/);
+  assert.match(pdfSource, /getStandardPdfTextLayerText/);
   assert.match(pdfSource, /backgroundImage/);
   assert.match(pdfSource, /getPageBackgroundImage/);
   assert.match(pdfSource, /attachSegmentBackgroundColors/);
@@ -217,6 +224,21 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   );
   assert.equal(canDrawSelectablePdfText("L\u2019\u00E9chantillon est pr\u00EAt \u2013 2\u202F\u00B5l"), true);
   assert.equal(canDrawSelectablePdfText("Подготовка образца"), false);
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
+  const cjkFont = await pdfDoc.embedFont(
+    fs.readFileSync(path.join(repoRoot, "node_modules/@embedpdf/fonts-sc/fonts/NotoSansHans-Regular.otf")),
+    { subset: true }
+  );
+  const pdfPage = pdfDoc.addPage([500, 200]);
+  const cjkText = "打造 AI 原生初创企业 Русский текст";
+  pdfPage.drawText(cjkText, { x: 40, y: 120, size: 14, font: cjkFont, color: rgb(0, 0, 0) });
+  const pdfOut = path.join(os.tmpdir(), `poct-cjk-text-layer-${Date.now()}.pdf`);
+  fs.writeFileSync(pdfOut, await pdfDoc.save());
+  const extractedText = execFileSync("pdftotext", [pdfOut, "-"], { encoding: "utf8" });
+  fs.rmSync(pdfOut, { force: true });
+  assert.match(extractedText, /打造 AI 原生初创企业/);
+  assert.match(extractedText, /Русский текст/);
   assert.match(appSource, /PDF download blocked/);
   assert.match(pdfSource, /已回填 .* 个可提取图片/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);

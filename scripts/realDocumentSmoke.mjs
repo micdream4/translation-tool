@@ -64,7 +64,7 @@ const bundleTsModule = async (sourcePath) => {
       format: "esm",
       target: "node22",
       outfile: outputPath,
-      external: ["xlsx", "jszip", "docx", "pdfjs-dist", "jspdf"],
+      external: ["xlsx", "jszip", "docx", "pdfjs-dist", "pdf-lib", "@pdf-lib/fontkit"],
       logLevel: "silent"
     });
     return await import(`${pathToFileURL(outputPath).href}?t=${Date.now()}`);

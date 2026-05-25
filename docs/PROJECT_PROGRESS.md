@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.88
+
+- String Resource Translator 明确共用左侧 `Translation Model`：面板内只保留输出语言选择，并显示当前使用的全局模型/Auto 链路。
+- 左侧 `Translation Model` 在 String Resource 运行期间也会锁定，避免翻译中途切换模型导致日志与实际请求不一致。
+- Run Monitor 的 Model 卡片显示完整 Auto 链路或手工模型名，便于排查 String / Excel / DOCX / PDF 当前实际策略。
+- 回归测试固定 String Resource 继续复用全局模型选择，不新增第二套模型下拉。
+- 版本号更新为 `v0.0.88`。
+
 ## v0.0.87
 
 - 完成当前 OpenRouter 模型链实测：Gemini 3 Flash / Gemini 3.1 Pro / GPT-5.3 Chat 返回 403 Terms Of Service 拒绝，Qwen 3.6 Plus 两轮 60s 未返回，DeepSeek V4 Pro 两轮成功。

@@ -2404,6 +2404,7 @@ const App: React.FC = () => {
     addLog(
       `String Resource: 开始处理 ${entries.length} 行，输出 ${targetLangs.length} 个目标语言（${targetLangs.join(', ')}）。`
     );
+    addLog(`String Resource: 使用左侧 Translation Model - ${currentModelDisplayLabel}。`);
     if (payload.length > 0) {
       addLog(
         `String Resource: ${payload.length} 行送模型翻译，按 ${Math.ceil(
@@ -3738,6 +3739,16 @@ const App: React.FC = () => {
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? 'Auto'
       : OPENROUTER_MODEL_LABELS[translationModelPreference] || translationModelPreference;
+  const currentModelChainLabel =
+    translationModelPreference === AUTO_OPENROUTER_MODEL
+      ? usesDocumentQualityModels
+        ? formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)
+        : formatModelChainLabel(openRouterModels)
+      : currentModelLabel;
+  const currentModelDisplayLabel =
+    translationModelPreference === AUTO_OPENROUTER_MODEL
+      ? `Auto (${currentModelChainLabel})`
+      : currentModelLabel;
   const {
     qualityReport,
     setQualityReport,
@@ -4412,7 +4423,7 @@ const App: React.FC = () => {
                   className={fieldClass}
                   value={translationModelPreference}
                   onChange={(e) => setTranslationModelPreference(e.target.value)}
-                  disabled={isTranslating}
+                  disabled={isTranslating || isStringTranslating}
                 >
                   <option value={AUTO_OPENROUTER_MODEL}>
                     {usesDocumentQualityModels
@@ -4428,7 +4439,7 @@ const App: React.FC = () => {
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   {usesDocumentQualityModels
                     ? `${documentKind.toUpperCase()} Auto 顺序：${formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)}；手工选择时只使用当前模型。`
-                    : 'Auto 会按 Gemini → Qwen → DeepSeek 顺序自动切换；手工选择时只使用当前模型。'}
+                    : `Auto 会按 ${formatModelChainLabel(openRouterModels)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
                 </p>
               </div>
 
@@ -4737,7 +4748,7 @@ const App: React.FC = () => {
               </div>
               <div className={metricCardClass}>
                 <p className={`text-[11px] ${mutedTextClass}`}>Model</p>
-                <p className={`text-lg font-semibold mt-1 truncate ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{currentModelLabel}</p>
+                <p className={`text-lg font-semibold mt-1 truncate ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{currentModelDisplayLabel}</p>
              </div>
              </div>
              <LogConsole logs={logs} theme={theme} />
@@ -4822,6 +4833,9 @@ const App: React.FC = () => {
                 </select>
                 <p className="text-[11px] text-slate-500">
                   日期/时间格式模板（如 `M月d日E`、`yyyy年M月d日`）会按规则本地转换，不走模型。
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  使用左侧 Translation Model：{currentModelDisplayLabel}；这里只单独选择输出语言。
                 </p>
               </div>
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">

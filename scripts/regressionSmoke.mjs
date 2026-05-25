@@ -1384,7 +1384,11 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /String Resource[\s\S]*translationHub\.translateBatch\(\{[\s\S]*options: getTranslationOptions\(\)/);
   assert.match(appSource, /for \(const lang of targetLangs\)/);
   assert.doesNotMatch(appSource, /Promise\.allSettled\(targetLangs\.map/);
-  assert.match(appSource, /Auto \(Gemini → Qwen → DeepSeek\)/);
+  assert.match(appSource, /String Resource: 使用左侧 Translation Model/);
+  assert.match(appSource, /String Resource 共用此处选择/);
+  assert.match(appSource, /这里只单独选择输出语言/);
+  assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);
+  assert.match(appSource, /formatModelChainLabel\(openRouterModels\)/);
 });
 
 test("Proxy translation retries transient fetch failures before surfacing string resource errors", async () => {

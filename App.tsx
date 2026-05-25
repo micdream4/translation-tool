@@ -515,7 +515,9 @@ const App: React.FC = () => {
 
   const getTranslationOptions = () => {
     if (translationModelPreference === AUTO_OPENROUTER_MODEL) {
-      return undefined;
+      return {
+        openRouterModels
+      };
     }
     return {
       model: 'openrouter' as const,

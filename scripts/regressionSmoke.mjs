@@ -1246,6 +1246,52 @@ test("API translate function accepts proxy payload and normalizes OpenRouter rec
   });
 });
 
+test("Auto translation passes OpenRouter model chain through string and spreadsheet flows", () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  assert.match(appSource, /const getTranslationOptions = \(\) => \{/);
+  assert.match(appSource, /translationModelPreference === AUTO_OPENROUTER_MODEL[\s\S]*openRouterModels/);
+  assert.match(appSource, /String Resource[\s\S]*translationHub\.translateBatch\(\{[\s\S]*options: getTranslationOptions\(\)/);
+  assert.match(appSource, /Auto \(Gemini → Qwen → DeepSeek\)/);
+});
+
+test("OpenRouter service falls back across configured model list", async () => {
+  const { OpenRouterService } = await bundleTsModule(path.join(repoRoot, "services/openRouterService.ts"));
+  const originalKey = process.env.OPENROUTER_API_KEY;
+  const calls = [];
+
+  try {
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    await withMockedFetch(async (setFetch) => {
+      setFetch(async (_url, init) => {
+        const body = JSON.parse(String(init.body));
+        calls.push(body.model);
+        if (body.model === "blocked-model") {
+          return new Response(JSON.stringify({ error: { message: "blocked" } }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+        return openRouterResponse(JSON.stringify({ records: [{ content: "Amostra concluída" }] }));
+      });
+
+      const service = new OpenRouterService("unused-default");
+      const output = await service.translateBatch(
+        [{ content: "样本完成" }],
+        "Portuguese",
+        { models: ["blocked-model", "qwen/qwen3.6-plus"] }
+      );
+      assert.deepEqual(calls, ["blocked-model", "qwen/qwen3.6-plus"]);
+      assert.deepEqual(output, [{ content: "Amostra concluída" }]);
+    });
+  } finally {
+    if (originalKey === undefined) {
+      delete process.env.OPENROUTER_API_KEY;
+    } else {
+      process.env.OPENROUTER_API_KEY = originalKey;
+    }
+  }
+});
+
 test("API review-samples function parses anonymous review JSON without network", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/review-samples.ts"));
 

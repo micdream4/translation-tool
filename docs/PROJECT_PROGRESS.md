@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.84
+
+- 修复 String Resource Translator 在 Auto 模式下葡语/俄语单选失败的问题：普通翻译 Auto 现在会把 `openRouterModels` 传给 `TranslationHub`，本地 direct 路径不再只打默认第一个 OpenRouter 模型。
+- 保持 string 资源原有业务规则：仅检测并翻译中文内容，英文、代码、标签、占位符和型号仍按原逻辑保护或原样保留。
+- 回归测试覆盖 Auto 模式模型链传递，以及 OpenRouter 第一个模型 403 时继续 fallback 到后续模型。
+- 建立本地 issue 包 `local-data/issues/2026-05-25-string-resource-portuguese-russian-not-translating/`，记录真实请求验证和修复归因。
+- 版本号更新为 `v0.0.84`。
+
 ## v0.0.83
 
 - PDF 导出从 jsPDF 切换到 `pdf-lib + @pdf-lib/fontkit`，并嵌入 OFL 授权的 `NotoSansHans-Regular`，中文、繁中和俄文等非拉丁目标语言不再默认渲染成图片。

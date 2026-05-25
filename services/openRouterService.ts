@@ -9,6 +9,7 @@ import {
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "google/gemini-3-flash-preview";
+const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 
 const getEnvModel = (): string | undefined => {
   if (typeof import.meta !== "undefined") {
@@ -56,6 +57,43 @@ const getEnvKey = (): string => {
 const sanitizeResponse = (text: string) =>
   sanitizeModelJson(text.replace(/```json|```/gi, ""));
 
+const getEnvNumber = (key: string): number | undefined => {
+  const raw =
+    typeof import.meta !== "undefined"
+      ? (import.meta as any).env?.[key]
+      : typeof process !== "undefined"
+        ? (process as any).env?.[key]
+        : undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
+};
+
+const getOpenRouterTimeoutMs = () =>
+  Math.min(
+    55000,
+    Math.max(5000, Math.round(getEnvNumber("OPENROUTER_REQUEST_TIMEOUT_MS") || DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS))
+  );
+
+const fetchWithTimeout = async (
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  label: string
+) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 export class OpenRouterService {
   private readonly model: string;
   private readonly apiKey: string;
@@ -98,26 +136,36 @@ export class OpenRouterService {
     };
 
     const errors: string[] = [];
+    const requestTimeoutMs = getOpenRouterTimeoutMs();
     for (const model of models) {
       try {
-        const response = await fetch(API_URL, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model,
-            temperature: 0,
-            response_format: {
-              type: "json_object"
-            },
-            messages: [
-              {
-                role: "system",
-                content: buildOpenRouterSystemPrompt(profile)
+        const response = await fetchWithTimeout(
+          API_URL,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              model,
+              temperature: 0,
+              response_format: {
+                type: "json_object"
               },
-              { role: "user", content: prompt }
-            ]
-          })
-        });
+              provider: {
+                sort: "throughput",
+                allow_fallbacks: true
+              },
+              messages: [
+                {
+                  role: "system",
+                  content: buildOpenRouterSystemPrompt(profile)
+                },
+                { role: "user", content: prompt }
+              ]
+            })
+          },
+          requestTimeoutMs,
+          model
+        );
 
         if (!response.ok) {
           const errorText = await response.text();

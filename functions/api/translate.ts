@@ -10,9 +10,47 @@ import {
 import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 
 const sanitizeResponse = (text: string) =>
   sanitizeModelJson(text.replace(/```json|```/gi, ""));
+
+const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
+  const raw = Number(env.OPENROUTER_REQUEST_TIMEOUT_MS || env.VITE_OPENROUTER_REQUEST_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS;
+  return Math.min(55000, Math.max(5000, Math.round(raw)));
+};
+
+const buildOpenRouterProviderRouting = (env: Record<string, unknown>) => {
+  const sort = String(env.OPENROUTER_PROVIDER_SORT || "throughput").trim().toLowerCase();
+  if (!sort || sort === "none" || sort === "off") {
+    return { allow_fallbacks: true };
+  }
+  return {
+    sort,
+    allow_fallbacks: true
+  };
+};
+
+const fetchWithTimeout = async (
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  label: string
+) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+};
 
 const parseOpenRouterModels = (env: Record<string, unknown>) => {
   const rawList = String(
@@ -92,32 +130,40 @@ export const onRequestPost = async (context: any) => {
         "https://poct-translator.local";
       const prompt = buildOpenRouterPrompt(records, targetLang, profile);
       const errors: string[] = [];
+      const requestTimeoutMs = parseOpenRouterTimeoutMs(env);
+      const provider = buildOpenRouterProviderRouting(env);
 
       for (const model of models) {
         try {
-          const response = await fetch(OPENROUTER_API_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${openRouterKey}`,
-              "HTTP-Referer": referer,
-              "X-Title": String(env.OPENROUTER_APP_TITLE || "POCT Medical Translator")
-            },
-            body: JSON.stringify({
-              model,
-              temperature: 0,
-              response_format: {
-                type: "json_object"
+          const response = await fetchWithTimeout(
+            OPENROUTER_API_URL,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${openRouterKey}`,
+                "HTTP-Referer": referer,
+                "X-Title": String(env.OPENROUTER_APP_TITLE || "POCT Medical Translator")
               },
-              messages: [
-                {
-                  role: "system",
-                  content: buildOpenRouterSystemPrompt(profile)
+              body: JSON.stringify({
+                model,
+                temperature: 0,
+                response_format: {
+                  type: "json_object"
                 },
-                { role: "user", content: prompt }
-              ]
-            })
-          });
+                provider,
+                messages: [
+                  {
+                    role: "system",
+                    content: buildOpenRouterSystemPrompt(profile)
+                  },
+                  { role: "user", content: prompt }
+                ]
+              })
+            },
+            requestTimeoutMs,
+            model
+          );
 
           if (!response.ok) {
             const text = await response.text();

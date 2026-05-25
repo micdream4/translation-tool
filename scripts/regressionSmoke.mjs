@@ -1282,6 +1282,7 @@ test("API translate function accepts proxy payload and normalizes OpenRouter rec
     assert.deepEqual(payload.records, [{ id: "seg-1", content: "Translated IFU sentence." }]);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].model, "google/gemini-3-flash-preview");
+    assert.deepEqual(calls[0].provider, { sort: "throughput", allow_fallbacks: true });
     assert.match(calls[0].messages[0].content, /IFU|operator manual/i);
   });
 });
@@ -1327,6 +1328,52 @@ test("API translate auto model chain falls through when Gemini returns an error"
     assert.deepEqual(calls, ["google/gemini-3-flash-preview", "qwen/qwen3.6-plus"]);
     assert.equal(payload.model, "qwen/qwen3.6-plus");
     assert.deepEqual(payload.records, [{ id: "seg-1", content: "Fallback model translated sentence." }]);
+  });
+});
+
+test("API translate auto model chain falls through when a model request times out", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const calls = [];
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      calls.push(body.model);
+      if (body.model === "qwen/qwen3.6-plus") {
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            reject(init.signal.reason || new Error("aborted"));
+          });
+        });
+      }
+      return openRouterResponse(
+        JSON.stringify([
+          {
+            id: "seg-1",
+            content: "Timeout fallback translated sentence."
+          }
+        ])
+      );
+    });
+
+    const response = await onRequestPost(
+      functionContext(
+        {
+          records: [{ id: "seg-1", content: "中文说明" }],
+          targetLang: "English",
+          engine: "openrouter"
+        },
+        {
+          OPENROUTER_MODELS: "qwen/qwen3.6-plus,deepseek/deepseek-v4-pro",
+          OPENROUTER_REQUEST_TIMEOUT_MS: "5"
+        }
+      )
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls, ["qwen/qwen3.6-plus", "deepseek/deepseek-v4-pro"]);
+    assert.equal(payload.model, "deepseek/deepseek-v4-pro");
+    assert.deepEqual(payload.records, [{ id: "seg-1", content: "Timeout fallback translated sentence." }]);
   });
 });
 

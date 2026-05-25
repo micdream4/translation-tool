@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.87
+
+- 完成当前 OpenRouter 模型链实测：Gemini 3 Flash / Gemini 3.1 Pro / GPT-5.3 Chat 返回 403 Terms Of Service 拒绝，Qwen 3.6 Plus 两轮 60s 未返回，DeepSeek V4 Pro 两轮成功。
+- OpenRouter 后端请求增加单模型超时保护，默认 30s，超时会继续尝试模型链下一个模型，避免 Qwen 或某个 provider 卡住后前端只看到 `Failed to fetch`。
+- OpenRouter 请求体增加 provider routing：`provider.sort = "throughput"`、`allow_fallbacks = true`，优先选择高吞吐 provider，同时保留 provider 级 fallback。
+- 本地 direct OpenRouter service 同步超时与 provider routing 策略，避免本地和 Cloudflare 代理链路行为分叉。
+- 回归测试覆盖 provider routing 参数，以及模型请求超时后继续 fallback 到下一个模型。
+- 版本号更新为 `v0.0.87`。
+
 ## v0.0.86
 
 - 修复 String Resource Translator 多语言批量请求过度并发的问题：“全部语言”不再同时请求 9 个目标语言，改为按目标语言串行执行，避免 Cloudflare / OpenRouter / 浏览器连接层集中出现 `Failed to fetch`。

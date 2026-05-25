@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.86
+
+- 修复 String Resource Translator 多语言批量请求过度并发的问题：“全部语言”不再同时请求 9 个目标语言，改为按目标语言串行执行，避免 Cloudflare / OpenRouter / 浏览器连接层集中出现 `Failed to fetch`。
+- 代理翻译请求对浏览器级网络失败以及 408/429/502/503/504 增加短重试；最终失败时输出 `Proxy translate network error...`，比原生 `Failed to fetch` 更利于定位。
+- `TranslationHub` 将代理网络错误纳入可恢复批次错误，必要时会把批次继续拆小重试，减少单批瞬时失败导致整种语言失败。
+- 回归测试覆盖 String Resource 多语言串行处理、OpenRouter 模型链传递、代理请求 `Failed to fetch` 短重试。
+- 建立本地 issue 包 `local-data/issues/2026-05-25-string-resource-portuguese-failed-fetch/`，记录葡语单选和多语言批量失败现象。
+- 版本号更新为 `v0.0.86`。
+
 ## v0.0.85
 
 - 保持 Gemini 3 Flash 在默认 OpenRouter 模型链中的原顺序，不把 DeepSeek 提到第一位；新增后端回归，明确验证 Gemini 返回非 2xx 时会继续尝试下一个模型。

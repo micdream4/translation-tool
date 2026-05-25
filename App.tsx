@@ -2417,7 +2417,8 @@ const App: React.FC = () => {
 
     let completedLangCount = 0;
     const totalLangCount = targetLangs.length;
-    const results = await Promise.allSettled(targetLangs.map(async (lang) => {
+    const results: Array<PromiseSettledResult<string>> = [];
+    for (const lang of targetLangs) {
       addLog(`String Resource: ${lang} 开始处理...`);
       try {
         if (payload.length === 0) {
@@ -2425,7 +2426,8 @@ const App: React.FC = () => {
           setStringOutputs((prev) => ({ ...prev, [lang]: output }));
           completedLangCount += 1;
           addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
-          return output;
+          results.push({ status: 'fulfilled', value: output });
+          continue;
         }
         const translatedBatch = Array.from({ length: payload.length }, () => ({ content: '' }));
         const totalBatches = Math.ceil(payload.length / STRING_BATCH_SIZE);
@@ -2455,14 +2457,14 @@ const App: React.FC = () => {
         const output = buildOutput(translatedBatch, lang);
         completedLangCount += 1;
         addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
-        return output;
+        results.push({ status: 'fulfilled', value: output });
       } catch (error) {
         completedLangCount += 1;
         const reason = error instanceof Error ? error.message : String(error);
         addLog(`String Resource: ${lang} 失败（${completedLangCount}/${totalLangCount}）：${reason}`);
-        throw error;
+        results.push({ status: 'rejected', reason: error });
       }
-    }));
+    }
 
     const outputs: Record<string, string> = {};
     const failed: string[] = [];

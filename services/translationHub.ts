@@ -135,7 +135,11 @@ export class TranslationHub {
       message.includes("translation returned") ||
       message.includes("length mismatch") ||
       message.includes("invalid payload") ||
-      message.includes("invalid record data")
+      message.includes("invalid record data") ||
+      message.includes("proxy translate network error") ||
+      message.includes("failed to fetch") ||
+      message.includes("fetch failed") ||
+      message.includes("networkerror")
     );
   }
 

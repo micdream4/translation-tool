@@ -3,6 +3,18 @@ import type { TranslationProfile } from "../utils/translationProfiles";
 
 export type ProxyEngine = "auto" | "openrouter" | "deepseek" | "gemini";
 
+const PROXY_NETWORK_RETRIES = 2;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableProxyStatus = (status: number) =>
+  status === 408 || status === 429 || status === 502 || status === 503 || status === 504;
+
+const isNetworkFetchError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to fetch|networkerror|load failed|fetch failed/i.test(message);
+};
+
 const getEnvValue = (key: string): string | undefined => {
   if (typeof import.meta !== "undefined") {
     const metaEnv = (import.meta as any).env || {};
@@ -35,18 +47,53 @@ export class ProxyTranslationService {
       profile?: TranslationProfile;
     } = {}
   ): Promise<POCTRecord[]> {
-    const response = await fetch(this.endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        records,
-        targetLang,
-        engine,
-        model,
-        models: options.models,
-        profile: options.profile
-      })
+    const body = JSON.stringify({
+      records,
+      targetLang,
+      engine,
+      model,
+      models: options.models,
+      profile: options.profile
     });
+    let response: Response | null = null;
+    let lastNetworkError: unknown = null;
+
+    for (let attempt = 0; attempt <= PROXY_NETWORK_RETRIES; attempt += 1) {
+      try {
+        response = await fetch(this.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body
+        });
+
+        if (
+          response.ok ||
+          !isRetryableProxyStatus(response.status) ||
+          attempt >= PROXY_NETWORK_RETRIES
+        ) {
+          break;
+        }
+      } catch (error) {
+        if (!isNetworkFetchError(error) || attempt >= PROXY_NETWORK_RETRIES) {
+          throw new Error(
+            `Proxy translate network error after ${attempt + 1} attempt(s): ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+        lastNetworkError = error;
+      }
+
+      await wait(600 * (attempt + 1));
+    }
+
+    if (!response) {
+      throw new Error(
+        `Proxy translate network error after ${PROXY_NETWORK_RETRIES + 1} attempt(s): ${
+          lastNetworkError instanceof Error ? lastNetworkError.message : String(lastNetworkError)
+        }`
+      );
+    }
 
     if (!response.ok) {
       const text = await response.text();

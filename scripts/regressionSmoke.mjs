@@ -1335,7 +1335,50 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /const getTranslationOptions = \(\) => \{/);
   assert.match(appSource, /translationModelPreference === AUTO_OPENROUTER_MODEL[\s\S]*openRouterModels/);
   assert.match(appSource, /String Resource[\s\S]*translationHub\.translateBatch\(\{[\s\S]*options: getTranslationOptions\(\)/);
+  assert.match(appSource, /for \(const lang of targetLangs\)/);
+  assert.doesNotMatch(appSource, /Promise\.allSettled\(targetLangs\.map/);
   assert.match(appSource, /Auto \(Gemini → Qwen → DeepSeek\)/);
+});
+
+test("Proxy translation retries transient fetch failures before surfacing string resource errors", async () => {
+  const { ProxyTranslationService } = await bundleTsModule(path.join(repoRoot, "services/proxyService.ts"));
+  const calls = [];
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      calls.push(body.targetLang);
+      if (calls.length === 1) {
+        throw new TypeError("Failed to fetch");
+      }
+      return new Response(
+        JSON.stringify({
+          engine: "openrouter",
+          records: body.records.map((record) => ({
+            ...record,
+            content: `${record.content} traduzido`
+          }))
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    });
+
+    const service = new ProxyTranslationService("/api/translate");
+    const result = await service.translateBatch(
+      [{ content: "上传成功" }],
+      "Portuguese",
+      "openrouter",
+      undefined,
+      { models: ["google/gemini-3-flash-preview", "qwen/qwen3.6-plus"] }
+    );
+
+    assert.deepEqual(calls, ["Portuguese", "Portuguese"]);
+    assert.deepEqual(result, [{ content: "上传成功 traduzido" }]);
+    assert.equal(service.getLastEngine(), "openrouter");
+  });
 });
 
 test("OpenRouter service falls back across configured model list", async () => {

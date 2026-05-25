@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.0.85
+
+- 保持 Gemini 3 Flash 在默认 OpenRouter 模型链中的原顺序，不把 DeepSeek 提到第一位；新增后端回归，明确验证 Gemini 返回非 2xx 时会继续尝试下一个模型。
+- PDF 导出改为按需加载 `NotoSansHans-Regular`：拉丁语言文本层只使用标准字体，只有中文、繁中、俄文等需要多语言字体时才下载 8MB 字体文件。
+- `pdftotext` / Poppler 验证增加 Homebrew 路径探测，避免 Codex shell PATH 缺少 `/opt/homebrew` 时误报测试失败。
+- 建立本地 issue 包 `local-data/issues/2026-05-25-model-routing-gemini-flash-fallback-pdf-risk/`，记录模型 fallback 和 PDF 验证风险。
+- 版本号更新为 `v0.0.85`。
+
 ## v0.0.84
 
 - 修复 String Resource Translator 在 Auto 模式下葡语/俄语单选失败的问题：普通翻译 Auto 现在会把 `openRouterModels` 传给 `TranslationHub`，本地 direct 路径不再只打默认第一个 OpenRouter 模型。

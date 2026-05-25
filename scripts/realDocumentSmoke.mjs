@@ -19,6 +19,40 @@ const exists = (filePath) => fs.existsSync(filePath);
 
 const firstExisting = (candidates) => candidates.find((candidate) => candidate && exists(candidate)) || null;
 
+const collectExecutableCandidates = (command) => {
+  const pathCandidates = String(process.env.PATH || "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) => path.join(dir, command));
+  const homebrewCandidates = [
+    `/opt/homebrew/bin/${command}`,
+    `/usr/local/bin/${command}`,
+    `/usr/bin/${command}`
+  ];
+  try {
+    const popplerRoot = "/opt/homebrew/Cellar/poppler";
+    fs.readdirSync(popplerRoot)
+      .sort()
+      .reverse()
+      .forEach((version) => {
+        homebrewCandidates.push(path.join(popplerRoot, version, "bin", command));
+      });
+  } catch {
+    // Poppler may not be installed in every local runner.
+  }
+  return [...pathCandidates, ...homebrewCandidates];
+};
+
+const resolveExecutable = (command) =>
+  collectExecutableCandidates(command).find((candidate) => {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }) || command;
+
 const loadManifest = () => {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   if (manifest.schema !== "poct.real_document_regression.v1") {
@@ -118,7 +152,7 @@ const inspectDocxNumbering = async (filePath) => {
 };
 
 const commandText = (command, args) =>
-  execFileSync(command, args, {
+  execFileSync(resolveExecutable(command), args, {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]

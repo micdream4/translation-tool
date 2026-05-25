@@ -874,9 +874,15 @@ export async function exportPdfTranslationAsPdf(
   const output = await PDFDocument.create();
   output.registerFontkit(fontkit);
   const latinFont = await output.embedFont(StandardFonts.Helvetica);
-  const multilingualFont = await output.embedFont(await loadPdfMultilingualFontBytes(), {
-    subset: true
-  });
+  let multilingualFontPromise: Promise<PDFFont> | null = null;
+  const getMultilingualFont = () => {
+    if (!multilingualFontPromise) {
+      multilingualFontPromise = loadPdfMultilingualFontBytes().then((fontBytes) =>
+        output.embedFont(fontBytes, { subset: true })
+      );
+    }
+    return multilingualFontPromise;
+  };
 
   for (const pageContext of context.pages) {
     const pageWidth = pageContext.width;
@@ -912,7 +918,7 @@ export async function exportPdfTranslationAsPdf(
       const width = Math.min(pageWidth - segment.x, maxWidth);
       const height = Math.min(pageHeight - segment.y, maxHeight);
       const backgroundColor = segment.backgroundColor || [255, 255, 255];
-      const font = standardText ? latinFont : multilingualFont;
+      const font = standardText ? latinFont : await getMultilingualFont();
       drawEmbeddedPdfText(
         page,
         textToDraw,

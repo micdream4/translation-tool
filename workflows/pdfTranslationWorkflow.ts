@@ -2,6 +2,11 @@ import type { TranslationHub, TranslationRequest } from "../services/translation
 import type { POCTRecord, ProcessingState, TargetLanguage, WorkflowStageKey } from "../types";
 import { getPdfSegmentText, setPdfSegmentText, type PdfContext, type PdfSegment } from "../utils/pdf";
 import { polishTranslation } from "../utils/postprocess";
+import {
+  buildAdaptiveTextBatches,
+  formatElapsedSeconds,
+  sumBatchTextChars
+} from "../utils/translationBatching";
 import { guardTranslationTokens, restoreTranslationTokens } from "../utils/translationTokens";
 import type { TranslationMemoryPair } from "../utils/translationMemory";
 
@@ -20,6 +25,7 @@ export interface PdfTranslationWorkflowOptions {
   context: PdfContext;
   mode?: "fresh" | "resume";
   batchSize: number;
+  batchCharLimit?: number;
   targetLang: TargetLanguage;
   documentKind: string;
   fileName?: string;
@@ -30,6 +36,7 @@ export interface PdfTranslationWorkflowOptions {
   shouldTranslateText: (text: string) => boolean;
   dedupeLeadingRepeat: (source: string, translated: string) => string;
   getTranslationOptions: () => TranslationRequest["options"];
+  applyLatestModelCooldowns?: (contextLabel: string) => void;
   createTranslationMemoryStats: () => TranslationMemoryStats;
   lookupReusableTranslations: (sourceTexts: string[]) => Promise<Map<string, string>>;
   getTranslationMemoryKey: (sourceText: string) => string;
@@ -52,6 +59,7 @@ export const runPdfTranslationWorkflow = async ({
   context,
   mode = "fresh",
   batchSize,
+  batchCharLimit = 12000,
   targetLang,
   documentKind,
   fileName,
@@ -62,6 +70,7 @@ export const runPdfTranslationWorkflow = async ({
   shouldTranslateText,
   dedupeLeadingRepeat,
   getTranslationOptions,
+  applyLatestModelCooldowns,
   createTranslationMemoryStats,
   lookupReusableTranslations,
   getTranslationMemoryKey,
@@ -101,17 +110,27 @@ export const runPdfTranslationWorkflow = async ({
     const result = await runStage("translate", async () => {
       let completed = 0;
       let paused = false;
-      const totalBatches = Math.ceil(candidates.length / batchSize);
+      const batches = buildAdaptiveTextBatches({
+        items: candidates,
+        getText: (segment) => getPdfSegmentText(segment) || segment.original,
+        maxItems: batchSize,
+        maxChars: batchCharLimit
+      });
+      const totalBatches = batches.length;
 
-      for (let i = 0; i < candidates.length; i += batchSize) {
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
         if (pauseRequestedRef.current) {
           paused = true;
-          addLog(`PDF translation paused before batch ${Math.floor(i / batchSize) + 1}.`);
+          addLog(`PDF translation paused before batch ${batchIndex + 1}.`);
           break;
         }
-        const chunk = candidates.slice(i, i + batchSize);
-        const batchNum = Math.floor(i / batchSize) + 1;
-        addLog(`PDF Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段`);
+        const chunk = batches[batchIndex];
+        const batchNum = batchIndex + 1;
+        const chunkChars = sumBatchTextChars(
+          chunk,
+          (segment) => getPdfSegmentText(segment) || segment.original
+        );
+        addLog(`PDF Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段，约 ${chunkChars} 字符`);
         const memoryStats = createTranslationMemoryStats();
         const memoryHits = await lookupReusableTranslations(
           chunk.map((segment) => getPdfSegmentText(segment) || segment.original)
@@ -157,6 +176,7 @@ export const runPdfTranslationWorkflow = async ({
         });
 
         let translatedBatch: POCTRecord[] = [];
+        const batchStartedAt = Date.now();
         try {
           if (leaders.length > 0) {
             translatedBatch = await translationHub.translateBatch({
@@ -164,13 +184,23 @@ export const runPdfTranslationWorkflow = async ({
               targetLang,
               options: getTranslationOptions()
             });
-            addLog(`PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+            applyLatestModelCooldowns?.(`PDF Batch ${batchNum}`);
+            addLog(
+              `PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，用时 ${formatElapsedSeconds(
+                Date.now() - batchStartedAt
+              )}`
+            );
           } else {
             addLog(`PDF Batch ${batchNum}: 全部命中本地翻译记忆。`);
           }
         } catch (err) {
+          applyLatestModelCooldowns?.(`PDF Batch ${batchNum}`);
           const errMsg = err instanceof Error ? err.message : String(err);
-          addLog(`PDF Batch ${batchNum} 翻译失败：${errMsg}`);
+          addLog(
+            `PDF Batch ${batchNum} 翻译失败，用时 ${formatElapsedSeconds(
+              Date.now() - batchStartedAt
+            )}：${errMsg}`
+          );
           continue;
         }
 

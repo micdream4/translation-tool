@@ -18,6 +18,11 @@ import {
   type DocxSegment
 } from './utils/docx';
 import {
+  buildAdaptiveTextBatches,
+  formatElapsedSeconds,
+  sumBatchTextChars
+} from './utils/translationBatching';
+import {
   parsePdfFile,
   exportPdfTranslationAsDocx,
   exportPdfTranslationAsPdf,
@@ -119,6 +124,7 @@ import {
 // Batch size kept small for reliability with large column counts
 const BATCH_SIZE = 5;
 const DOCX_BATCH_SIZE = 20;
+const DOCX_BATCH_CHAR_LIMIT = 12000;
 const RETRY_BATCH_SIZE = 5;
 const STRING_BATCH_SIZE = 40;
 const SOURCE_LANG_REGEX = /[\u4e00-\u9fff]/;
@@ -461,6 +467,10 @@ const App: React.FC = () => {
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
   const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
+  const allOpenRouterModels = useMemo(
+    () => Array.from(new Set([...openRouterModels, ...DOCX_MANUAL_OPENROUTER_MODELS])),
+    [openRouterModels]
+  );
   const activeOpenRouterModels = useMemo(() => {
     const now = Date.now();
     openRouterModelCooldownsRef.current.forEach((cooldown, model) => {
@@ -474,14 +484,21 @@ const App: React.FC = () => {
     });
     return active.length > 0 ? active : openRouterModels;
   }, [openRouterModels, openRouterModelCooldownVersion]);
-  const skippedOpenRouterModels = useMemo(
-    () =>
-      openRouterModels.filter((model) =>
-        Boolean(openRouterModelCooldownsRef.current.get(model)?.until > Date.now())
-      ),
-    [openRouterModels, openRouterModelCooldownVersion]
-  );
+  const activeDocumentQualityOpenRouterModels = useMemo(() => {
+    const now = Date.now();
+    const active = DOCX_MANUAL_OPENROUTER_MODELS.filter((model) => {
+      const cooldown = openRouterModelCooldownsRef.current.get(model);
+      return !cooldown || cooldown.until <= now;
+    });
+    return active.length > 0 ? active : DOCX_MANUAL_OPENROUTER_MODELS;
+  }, [openRouterModelCooldownVersion]);
   const usesDocumentQualityModels = documentKind === 'docx' || documentKind === 'pdf';
+  const currentSkippedOpenRouterModels = useMemo(() => {
+    const models = usesDocumentQualityModels ? DOCX_MANUAL_OPENROUTER_MODELS : openRouterModels;
+    return models.filter((model) =>
+      Boolean(openRouterModelCooldownsRef.current.get(model)?.until > Date.now())
+    );
+  }, [usesDocumentQualityModels, openRouterModels, openRouterModelCooldownVersion]);
   const availableOpenRouterModels = useMemo(
     () =>
       usesDocumentQualityModels
@@ -546,7 +563,7 @@ const App: React.FC = () => {
     let changed = false;
     issues.forEach((issue) => {
       const model = normalizeOpenRouterModelId(String(issue.model || ''));
-      if (!model || !openRouterModels.includes(model)) return;
+      if (!model || !allOpenRouterModels.includes(model)) return;
       if (!shouldCooldownOpenRouterModel(issue)) return;
       const reason = issue.status === 403 || String(issue.status) === '403'
         ? '403 TOS/permission block'
@@ -613,7 +630,7 @@ const App: React.FC = () => {
     }
     return {
       profile: 'docx-manual' as const,
-      openRouterModels: DOCX_MANUAL_OPENROUTER_MODELS
+      openRouterModels: activeDocumentQualityOpenRouterModels
     };
   };
 
@@ -1820,22 +1837,35 @@ const App: React.FC = () => {
       total: candidates.length,
       currentBatch: 0
     });
+    const batches = buildAdaptiveTextBatches<DocxSegment>({
+      items: candidates,
+      getText: (segment) => getDocxSegmentText(segment) || segment.original,
+      maxItems: DOCX_BATCH_SIZE,
+      maxChars: DOCX_BATCH_CHAR_LIMIT
+    });
+    addLog(
+      `Docx: 使用 ${currentModelDisplayLabel}，按 ${batches.length} 批处理；每批最多 ${DOCX_BATCH_SIZE} 段 / ${DOCX_BATCH_CHAR_LIMIT} 字符。`
+    );
 
     try {
       const result = await runStage('translate', async () => {
         let completed = 0;
         let paused = false;
-        const totalBatches = Math.ceil(candidates.length / DOCX_BATCH_SIZE);
+        const totalBatches = batches.length;
 
-        for (let i = 0; i < candidates.length; i += DOCX_BATCH_SIZE) {
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
           if (pauseRequestedRef.current) {
             paused = true;
-            addLog(`Docx translation paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
+            addLog(`Docx translation paused before batch ${batchIndex + 1}.`);
             break;
           }
-          const chunk = candidates.slice(i, i + DOCX_BATCH_SIZE);
-          const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
-          addLog(`Docx Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段`);
+          const chunk = batches[batchIndex];
+          const batchNum = batchIndex + 1;
+          const chunkChars = sumBatchTextChars(
+            chunk,
+            (segment) => getDocxSegmentText(segment) || segment.original
+          );
+          addLog(`Docx Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段，约 ${chunkChars} 字符`);
           const memoryStats = createTranslationMemoryStats();
           const memoryHits = await lookupReusableTranslations(
             chunk.map((segment) => getDocxSegmentText(segment) || segment.original)
@@ -1881,6 +1911,7 @@ const App: React.FC = () => {
           });
 
           let translatedBatch: POCTRecord[] = [];
+          const batchStartedAt = Date.now();
           try {
             if (leaders.length > 0) {
               translatedBatch = await translationHub.translateBatch({
@@ -1888,13 +1919,23 @@ const App: React.FC = () => {
                 targetLang,
                 options: getDocumentQualityTranslationOptions()
               });
-              addLog(`Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+              applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
+              addLog(
+                `Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，用时 ${formatElapsedSeconds(
+                  Date.now() - batchStartedAt
+                )}`
+              );
             } else {
               addLog(`Docx Batch ${batchNum}: 全部命中本地翻译记忆。`);
             }
           } catch (err) {
+            applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
-            addLog(`Docx Batch ${batchNum} 翻译失败：${errMsg}`);
+            addLog(
+              `Docx Batch ${batchNum} 翻译失败，用时 ${formatElapsedSeconds(
+                Date.now() - batchStartedAt
+              )}：${errMsg}`
+            );
             continue;
           }
 
@@ -1982,11 +2023,15 @@ const App: React.FC = () => {
       addLog('PDF: 未检测到可翻译的内容。');
       return;
     }
+    addLog(
+      `PDF: 使用 ${currentModelDisplayLabel}，每批最多 ${DOCX_BATCH_SIZE} 段 / ${DOCX_BATCH_CHAR_LIMIT} 字符。`
+    );
 
     await runPdfTranslationWorkflow({
       context,
       mode,
       batchSize: DOCX_BATCH_SIZE,
+      batchCharLimit: DOCX_BATCH_CHAR_LIMIT,
       targetLang,
       documentKind,
       fileName: file?.name,
@@ -1997,6 +2042,7 @@ const App: React.FC = () => {
       shouldTranslateText: shouldTranslateDocxText,
       dedupeLeadingRepeat,
       getTranslationOptions: getDocumentQualityTranslationOptions,
+      applyLatestModelCooldowns: applyLatestOpenRouterModelCooldowns,
       createTranslationMemoryStats,
       lookupReusableTranslations,
       getTranslationMemoryKey,
@@ -2091,17 +2137,28 @@ const App: React.FC = () => {
       const result = await runStage('translate', async () => {
         let completed = 0;
         let paused = false;
-        const totalBatches = Math.ceil(targets.length / DOCX_BATCH_SIZE);
-        for (let i = 0; i < targets.length; i += DOCX_BATCH_SIZE) {
+        const batches = buildAdaptiveTextBatches<DocxSegment>({
+          items: targets,
+          getText: (segment) => segment.original || getDocxSegmentText(segment),
+          maxItems: DOCX_BATCH_SIZE,
+          maxChars: DOCX_BATCH_CHAR_LIMIT
+        });
+        const totalBatches = batches.length;
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
           if (pauseRequestedRef.current) {
             paused = true;
-            addLog(`Docx retry paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
+            addLog(`Docx retry paused before batch ${batchIndex + 1}.`);
             break;
           }
-          const chunk = targets.slice(i, i + DOCX_BATCH_SIZE);
-          const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
-          addLog(`Docx Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段`);
+          const chunk = batches[batchIndex];
+          const batchNum = batchIndex + 1;
+          const chunkChars = sumBatchTextChars(
+            chunk,
+            (segment) => segment.original || getDocxSegmentText(segment)
+          );
+          addLog(`Docx Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段，约 ${chunkChars} 字符`);
           let translatedBatch: POCTRecord[];
+          const batchStartedAt = Date.now();
           try {
             const payload = chunk.map((segment) => {
               const rawText = segment.original || getDocxSegmentText(segment);
@@ -2118,11 +2175,22 @@ const App: React.FC = () => {
               targetLang,
               options: getDocumentQualityTranslationOptions()
             });
+            applyLatestOpenRouterModelCooldowns(`Docx Retry Batch ${batchNum}`);
           } catch (err) {
+            applyLatestOpenRouterModelCooldowns(`Docx Retry Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
-            addLog(`Docx Retry Batch ${batchNum} 失败：${errMsg}`);
+            addLog(
+              `Docx Retry Batch ${batchNum} 失败，用时 ${formatElapsedSeconds(
+                Date.now() - batchStartedAt
+              )}：${errMsg}`
+            );
             continue;
           }
+          addLog(
+            `Docx Retry Batch ${batchNum} 完成，用时 ${formatElapsedSeconds(
+              Date.now() - batchStartedAt
+            )}`
+          );
 
           chunk.forEach((segment, index) => {
             const translatedRecord = translatedBatch[index] || {};
@@ -2269,17 +2337,28 @@ const App: React.FC = () => {
       const result = await runStage('translate', async () => {
         let completed = 0;
         let paused = false;
-        const totalBatches = Math.ceil(targets.length / DOCX_BATCH_SIZE);
-        for (let i = 0; i < targets.length; i += DOCX_BATCH_SIZE) {
+        const batches = buildAdaptiveTextBatches<PdfSegment>({
+          items: targets,
+          getText: (segment) => getPdfSegmentText(segment) || segment.original,
+          maxItems: DOCX_BATCH_SIZE,
+          maxChars: DOCX_BATCH_CHAR_LIMIT
+        });
+        const totalBatches = batches.length;
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
           if (pauseRequestedRef.current) {
             paused = true;
-            addLog(`PDF retry paused before batch ${Math.floor(i / DOCX_BATCH_SIZE) + 1}.`);
+            addLog(`PDF retry paused before batch ${batchIndex + 1}.`);
             break;
           }
-          const chunk = targets.slice(i, i + DOCX_BATCH_SIZE);
-          const batchNum = Math.floor(i / DOCX_BATCH_SIZE) + 1;
-          addLog(`PDF Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段`);
+          const chunk = batches[batchIndex];
+          const batchNum = batchIndex + 1;
+          const chunkChars = sumBatchTextChars(
+            chunk,
+            (segment) => getPdfSegmentText(segment) || segment.original
+          );
+          addLog(`PDF Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段，约 ${chunkChars} 字符`);
           let translatedBatch: POCTRecord[];
+          const batchStartedAt = Date.now();
           try {
             const payload = chunk.map((segment) => {
               const rawText = getPdfSegmentText(segment) || segment.original;
@@ -2296,11 +2375,20 @@ const App: React.FC = () => {
               targetLang,
               options: getDocumentQualityTranslationOptions()
             });
+            applyLatestOpenRouterModelCooldowns(`PDF Retry Batch ${batchNum}`);
           } catch (err) {
+            applyLatestOpenRouterModelCooldowns(`PDF Retry Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
-            addLog(`PDF Retry Batch ${batchNum} 失败：${errMsg}`);
+            addLog(
+              `PDF Retry Batch ${batchNum} 失败，用时 ${formatElapsedSeconds(
+                Date.now() - batchStartedAt
+              )}：${errMsg}`
+            );
             continue;
           }
+          addLog(
+            `PDF Retry Batch ${batchNum} 完成，用时 ${formatElapsedSeconds(Date.now() - batchStartedAt)}`
+          );
 
           chunk.forEach((segment, index) => {
             const translatedRecord = translatedBatch[index] || {};
@@ -2483,9 +2571,9 @@ const App: React.FC = () => {
       `String Resource: 开始处理 ${entries.length} 行，输出 ${targetLangs.length} 个目标语言（${targetLangs.join(', ')}）。`
     );
     addLog(`String Resource: 使用左侧 Translation Model - ${currentModelDisplayLabel}。`);
-    if (translationModelPreference === AUTO_OPENROUTER_MODEL && skippedOpenRouterModels.length > 0) {
+    if (translationModelPreference === AUTO_OPENROUTER_MODEL && currentSkippedOpenRouterModels.length > 0) {
       addLog(
-        `String Resource: Auto 当前跳过冷却模型 ${skippedOpenRouterModels.map(getModelLabel).join(', ')}。`
+        `String Resource: Auto 当前跳过冷却模型 ${currentSkippedOpenRouterModels.map(getModelLabel).join(', ')}。`
       );
     }
     if (payload.length > 0) {
@@ -3827,7 +3915,7 @@ const App: React.FC = () => {
   const currentModelChainLabel =
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? usesDocumentQualityModels
-        ? formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)
+        ? formatModelChainLabel(activeDocumentQualityOpenRouterModels)
         : formatModelChainLabel(activeOpenRouterModels)
       : currentModelLabel;
   const currentModelDisplayLabel =
@@ -4512,7 +4600,7 @@ const App: React.FC = () => {
                 >
                   <option value={AUTO_OPENROUTER_MODEL}>
                     {usesDocumentQualityModels
-                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)})`
+                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatModelChainLabel(activeDocumentQualityOpenRouterModels)})`
                       : 'Auto (Gemini → Qwen → DeepSeek)'}
                   </option>
                   {availableOpenRouterModels.map((model) => (
@@ -4523,10 +4611,10 @@ const App: React.FC = () => {
                 </select>
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   {usesDocumentQualityModels
-                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)}；手工选择时只使用当前模型。`
+                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatModelChainLabel(activeDocumentQualityOpenRouterModels)}；手工选择时只使用当前模型。`
                     : `Auto 会按 ${formatModelChainLabel(activeOpenRouterModels)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
-                  {!usesDocumentQualityModels && skippedOpenRouterModels.length > 0
-                    ? ` 当前跳过：${skippedOpenRouterModels.map(getModelLabel).join(', ')}。`
+                  {currentSkippedOpenRouterModels.length > 0
+                    ? ` 当前跳过：${currentSkippedOpenRouterModels.map(getModelLabel).join(', ')}。`
                     : ''}
                 </p>
               </div>

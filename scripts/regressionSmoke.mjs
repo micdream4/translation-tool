@@ -223,6 +223,7 @@ test("GitHub issue template captures debug packages with available labels", () =
 
 test("PDF support is text-first and exports translated content as DOCX", async () => {
   const pdfSource = fs.readFileSync(path.join(repoRoot, "utils/pdf.ts"), "utf8");
+  const pdfWorkflowSource = fs.readFileSync(path.join(repoRoot, "workflows/pdfTranslationWorkflow.ts"), "utf8");
   const pdfTextLayerSource = fs.readFileSync(path.join(repoRoot, "utils/pdfTextLayer.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const { canDrawSelectablePdfText, normalizePdfTextLayerText } = await bundleTsModule(path.join(repoRoot, "utils/pdfTextLayer.ts"));
@@ -286,7 +287,42 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(appSource, /Retry Missing PDF Segments/);
   assert.match(appSource, /documentKind === 'docx' \|\| documentKind === 'pdf'/);
   assert.match(appSource, /getTranslationOptions: getDocumentQualityTranslationOptions/);
+  assert.match(appSource, /applyLatestModelCooldowns: applyLatestOpenRouterModelCooldowns/);
   assert.match(appSource, /Auto \$\{documentKind\.toUpperCase\(\)\} Quality/);
+  assert.match(appSource, /activeDocumentQualityOpenRouterModels/);
+  assert.match(appSource, /buildAdaptiveTextBatches/);
+  assert.match(appSource, /const DOCX_BATCH_SIZE = 20/);
+  assert.match(appSource, /const DOCX_BATCH_CHAR_LIMIT = 12000/);
+  assert.match(pdfWorkflowSource, /applyLatestModelCooldowns\?\.\(`PDF Batch/);
+  assert.match(pdfWorkflowSource, /batchCharLimit/);
+});
+
+test("adaptive document batching respects item and character limits", async () => {
+  const {
+    buildAdaptiveTextBatches,
+    sumBatchTextChars,
+    formatElapsedSeconds
+  } = await bundleTsModule(path.join(repoRoot, "utils/translationBatching.ts"));
+  const items = [
+    { text: "short" },
+    { text: "medium text" },
+    { text: "x".repeat(12) },
+    { text: "tail" }
+  ];
+
+  const batches = buildAdaptiveTextBatches({
+    items,
+    getText: (item) => item.text,
+    maxItems: 3,
+    maxChars: 20
+  });
+
+  assert.deepEqual(
+    batches.map((batch) => batch.map((item) => item.text.length)),
+    [[5, 11], [12, 4]]
+  );
+  assert.equal(sumBatchTextChars(batches[0], (item) => item.text), 16);
+  assert.equal(formatElapsedSeconds(1234), "1.2s");
 });
 
 test("real document smoke uses a local-only regression manifest", () => {
@@ -1391,8 +1427,9 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /String Resource: 使用左侧 Translation Model/);
   assert.match(appSource, /applyOpenRouterModelCooldowns/);
   assert.match(appSource, /Auto 将跳过 30 分钟/);
-  assert.match(appSource, /skippedOpenRouterModels/);
+  assert.match(appSource, /currentSkippedOpenRouterModels/);
   assert.match(appSource, /activeOpenRouterModels/);
+  assert.match(appSource, /allOpenRouterModels/);
   assert.match(appSource, /String Resource 共用此处选择/);
   assert.match(appSource, /这里只单独选择输出语言/);
   assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);

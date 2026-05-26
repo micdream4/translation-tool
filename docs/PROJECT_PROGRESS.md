@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.90
+
+- 修复 DOCX/PDF Auto 链未吃到模型冷却的问题：`DOCX_MANUAL_OPENROUTER_MODELS` 中的 Gemini/Qwen/DeepSeek 等模型现在也会在 403/TOS/timeout 后被当前会话临时跳过。
+- DOCX/PDF 翻译改为段数 + 字符数双上限分批，避免短段文档请求过碎，也避免长段手册被塞进超大请求。
+- DOCX/PDF 翻译日志显示当前使用的模型链、分批数量、每批字符量和耗时，左侧 `Translation Model` 也会显示 DOCX/PDF 当前实际 Auto 链路和已跳过模型。
+- PDF 主翻译和 DOCX/PDF retry 同步模型冷却，避免重试流程继续反复撞不可用模型。
+- 建立本地 issue 包 `local-data/issues/2026-05-26-docx-translation-too-slow/`，记录 Word 翻译 20 分钟未过半的问题和优化方向。
+- 版本号更新为 `v0.0.90`。
+
 ## v0.0.89
 
 - Auto 模型链增加浏览器会话级冷却：OpenRouter 返回 403/TOS 或模型请求超时后，前端会把对应模型临时跳过 30 分钟，避免每个 String Resource batch 都先撞不可用的 Gemini / 慢模型。

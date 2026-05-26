@@ -1323,6 +1323,115 @@ test("API translate function accepts proxy payload and normalizes OpenRouter rec
   });
 });
 
+test("API translate auto uses Cloudflare AI Gateway Gemini before OpenRouter", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const aiCalls = [];
+  let fetchCalled = false;
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async () => {
+      fetchCalled = true;
+      throw new Error("OpenRouter should not be called when Cloudflare AI succeeds.");
+    });
+
+    const response = await onRequestPost(
+      functionContext(
+        {
+          records: [{ id: "seg-1", content: "打开仪器" }],
+          targetLang: "Spanish",
+          engine: "auto",
+          profile: "docx-manual"
+        },
+        {
+          AI: {
+            run: async (model, input, options) => {
+              aiCalls.push({ model, input, options });
+              return {
+                candidates: [
+                  {
+                    content: {
+                      role: "model",
+                      parts: [
+                        {
+                          text: JSON.stringify({
+                            records: [{ id: "seg-1", content: "Encienda el instrumento." }]
+                          })
+                        }
+                      ]
+                    },
+                    finishReason: "STOP"
+                  }
+                ],
+                modelVersion: "gemini-3-flash-preview",
+                gatewayMetadata: { keySource: "Unified" }
+              };
+            }
+          },
+          CLOUDFLARE_AI_MODELS: "google/gemini-3-flash",
+          CLOUDFLARE_AI_MAX_OUTPUT_TOKENS: "2048"
+        }
+      )
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.engine, "cloudflare-ai");
+    assert.equal(payload.model, "google/gemini-3-flash");
+    assert.deepEqual(payload.records, [{ id: "seg-1", content: "Encienda el instrumento." }]);
+    assert.equal(fetchCalled, false);
+    assert.equal(aiCalls.length, 1);
+    assert.equal(aiCalls[0].model, "google/gemini-3-flash");
+    assert.equal(aiCalls[0].input.generationConfig.maxOutputTokens, 2048);
+    assert.deepEqual(aiCalls[0].options, { gateway: { id: "default" } });
+  });
+});
+
+test("API translate auto falls back to OpenRouter when Cloudflare AI fails", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const calls = [];
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      calls.push({ provider: "openrouter", model: body.model });
+      return openRouterResponse(
+        JSON.stringify({
+          records: [{ id: "seg-1", content: "Fallback translated sentence." }]
+        })
+      );
+    });
+
+    const response = await onRequestPost(
+      functionContext(
+        {
+          records: [{ id: "seg-1", content: "中文说明" }],
+          targetLang: "English",
+          engine: "auto"
+        },
+        {
+          AI: {
+            run: async (model) => {
+              calls.push({ provider: "cloudflare-ai", model });
+              throw new Error("Cloudflare AI temporary error");
+            }
+          },
+          OPENROUTER_MODELS: "qwen/qwen3.6-plus"
+        }
+      )
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls, [
+      { provider: "cloudflare-ai", model: "google/gemini-3-flash" },
+      { provider: "openrouter", model: "qwen/qwen3.6-plus" }
+    ]);
+    assert.equal(payload.engine, "openrouter");
+    assert.equal(payload.model, "qwen/qwen3.6-plus");
+    assert.deepEqual(payload.records, [{ id: "seg-1", content: "Fallback translated sentence." }]);
+    assert.equal(payload.modelIssues[0].model, "google/gemini-3-flash");
+    assert.equal(payload.modelIssues[0].kind, "exception");
+  });
+});
+
 test("API translate auto model chain falls through when Gemini returns an error", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const calls = [];
@@ -1430,10 +1539,13 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /currentSkippedOpenRouterModels/);
   assert.match(appSource, /activeOpenRouterModels/);
   assert.match(appSource, /allOpenRouterModels/);
+  assert.match(appSource, /DEFAULT_OPENROUTER_MODELS = \[[\s\S]*google\/gemini-3-flash-preview/);
+  assert.match(appSource, /DEFAULT_OPENROUTER_AUTO_MODELS = \[[\s\S]*qwen\/qwen3\.6-plus[\s\S]*deepseek\/deepseek-v4-pro/);
   assert.match(appSource, /String Resource 共用此处选择/);
   assert.match(appSource, /这里只单独选择输出语言/);
   assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);
-  assert.match(appSource, /formatModelChainLabel\(activeOpenRouterModels\)/);
+  assert.match(appSource, /CLOUDFLARE_AI_MODEL_LABEL/);
+  assert.match(appSource, /formatAutoModelChainLabel\(activeOpenRouterModels, capabilities\.cloudflareAi\)/);
 });
 
 test("Proxy translation retries transient fetch failures before surfacing string resource errors", async () => {

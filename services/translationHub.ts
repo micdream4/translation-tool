@@ -9,7 +9,7 @@ export interface TranslationRequest {
   records: POCTRecord[];
   targetLang: TargetLanguage;
   options?: {
-    model?: "deepseek" | "gemini" | "openrouter";
+    model?: "cloudflare-ai" | "deepseek" | "gemini" | "openrouter";
     openRouterModel?: string;
     openRouterModels?: string[];
     profile?: TranslationProfile;
@@ -41,10 +41,11 @@ const isProxyMode = () => {
 const parseProxyCapabilities = () => {
   const raw = (getEnvValue("VITE_PROXY_ENGINES") || "").toLowerCase();
   if (!raw) {
-    return { openrouter: true, deepseek: false, gemini: false };
+    return { cloudflareAi: true, openrouter: true, deepseek: false, gemini: false };
   }
   const items = raw.split(",").map((item) => item.trim()).filter(Boolean);
   return {
+    cloudflareAi: items.includes("cloudflare-ai") || items.includes("cloudflare"),
     openrouter: items.includes("openrouter"),
     deepseek: items.includes("deepseek"),
     gemini: items.includes("gemini")
@@ -61,11 +62,12 @@ export class TranslationHub {
   private readonly hasOpenRouterKey: boolean;
   private readonly DEFAULT_RETRIES = 2;
   private readonly capabilities: {
+    cloudflareAi: boolean;
     openrouter: boolean;
     deepseek: boolean;
     gemini: boolean;
   };
-  private lastEngine: "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
+  private lastEngine: "cloudflare-ai" | "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
   private lastModelIssues: ProxyModelIssue[] = [];
 
   constructor() {
@@ -83,6 +85,7 @@ export class TranslationHub {
       this.hasOpenRouterKey = this.detectOpenRouterKey();
       this.openRouter = this.hasOpenRouterKey ? new OpenRouterService() : undefined;
       this.capabilities = {
+        cloudflareAi: false,
         openrouter: !!this.openRouter,
         deepseek: true,
         gemini: this.hasGeminiKey

@@ -9,11 +9,8 @@ export const DEEPSEEK_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro";
 const LEGACY_DEEPSEEK_OPENROUTER_MODELS = new Set(["deepseek/deepseek-v3.2"]);
 
 export const DOCX_MANUAL_OPENROUTER_MODELS = [
-  "google/gemini-3-flash-preview",
-  DEEPSEEK_OPENROUTER_MODEL,
   "qwen/qwen3.6-plus",
-  "google/gemini-3.1-pro-preview",
-  "openai/gpt-5.3-chat"
+  DEEPSEEK_OPENROUTER_MODEL
 ];
 
 export const normalizeOpenRouterModelId = (model: string) => {

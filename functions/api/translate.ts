@@ -11,15 +11,23 @@ import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_s
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
+const DEFAULT_CLOUDFLARE_AI_MODEL = "google/gemini-3-flash";
+const DEFAULT_CLOUDFLARE_AI_MAX_OUTPUT_TOKENS = 8192;
 
 const sanitizeResponse = (text: string) =>
   sanitizeModelJson(text.replace(/```json|```/gi, ""));
 
-type OpenRouterModelIssue = {
+type TranslationModelIssue = {
   model: string;
   status?: number | string;
   message: string;
   kind: "http" | "empty" | "exception";
+};
+
+type TranslationEngine = "cloudflare-ai" | "openrouter";
+
+type CloudflareAiBinding = {
+  run: (model: string, input: unknown, options?: unknown) => Promise<unknown>;
 };
 
 const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
@@ -65,7 +73,7 @@ const parseOpenRouterModels = (env: Record<string, unknown>) => {
       env.VITE_OPENROUTER_MODELS ||
       env.OPENROUTER_MODEL ||
       env.VITE_OPENROUTER_MODEL ||
-      "google/gemini-3-flash-preview"
+      "qwen/qwen3.6-plus,deepseek/deepseek-v4-pro"
   );
 
   return Array.from(
@@ -76,6 +84,33 @@ const parseOpenRouterModels = (env: Record<string, unknown>) => {
         .filter(Boolean)
     )
   );
+};
+
+const parseCloudflareAiModels = (env: Record<string, unknown>) => {
+  const rawList = String(
+    env.CLOUDFLARE_AI_MODELS ||
+      env.CLOUDFLARE_AI_MODEL ||
+      env.VITE_CLOUDFLARE_AI_MODELS ||
+      DEFAULT_CLOUDFLARE_AI_MODEL
+  );
+
+  return Array.from(
+    new Set(
+      rawList
+        .split(/[,\n;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const parseCloudflareAiMaxOutputTokens = (env: Record<string, unknown>) => {
+  const raw = Number(
+    env.CLOUDFLARE_AI_MAX_OUTPUT_TOKENS ||
+      env.VITE_CLOUDFLARE_AI_MAX_OUTPUT_TOKENS
+  );
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_CLOUDFLARE_AI_MAX_OUTPUT_TOKENS;
+  return Math.min(65536, Math.max(1024, Math.round(raw)));
 };
 
 const parseRequestedModel = (value: unknown) => String(value || "").trim();
@@ -92,6 +127,51 @@ const parseRequestedModels = (value: unknown) => {
 
 const parseTranslationProfile = (value: unknown): TranslationProfile =>
   String(value || "").trim() === "docx-manual" ? "docx-manual" : "spreadsheet";
+
+const getCloudflareAiBinding = (env: Record<string, unknown>) => {
+  const binding = env.AI as CloudflareAiBinding | undefined;
+  return binding && typeof binding.run === "function" ? binding : null;
+};
+
+const parseEngineChain = (
+  engine: string,
+  hasCloudflareAi: boolean,
+  hasOpenRouter: boolean
+): TranslationEngine[] => {
+  if (engine === "auto") {
+    return [
+      ...(hasCloudflareAi ? (["cloudflare-ai"] as const) : []),
+      ...(hasOpenRouter ? (["openrouter"] as const) : [])
+    ];
+  }
+  if (engine === "cloudflare-ai" || engine === "cloudflare" || engine === "cf") {
+    return hasCloudflareAi ? ["cloudflare-ai"] : [];
+  }
+  if (engine === "gemini") {
+    return hasCloudflareAi ? ["cloudflare-ai"] : [];
+  }
+  if (engine === "openrouter") {
+    return hasOpenRouter ? ["openrouter"] : [];
+  }
+  return [];
+};
+
+const extractCloudflareAiText = (result: any) => {
+  if (typeof result?.response === "string") return result.response.trim();
+  if (typeof result?.text === "string") return result.text.trim();
+  if (typeof result?.result?.response === "string") return result.result.response.trim();
+  if (typeof result?.result?.text === "string") return result.result.text.trim();
+
+  const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
+  return candidates
+    .flatMap((candidate: any) =>
+      Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []
+    )
+    .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+};
 
 export const onRequestPost = async (context: any) => {
   try {
@@ -112,14 +192,90 @@ export const onRequestPost = async (context: any) => {
     if (!authResult.ok) return authResult.response;
     const openRouterKey = getOpenRouterKeyForUser(env, authResult.auth.userEmail);
     const hasOpenRouter = Boolean(openRouterKey);
+    const cloudflareAi = getCloudflareAiBinding(env);
+    const hasCloudflareAi = Boolean(cloudflareAi);
+    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasOpenRouter);
+    const allErrors: string[] = [];
+    const allModelIssues: TranslationModelIssue[] = [];
 
-    let chosen = engine;
-    if (engine === "auto") {
-      chosen = hasOpenRouter ? "openrouter" : "none";
+    if (engineChain.length === 0) {
+      const missing =
+        engine === "cloudflare-ai" || engine === "cloudflare" || engine === "cf" || engine === "gemini"
+          ? "Cloudflare AI binding missing."
+          : engine === "openrouter"
+            ? "OpenRouter key missing."
+            : "No available translation engine.";
+      return jsonResponse({ error: missing }, 400);
     }
 
-    if (chosen === "openrouter") {
-      if (!hasOpenRouter) return jsonResponse({ error: "OpenRouter key missing." }, 400);
+    const prompt = buildOpenRouterPrompt(records, targetLang, profile);
+
+    const translateWithCloudflareAi = async () => {
+      if (!cloudflareAi) throw new Error("Cloudflare AI binding missing.");
+      const models = requestedModel ? [requestedModel] : parseCloudflareAiModels(env);
+      const gatewayId = String(
+        env.CLOUDFLARE_AI_GATEWAY_ID ||
+          env.VITE_CLOUDFLARE_AI_GATEWAY_ID ||
+          "default"
+      ).trim() || "default";
+      const maxOutputTokens = parseCloudflareAiMaxOutputTokens(env);
+
+      for (const model of models) {
+        try {
+          const result = await cloudflareAi.run(
+            model,
+            {
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: prompt }]
+                }
+              ],
+              systemInstruction: {
+                parts: [{ text: buildOpenRouterSystemPrompt(profile) }]
+              },
+              generationConfig: {
+                temperature: 0,
+                maxOutputTokens
+              }
+            },
+            {
+              gateway: { id: gatewayId }
+            }
+          );
+          const text = sanitizeResponse(extractCloudflareAiText(result));
+          if (!text) {
+            const finishReason = (result as any)?.candidates?.[0]?.finishReason;
+            const message = finishReason
+              ? `Cloudflare AI returned empty content (${finishReason}).`
+              : "Cloudflare AI returned empty content.";
+            allErrors.push(`${model}: ${message}`);
+            allModelIssues.push({ model, message, kind: "empty" });
+            continue;
+          }
+          const parsed = parseModelJsonArray(text);
+          return jsonResponse({
+            engine: "cloudflare-ai",
+            model,
+            records: parsed,
+            modelIssues: allModelIssues
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          allErrors.push(`${model}: ${message}`);
+          allModelIssues.push({
+            model,
+            status: "exception",
+            message,
+            kind: "exception"
+          });
+        }
+      }
+      return null;
+    };
+
+    const translateWithOpenRouter = async () => {
+      if (!openRouterKey) throw new Error("OpenRouter key missing.");
       const models = requestedModel
         ? [requestedModel]
         : requestedModels.length
@@ -129,15 +285,14 @@ export const onRequestPost = async (context: any) => {
                 env.DOCX_OPENROUTER_MODELS ||
                   env.VITE_DOCX_OPENROUTER_MODELS ||
                   env.OPENROUTER_DOCX_MODELS
-              ).concat(DOCX_MANUAL_OPENROUTER_MODELS).filter((model, index, arr) => arr.indexOf(model) === index)
+              )
+                .concat(DOCX_MANUAL_OPENROUTER_MODELS)
+                .filter((model, index, arr) => arr.indexOf(model) === index)
             : parseOpenRouterModels(env);
       const referer =
         env.OPENROUTER_SITE ||
         context.request.headers.get("Origin") ||
         "https://poct-translator.local";
-      const prompt = buildOpenRouterPrompt(records, targetLang, profile);
-      const errors: string[] = [];
-      const modelIssues: OpenRouterModelIssue[] = [];
       const requestTimeoutMs = parseOpenRouterTimeoutMs(env);
       const provider = buildOpenRouterProviderRouting(env);
 
@@ -182,8 +337,8 @@ export const onRequestPost = async (context: any) => {
             } catch {
               // Keep raw response preview.
             }
-            errors.push(`${model}: OpenRouter error ${response.status}: ${message.slice(0, 200)}`);
-            modelIssues.push({
+            allErrors.push(`${model}: OpenRouter error ${response.status}: ${message.slice(0, 200)}`);
+            allModelIssues.push({
               model,
               status: response.status,
               message,
@@ -199,8 +354,8 @@ export const onRequestPost = async (context: any) => {
           }
           const text = typeof content === "string" ? sanitizeResponse(content) : "";
           if (!text) {
-            errors.push(`${model}: OpenRouter returned empty content.`);
-            modelIssues.push({
+            allErrors.push(`${model}: OpenRouter returned empty content.`);
+            allModelIssues.push({
               model,
               message: "OpenRouter returned empty content.",
               kind: "empty"
@@ -208,11 +363,11 @@ export const onRequestPost = async (context: any) => {
             continue;
           }
           const parsed = parseModelJsonArray(text);
-          return jsonResponse({ engine: "openrouter", model, records: parsed, modelIssues });
+          return jsonResponse({ engine: "openrouter", model, records: parsed, modelIssues: allModelIssues });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          errors.push(`${model}: ${message}`);
-          modelIssues.push({
+          allErrors.push(`${model}: ${message}`);
+          allModelIssues.push({
             model,
             status: /timed out|aborted|abort/i.test(message) ? "timeout" : "exception",
             message,
@@ -220,17 +375,24 @@ export const onRequestPost = async (context: any) => {
           });
         }
       }
+      return null;
+    };
 
-      return jsonResponse(
-        {
-          error: `All OpenRouter models failed. ${errors.join(" | ").slice(0, 1500)}`,
-          modelIssues
-        },
-        500
-      );
+    for (const candidate of engineChain) {
+      const result =
+        candidate === "cloudflare-ai"
+          ? await translateWithCloudflareAi()
+          : await translateWithOpenRouter();
+      if (result) return result;
     }
 
-    return jsonResponse({ error: "No available translation engine." }, 400);
+    return jsonResponse(
+      {
+        error: `All translation engines failed. ${allErrors.join(" | ").slice(0, 1500)}`,
+        modelIssues: allModelIssues
+      },
+      500
+    );
   } catch (error: any) {
     return jsonResponse({ error: error?.message || "Unhandled error" }, 500);
   }

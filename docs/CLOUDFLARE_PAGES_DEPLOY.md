@@ -20,10 +20,15 @@ upload `.xlsx` / `.docx` / text-based `.pdf` -> translate -> download. Excel `.x
 Set these in Cloudflare Pages project -> `Settings` -> `Environment variables`.
 
 Required:
-- `OPENROUTER_API_KEY=<your_key>` as an encrypted Secret.
+- Cloudflare AI Gateway credits or BYOK configured for `google/gemini-3-flash`.
+- `OPENROUTER_API_KEY=<your_key>` as an encrypted Secret for fallback models.
 
 Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[vars]`, so it remains readable and editable in git:
 - `VITE_TRANSLATION_MODE=proxy`
+- `VITE_PROXY_ENGINES=cloudflare-ai,openrouter`
+- `CLOUDFLARE_AI_MODELS=google/gemini-3-flash`
+- `CLOUDFLARE_AI_GATEWAY_ID=default`
+- `CLOUDFLARE_AI_MAX_OUTPUT_TOKENS=8192`
 - `OPENROUTER_MODELS=...`
 - `REQUIRE_CF_ACCESS_EMAIL=true`
 
@@ -32,6 +37,8 @@ Optional encrypted Secret:
 
 说明：
 - Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.
+- Auto 模式优先走 Cloudflare AI Gateway 的 Gemini 3 Flash；Cloudflare AI 失败时，后端会按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
+- OpenRouter Gemini 3 Flash Preview 保留为前端手工可选模型，但默认 Auto 链不使用它；如果 OpenRouter 以后恢复，可在左侧 `Translation Model` 手工选中验证。
 - 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。
 - `OPENROUTER_MODEL` 仍可保留给单模型场景；多模型时优先使用 `OPENROUTER_MODELS`。
 - 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。

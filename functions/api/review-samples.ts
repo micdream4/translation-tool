@@ -17,7 +17,7 @@ const parseOpenRouterModels = (env: Record<string, unknown>) => {
       env.VITE_OPENROUTER_MODELS ||
       env.OPENROUTER_MODEL ||
       env.VITE_OPENROUTER_MODEL ||
-      "google/gemini-3-flash-preview"
+      "qwen/qwen3.6-plus,deepseek/deepseek-v4-pro"
   );
 
   return Array.from(

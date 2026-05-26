@@ -15,7 +15,7 @@
 ## 技术栈
 - React 19 + TypeScript + Vite
 - xlsx / jszip / pdfjs-dist / docx（表格、文档与 PDF 文本处理）
-- 多模型翻译服务适配（DeepSeek / Gemini / OpenRouter）
+- 多模型翻译服务适配（Cloudflare AI Gateway / OpenRouter / DeepSeek / Gemini）
 
 ## 快速开始
 1. 安装依赖
@@ -26,8 +26,10 @@
    ```bash
    # 推荐：本地也走代理模式，避免把模型 Key 注入浏览器 bundle
    VITE_TRANSLATION_MODE=proxy
+   # 生产环境 Auto 优先走 Cloudflare AI Gateway Gemini 3 Flash
+   CLOUDFLARE_AI_MODELS=google/gemini-3-flash
    OPENROUTER_API_KEY=your_key
-   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
+   OPENROUTER_MODELS=qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
    ```
    如需本地纯浏览器直连模型，显式设置 `VITE_TRANSLATION_MODE=direct` 后再使用 `VITE_*_API_KEY`。
 3. 启动开发环境
@@ -76,8 +78,8 @@
    # 可选：未命中邮箱映射时的兜底 Key
    OPENROUTER_API_KEY=sk-or-fallback
 
-   # 可选：OpenRouter 内部模型回退列表，按顺序尝试
-   OPENROUTER_MODELS=google/gemini-3-flash-preview,qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
+   # 可选：OpenRouter 内部模型回退列表，按顺序尝试。Gemini 默认由 Cloudflare AI Gateway 承担。
+   OPENROUTER_MODELS=qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
 
    # 可选：本地调试（线上不要开）
    ALLOW_LOCAL_WITHOUT_ACCESS=false

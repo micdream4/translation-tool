@@ -137,6 +137,12 @@ const PACKAGE_VERSION = String((packageJson as { version?: string }).version || 
 const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || PACKAGE_VERSION).trim();
 const DEFAULT_OPENROUTER_MODELS = [
   'google/gemini-3-flash-preview',
+  'google/gemini-3.1-pro-preview',
+  'qwen/qwen3.6-plus',
+  DEEPSEEK_OPENROUTER_MODEL,
+  'openai/gpt-5.3-chat'
+] as const;
+const DEFAULT_OPENROUTER_AUTO_MODELS = [
   'qwen/qwen3.6-plus',
   DEEPSEEK_OPENROUTER_MODEL
 ] as const;
@@ -150,9 +156,19 @@ const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'deepseek/deepseek-v4-pro': 'DeepSeek V4 Pro',
   'openai/gpt-5.3-chat': 'OpenAI GPT-5.3 Chat'
 };
+const CLOUDFLARE_AI_MODEL_LABEL = 'Cloudflare Gemini 3 Flash';
 const getModelLabel = (model: string) => OPENROUTER_MODEL_LABELS[model] || model;
 const formatModelChainLabel = (models: readonly string[]) =>
   models.map(getModelLabel).join(' -> ');
+const formatAutoModelChainLabel = (
+  models: readonly string[],
+  includeCloudflareAi: boolean
+) =>
+  [
+    ...(includeCloudflareAi ? [CLOUDFLARE_AI_MODEL_LABEL] : []),
+    ...models.map(getModelLabel)
+  ].join(' -> ');
+type TranslationEngine = 'cloudflare-ai' | 'openrouter' | 'deepseek' | 'gemini';
 type ThemeMode = 'light' | 'dark';
 type AppView = 'translator' | 'modelReview';
 type ModelReviewStyleSelection = 'recommended' | ModelReviewStyle;
@@ -179,6 +195,15 @@ const parseOpenRouterModelOptions = () => {
   const values = raw
     ? raw.split(/[,\n;]+/).map((item: string) => normalizeOpenRouterModelId(item)).filter(Boolean)
     : [...DEFAULT_OPENROUTER_MODELS];
+  return Array.from(new Set(values));
+};
+
+const parseOpenRouterAutoModelOptions = () => {
+  const raw =
+    String((import.meta as any)?.env?.VITE_OPENROUTER_AUTO_MODELS || '').trim();
+  const values = raw
+    ? raw.split(/[,\n;]+/).map((item: string) => normalizeOpenRouterModelId(item)).filter(Boolean)
+    : [...DEFAULT_OPENROUTER_AUTO_MODELS];
   return Array.from(new Set(values));
 };
 
@@ -467,9 +492,10 @@ const App: React.FC = () => {
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
   const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
+  const openRouterAutoModels = useMemo(() => parseOpenRouterAutoModelOptions(), []);
   const allOpenRouterModels = useMemo(
-    () => Array.from(new Set([...openRouterModels, ...DOCX_MANUAL_OPENROUTER_MODELS])),
-    [openRouterModels]
+    () => Array.from(new Set([...openRouterModels, ...openRouterAutoModels, ...DOCX_MANUAL_OPENROUTER_MODELS])),
+    [openRouterModels, openRouterAutoModels]
   );
   const activeOpenRouterModels = useMemo(() => {
     const now = Date.now();
@@ -478,12 +504,12 @@ const App: React.FC = () => {
         openRouterModelCooldownsRef.current.delete(model);
       }
     });
-    const active = openRouterModels.filter((model) => {
+    const active = openRouterAutoModels.filter((model) => {
       const cooldown = openRouterModelCooldownsRef.current.get(model);
       return !cooldown || cooldown.until <= now;
     });
-    return active.length > 0 ? active : openRouterModels;
-  }, [openRouterModels, openRouterModelCooldownVersion]);
+    return active.length > 0 ? active : openRouterAutoModels;
+  }, [openRouterAutoModels, openRouterModelCooldownVersion]);
   const activeDocumentQualityOpenRouterModels = useMemo(() => {
     const now = Date.now();
     const active = DOCX_MANUAL_OPENROUTER_MODELS.filter((model) => {
@@ -494,11 +520,11 @@ const App: React.FC = () => {
   }, [openRouterModelCooldownVersion]);
   const usesDocumentQualityModels = documentKind === 'docx' || documentKind === 'pdf';
   const currentSkippedOpenRouterModels = useMemo(() => {
-    const models = usesDocumentQualityModels ? DOCX_MANUAL_OPENROUTER_MODELS : openRouterModels;
+    const models = usesDocumentQualityModels ? DOCX_MANUAL_OPENROUTER_MODELS : openRouterAutoModels;
     return models.filter((model) =>
       Boolean(openRouterModelCooldownsRef.current.get(model)?.until > Date.now())
     );
-  }, [usesDocumentQualityModels, openRouterModels, openRouterModelCooldownVersion]);
+  }, [usesDocumentQualityModels, openRouterAutoModels, openRouterModelCooldownVersion]);
   const availableOpenRouterModels = useMemo(
     () =>
       usesDocumentQualityModels
@@ -595,8 +621,9 @@ const App: React.FC = () => {
 
   const getFallbackPriority = (
     respectSelectedEngine: boolean = false
-  ): Array<'openrouter' | 'deepseek' | 'gemini'> => {
-    const engines: Array<'openrouter' | 'deepseek' | 'gemini'> = [];
+  ): TranslationEngine[] => {
+    const engines: TranslationEngine[] = [];
+    if (capabilities.cloudflareAi) engines.push('cloudflare-ai');
     if (capabilities.openrouter) engines.push('openrouter');
     if (capabilities.deepseek) engines.push('deepseek');
     if (capabilities.gemini) engines.push('gemini');
@@ -3915,8 +3942,8 @@ const App: React.FC = () => {
   const currentModelChainLabel =
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? usesDocumentQualityModels
-        ? formatModelChainLabel(activeDocumentQualityOpenRouterModels)
-        : formatModelChainLabel(activeOpenRouterModels)
+        ? formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi)
+        : formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi)
       : currentModelLabel;
   const currentModelDisplayLabel =
     translationModelPreference === AUTO_OPENROUTER_MODEL
@@ -4600,8 +4627,8 @@ const App: React.FC = () => {
                 >
                   <option value={AUTO_OPENROUTER_MODEL}>
                     {usesDocumentQualityModels
-                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatModelChainLabel(activeDocumentQualityOpenRouterModels)})`
-                      : 'Auto (Gemini → Qwen → DeepSeek)'}
+                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi)})`
+                      : `Auto (${formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi)})`}
                   </option>
                   {availableOpenRouterModels.map((model) => (
                     <option key={model} value={model}>
@@ -4611,8 +4638,8 @@ const App: React.FC = () => {
                 </select>
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   {usesDocumentQualityModels
-                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatModelChainLabel(activeDocumentQualityOpenRouterModels)}；手工选择时只使用当前模型。`
-                    : `Auto 会按 ${formatModelChainLabel(activeOpenRouterModels)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
+                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi)}；手工选择时只使用当前模型。`
+                    : `Auto 会按 ${formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
                   {currentSkippedOpenRouterModels.length > 0
                     ? ` 当前跳过：${currentSkippedOpenRouterModels.map(getModelLabel).join(', ')}。`
                     : ''}

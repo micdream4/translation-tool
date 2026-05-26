@@ -8,7 +8,7 @@ import {
 } from "../utils/translationProfiles";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "google/gemini-3-flash-preview";
+const DEFAULT_MODEL = "qwen/qwen3.6-plus";
 const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 
 const getEnvModel = (): string | undefined => {

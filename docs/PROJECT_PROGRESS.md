@@ -1,5 +1,16 @@
 # 项目进度
 
+## v0.0.91
+
+- Cloudflare Pages Functions 接入 Cloudflare AI Gateway / Workers AI binding：`/api/translate` 在 Auto 模式下优先通过 `env.AI.run("google/gemini-3-flash")` 调用 Gemini 3 Flash 原生 `/ai/run` 路径。
+- Cloudflare Gemini 失败时继续自动落回 OpenRouter；错误会进入 `modelIssues`，保留前端冷却与日志判断能力。
+- OpenRouter 默认 Auto 兜底链收敛为当前实测可用的 Qwen 3.6 Plus -> DeepSeek V4 Pro，避免继续默认撞 OpenRouter 侧 Google/OpenAI 区域限制。
+- 前端 `Translation Model` 区分“手工可选模型”和“Auto 默认链”：OpenRouter Gemini 3 Flash Preview 仍保留在手工下拉中，后续 OpenRouter 恢复时可直接手工选中验证；Auto 默认不使用它。
+- `wrangler.toml` 增加 `AI` binding、Cloudflare AI Gateway 模型/输出 token 配置，以及前端模型选项/Auto 链配置。
+- README、Cloudflare 部署说明和本地 issue 包同步记录 Cloudflare Gemini 接入方式与 OpenRouter Gemini 手工验证路径。
+- 回归测试覆盖 Cloudflare AI 优先、Cloudflare 失败后 OpenRouter fallback、前端 Auto 链展示和 OpenRouter 手工模型保留。
+- 版本号更新为 `v0.0.91`。
+
 ## v0.0.90
 
 - 修复 DOCX/PDF Auto 链未吃到模型冷却的问题：`DOCX_MANUAL_OPENROUTER_MODELS` 中的 Gemini/Qwen/DeepSeek 等模型现在也会在 403/TOS/timeout 后被当前会话临时跳过。

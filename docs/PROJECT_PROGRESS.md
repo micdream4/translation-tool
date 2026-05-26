@@ -1,12 +1,21 @@
 # 项目进度
 
+## v0.0.94
+
+- 修复 DeepSeek Direct 前端能力误显示：`/api/me` 现在返回后端实际翻译能力，前端只有在 Cloudflare Pages 已配置 `DEEPSEEK_API_KEY` secret 时才显示 `DeepSeek Direct v4 Flash/Pro`。
+- 保留后端 Auto fallback 能力：`/api/translate` 仍会在存在 `DEEPSEEK_API_KEY` 时按 Cloudflare Gemini -> DeepSeek official -> OpenRouter 顺序执行；没有密钥时自动跳过 DeepSeek。
+- `wrangler.toml` 的静态 `VITE_PROXY_ENGINES` 回到 `cloudflare-ai,openrouter`，DeepSeek Direct 改由运行时能力检测开启，避免 Secret 未配置时用户手工选择后立即 400。
+- 回归测试新增 `/api/me` 能力输出校验，确认返回能力布尔值但不泄露 OpenRouter / DeepSeek key。
+- 版本号更新为 `v0.0.94`。
+
 ## v0.0.93
 
 - Cloudflare Pages Functions `/api/translate` 新增 DeepSeek 官方 API provider，默认模型 `deepseek-v4-flash`，请求中关闭 thinking 并要求 JSON object 输出。
 - Auto 模型链调整为 Cloudflare Gemini 3 Flash -> DeepSeek official -> OpenRouter；Cloudflare 或 DeepSeek 失败时仍会继续 fallback。
-- 左侧 `Translation Model` 下拉新增 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认只用 Flash，手工选择 Pro 时才请求官方 `deepseek-v4-pro`。
+- `/api/me` 增加后端翻译能力检测；只有生产环境实际配置了 `DEEPSEEK_API_KEY` 时，左侧 `Translation Model` 才显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`。
+- DeepSeek Direct 手工选项可指定官方 Flash 或 Pro；Auto 默认只用 Flash，手工选择 Pro 时才请求官方 `deepseek-v4-pro`。
 - 本地 direct `DeepseekService` 同步使用官方 v4 模型、共用现有翻译 profile prompt，并支持 DOCX/PDF manual profile。
-- `wrangler.toml` 增加 `VITE_PROXY_ENGINES=cloudflare-ai,deepseek,openrouter`、`DEEPSEEK_MODELS`、`DEEPSEEK_REQUEST_TIMEOUT_MS`；密钥仍通过 Cloudflare encrypted Secret `DEEPSEEK_API_KEY` 配置。
+- `wrangler.toml` 增加 `DEEPSEEK_MODELS`、`DEEPSEEK_REQUEST_TIMEOUT_MS`；`VITE_PROXY_ENGINES` 仍只声明静态前端能力，DeepSeek Direct 由 `/api/me` 动态开启，密钥仍通过 Cloudflare encrypted Secret `DEEPSEEK_API_KEY` 配置。
 - 回归测试覆盖 DeepSeek official 直连、Cloudflare 失败后先落 DeepSeek 再落 OpenRouter、前端 DeepSeek Direct 选项和 provider model 传递。
 - 更新本地 issue 包 `local-data/issues/2026-05-26-model-routing-direct-deepseek-api-speed/`，记录归因、修复策略和沉淀层。
 - 版本号更新为 `v0.0.93`。

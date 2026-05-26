@@ -68,7 +68,7 @@
    在 Cloudflare Pages 环境变量中设置：
    ```bash
    VITE_TRANSLATION_MODE=proxy
-   VITE_PROXY_ENGINES=cloudflare-ai,deepseek,openrouter
+   VITE_PROXY_ENGINES=cloudflare-ai,openrouter
    ```
    这样浏览器只调用 `/api/translate`，不直接携带模型 Key。
 
@@ -103,7 +103,7 @@
 
 5. 安全建议  
    不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。生产直连 DeepSeek 应使用服务端 Secret `DEEPSEEK_API_KEY`，不要使用 `VITE_DEEPSEEK_API_KEY`。
-   左侧 `Translation Model` 可手工选择 `DeepSeek Direct v4 Flash` 或 `DeepSeek Direct v4 Pro`；Auto 默认只使用 `deepseek-v4-flash` 作为 DeepSeek 官方 fallback。
+   配置 `DEEPSEEK_API_KEY` 后，左侧 `Translation Model` 会显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认只使用 `deepseek-v4-flash` 作为 DeepSeek 官方 fallback。
    如果某个 OpenRouter 模型存在区域限制，优先改 `OPENROUTER_MODELS`，而不是改前端代码。
 
 6. DOCX 范围说明

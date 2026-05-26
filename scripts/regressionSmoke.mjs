@@ -195,17 +195,53 @@ test("frontend auth state is isolated in useAuth hook", () => {
   const wranglerSource = fs.readFileSync(path.join(repoRoot, "wrangler.toml"), "utf8");
   assert.match(appSource, /import \{ useAuth \} from '\.\/hooks\/useAuth'/);
   assert.match(appSource, /const authState = useAuth\(\)/);
+  assert.match(appSource, /authState\.translationCapabilities/);
   assert.doesNotMatch(appSource, /fetch\('\/api\/me'/);
   assert.match(authHookSource, /fetch\('\/api\/me', \{ credentials: 'same-origin' \}\)/);
+  assert.match(authHookSource, /translationCapabilities/);
+  assert.match(authHookSource, /normalizeCapabilities/);
   assert.match(authHookSource, /status: 'authenticated'/);
   assert.match(authHookSource, /status: 'blocked'/);
   assert.match(authHookSource, /status: 'anonymous'/);
   assert.match(wranglerSource, /REQUIRE_CF_ACCESS_EMAIL = "true"/);
   assert.doesNotMatch(wranglerSource, /ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
   assert.match(meFunctionSource, /accessControlledBy: "cloudflare-zero-trust"/);
+  assert.match(meFunctionSource, /getTranslationCapabilities/);
+  assert.match(meFunctionSource, /DEEPSEEK_API_KEY/);
   assert.doesNotMatch(meFunctionSource, /whitelistEnabled|allowedEmails/);
   assert.doesNotMatch(authFunctionSource, /parseAllowedEmails|ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
   assert.doesNotMatch(authFunctionSource, /Forbidden: user not in whitelist/);
+});
+
+test("API me exposes server-side translation capabilities without leaking keys", async () => {
+  const { onRequestGet } = await bundleTsModule(path.join(repoRoot, "functions/api/me.ts"));
+
+  const response = await onRequestGet({
+    request: new Request("https://poct-translator.local/api/me", {
+      headers: {
+        "x-user-email": "dev@example.com"
+      }
+    }),
+    env: {
+      ALLOW_LOCAL_WITHOUT_ACCESS: "true",
+      LOCAL_DEV_EMAIL: "dev@example.com",
+      OPENROUTER_API_KEY: "test-openrouter-key",
+      DEEPSEEK_API_KEY: "test-deepseek-key",
+      AI: {
+        run: async () => ({})
+      }
+    }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.authenticated, true);
+  assert.deepEqual(payload.translationCapabilities, {
+    cloudflareAi: true,
+    deepseek: true,
+    openrouter: true,
+    gemini: false
+  });
+  assert.doesNotMatch(JSON.stringify(payload), /test-deepseek-key|test-openrouter-key/);
 });
 
 test("GitHub issue template captures debug packages with available labels", () => {

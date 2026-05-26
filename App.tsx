@@ -508,7 +508,14 @@ const App: React.FC = () => {
   const [openRouterModelCooldownVersion, setOpenRouterModelCooldownVersion] = useState(0);
 
   const translationHub = useMemo(() => new TranslationHub(), []);
-  const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
+  const hubCapabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
+  const capabilities = useMemo(
+    () => ({
+      ...hubCapabilities,
+      ...(authState.translationCapabilities || {})
+    }),
+    [authState.translationCapabilities, hubCapabilities]
+  );
   const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
   const openRouterAutoModels = useMemo(() => parseOpenRouterAutoModelOptions(), []);
   const allOpenRouterModels = useMemo(

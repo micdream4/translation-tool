@@ -25,6 +25,9 @@ const TECHNICAL_SHORT_MARKER_REGEX = /^[A-Za-z]{1,8}[#%]$/;
 const TECHNICAL_RATIO_TOKEN_REGEX = /^[A-Za-z]{1,8}(?:\/[A-Za-z0-9#%]+)+$/;
 const TECHNICAL_UNDERSCORE_TOKEN_REGEX = /^[A-Z]{2,12}_\d{2,}$/;
 const DOT_COMPACT_NUMBER_REGEX = /^\d+(?:\.\d+)+[A-Za-z0-9/]*$/;
+const ROMAN_REAGENT_CODE_REGEX = /^[A-Z]-[IVXLCDM]{1,8}$/;
+const NUMERIC_UNIT_TEXT_REGEX = /^[\s\d.,×xX^+\-~–—/()％%μµA-Za-z]+$/;
+const LATIN_UNIT_TOKEN_REGEX = /[A-Za-zμµ]+/g;
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 const ID_TOKEN_REGEX = /^(id|uuid)$/i;
 const TAIWAN_SIMPLIFIED_RESIDUE_REGEX =
@@ -319,7 +322,8 @@ const normalizeLatin = (text: string) =>
   text
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[μµ]/g, "u");
 
 const tokenizeLatin = (text: string) =>
   normalizeLatin(text)
@@ -405,6 +409,7 @@ const isAllowedLatinTokenInNonLatinTarget = (token: string) => {
   const normalized = normalizeLatin(token);
   if (!normalized) return true;
   if (ALLOWED_NON_LATIN_TARGET_LATIN_TOKENS.has(normalized)) return true;
+  if (ROMAN_REAGENT_CODE_REGEX.test(token)) return true;
   if (isProtectedTerm(token) || isLikelyIdentifier(token)) return true;
   if (TECHNICAL_RATIO_TOKEN_REGEX.test(token)) return true;
   if (TECHNICAL_UNDERSCORE_TOKEN_REGEX.test(token)) return true;
@@ -415,9 +420,18 @@ const isAllowedLatinTokenInNonLatinTarget = (token: string) => {
   return false;
 };
 
+const isAllowedNumericUnitText = (text: string) => {
+  const stripped = stripProtectedTerms(stripPreservedUiLabels(stripUrls(text))).trim();
+  if (!stripped || !/\d/.test(stripped)) return false;
+  if (!NUMERIC_UNIT_TEXT_REGEX.test(stripped)) return false;
+  const unitTokens = stripped.match(LATIN_UNIT_TOKEN_REGEX) || [];
+  return unitTokens.every(isAllowedLatinTokenInNonLatinTarget);
+};
+
 const isAllowedTechnicalLatinText = (text: string) => {
   const stripped = stripProtectedTerms(stripPreservedUiLabels(stripUrls(text))).trim();
   if (!stripped) return true;
+  if (isAllowedNumericUnitText(stripped)) return true;
   if (TECHNICAL_SHORT_MARKER_REGEX.test(stripped)) return true;
   if (!TECHNICAL_LATIN_TEXT_REGEX.test(stripped)) return false;
   const tokens = stripped.match(LATIN_TOKEN_REGEX) || [];
@@ -446,6 +460,7 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   if (trimmed.length <= 6 && SHORT_CODE_REGEX.test(trimmed)) {
     return true;
   }
+  if (isAllowedNumericUnitText(trimmed)) return true;
 
   const targetCode = targetLangToCode(targetLang);
   if (targetCode === "zh") {

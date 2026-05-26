@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.92
+
+- 修复俄语 DOCX Quality Report 对不翻译锚点的 non-target 误报：`B-IV` / `R-IV` 这类罗马数字试剂代码不再被当作英文残留。
+- 非拉丁目标语言的数值/单位/参考范围检测扩展支持 `μL`、`fL`、`×109/L~...` 等医学报告常见格式，纯单位范围不再触发 non-target。
+- 保护词补充 `Wisdom` / `Country Garden Wisdom Garden`，地址专名在俄语译文中保留时不再误报。
+- 回归测试加入本次真实报告样本，同时保留 `1-year`、`24-hour`、UI 按钮英文等真实残留的拦截。
+- 建立本地 issue 包 `local-data/issues/2026-05-26-docx-russian-non-target-protected-terms/`，记录真实文件、报告、归因和验证结果。
+- 版本号更新为 `v0.0.92`。
+
 ## v0.0.91
 
 - Cloudflare Pages Functions 接入 Cloudflare AI Gateway / Workers AI binding：`/api/translate` 在 Auto 模式下优先通过 `env.AI.run("google/gemini-3-flash")` 调用 Gemini 3 Flash 原生 `/ai/run` 路径。

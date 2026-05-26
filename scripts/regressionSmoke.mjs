@@ -948,6 +948,14 @@ test("quality core adapters preserve existing row-based quality checks", async (
       [
         { original: "10^12/L", translated: "10^12/L" },
         { original: "Tg#", translated: "Tg#" },
+        { original: "B-IV hemolytic agent", translated: "Гемолитический агент B-IV" },
+        { original: "240μL", translated: "240μL" },
+        { original: "5.00×109/L~17.00×109/L", translated: "5.00×109/L~17.00×109/L" },
+        { original: "35fL~53fL", translated: "35 fL~53 fL" },
+        {
+          original: "Manufacturer Address: Room 103 and 104, No.13 Building, Country Garden Wisdom Garden, Xueshi Street, Yuelu District, Changsha, Hunan, P. R. China",
+          translated: "Адрес производителя: комната 103 и 104, здание № 13, Country Garden Wisdom Garden, улица Xueshi, район Yuelu, Changsha, Hunan, КНР"
+        },
         {
           original: "Set 24-hour time display.",
           translated: "Задайте настройки отображения времени в формате 24-hour."
@@ -1209,6 +1217,18 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(isLikelyTargetLanguage("Гарантия составляет 1-year.", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("Отображать время в формате 24-hour.", "Russian"), false);
   assert.equal(isLikelyTargetLanguage("10^12/L", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Гемолитический агент B-IV", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Гемолитические агенты R-IV", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("240μL", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("5.00×109/L~17.00×109/L", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("35 fL~53 fL", "Russian"), true);
+  assert.equal(
+    isLikelyTargetLanguage(
+      "Адрес производителя: комната 103 и 104, здание № 13, Country Garden Wisdom Garden, улица Xueshi, район Yuelu, Changsha, Hunan, КНР",
+      "Russian"
+    ),
+    true
+  );
   assert.equal(isLikelyTargetLanguage("Tg#", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("Веб-сайт: https://ozellemed.com/", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("далее refме", "Russian"), false);

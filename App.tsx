@@ -135,6 +135,7 @@ const DEFAULT_OPENROUTER_MODELS = [
   DEEPSEEK_OPENROUTER_MODEL
 ] as const;
 const AUTO_OPENROUTER_MODEL = '__AUTO_OPENROUTER__';
+const OPENROUTER_MODEL_COOLDOWN_MS = 30 * 60 * 1000;
 const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'google/gemini-3-flash-preview': 'Gemini 3 Flash Preview',
   'google/gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
@@ -153,6 +154,16 @@ type TranslationMemoryStats = {
   hits: number;
   deduped: number;
   stored: number;
+};
+type OpenRouterModelCooldown = {
+  until: number;
+  reason: string;
+};
+type OpenRouterModelIssue = {
+  model?: string;
+  status?: number | string;
+  message?: string;
+  kind?: string;
 };
 type StageResult = 'paused' | 'completed' | void;
 
@@ -444,10 +455,32 @@ const App: React.FC = () => {
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
   const translationMemorySessionRef = useRef<Map<string, string>>(new Map());
+  const openRouterModelCooldownsRef = useRef<Map<string, OpenRouterModelCooldown>>(new Map());
+  const [openRouterModelCooldownVersion, setOpenRouterModelCooldownVersion] = useState(0);
 
   const translationHub = useMemo(() => new TranslationHub(), []);
   const capabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
   const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
+  const activeOpenRouterModels = useMemo(() => {
+    const now = Date.now();
+    openRouterModelCooldownsRef.current.forEach((cooldown, model) => {
+      if (cooldown.until <= now) {
+        openRouterModelCooldownsRef.current.delete(model);
+      }
+    });
+    const active = openRouterModels.filter((model) => {
+      const cooldown = openRouterModelCooldownsRef.current.get(model);
+      return !cooldown || cooldown.until <= now;
+    });
+    return active.length > 0 ? active : openRouterModels;
+  }, [openRouterModels, openRouterModelCooldownVersion]);
+  const skippedOpenRouterModels = useMemo(
+    () =>
+      openRouterModels.filter((model) =>
+        Boolean(openRouterModelCooldownsRef.current.get(model)?.until > Date.now())
+      ),
+    [openRouterModels, openRouterModelCooldownVersion]
+  );
   const usesDocumentQualityModels = documentKind === 'docx' || documentKind === 'pdf';
   const availableOpenRouterModels = useMemo(
     () =>
@@ -492,6 +525,51 @@ const App: React.FC = () => {
     setLogs(prev => [...prev, msg]);
   };
 
+  const shouldCooldownOpenRouterModel = (issue: OpenRouterModelIssue) => {
+    const status = String(issue.status || '').toLowerCase();
+    const message = String(issue.message || '').toLowerCase();
+    return (
+      status === '403' ||
+      status === 'timeout' ||
+      message.includes('terms of service') ||
+      message.includes('timed out') ||
+      message.includes('timeout')
+    );
+  };
+
+  const applyOpenRouterModelCooldowns = (
+    issues: OpenRouterModelIssue[],
+    contextLabel: string
+  ) => {
+    if (translationModelPreference !== AUTO_OPENROUTER_MODEL || issues.length === 0) return;
+    const now = Date.now();
+    let changed = false;
+    issues.forEach((issue) => {
+      const model = normalizeOpenRouterModelId(String(issue.model || ''));
+      if (!model || !openRouterModels.includes(model)) return;
+      if (!shouldCooldownOpenRouterModel(issue)) return;
+      const reason = issue.status === 403 || String(issue.status) === '403'
+        ? '403 TOS/permission block'
+        : String(issue.status || issue.message || 'temporary failure');
+      const existing = openRouterModelCooldownsRef.current.get(model);
+      const until = now + OPENROUTER_MODEL_COOLDOWN_MS;
+      if (existing && existing.until >= until - 1000) return;
+      openRouterModelCooldownsRef.current.set(model, { until, reason });
+      changed = true;
+      addLog(
+        `${contextLabel}: ${getModelLabel(model)} ${reason}，Auto 将跳过 30 分钟。`
+      );
+    });
+    if (changed) {
+      setOpenRouterModelCooldownVersion((version) => version + 1);
+    }
+  };
+
+  const applyLatestOpenRouterModelCooldowns = (contextLabel: string) => {
+    const issues = translationHub.getLastModelIssues?.() || [];
+    applyOpenRouterModelCooldowns(issues as OpenRouterModelIssue[], contextLabel);
+  };
+
   const resetModelReviewState = () => {
     setModelReviewResult(null);
     setIsRunningModelReview(false);
@@ -516,7 +594,7 @@ const App: React.FC = () => {
   const getTranslationOptions = () => {
     if (translationModelPreference === AUTO_OPENROUTER_MODEL) {
       return {
-        openRouterModels
+        openRouterModels: activeOpenRouterModels
       };
     }
     return {
@@ -2405,6 +2483,11 @@ const App: React.FC = () => {
       `String Resource: 开始处理 ${entries.length} 行，输出 ${targetLangs.length} 个目标语言（${targetLangs.join(', ')}）。`
     );
     addLog(`String Resource: 使用左侧 Translation Model - ${currentModelDisplayLabel}。`);
+    if (translationModelPreference === AUTO_OPENROUTER_MODEL && skippedOpenRouterModels.length > 0) {
+      addLog(
+        `String Resource: Auto 当前跳过冷却模型 ${skippedOpenRouterModels.map(getModelLabel).join(', ')}。`
+      );
+    }
     if (payload.length > 0) {
       addLog(
         `String Resource: ${payload.length} 行送模型翻译，按 ${Math.ceil(
@@ -2445,6 +2528,7 @@ const App: React.FC = () => {
             targetLang: lang,
             options: getTranslationOptions()
           });
+          applyLatestOpenRouterModelCooldowns(`String Resource: ${lang} Batch ${batchIndex + 1}`);
           batchResult.forEach((record, offset) => {
             translatedBatch[start + offset] = record;
           });
@@ -2460,6 +2544,7 @@ const App: React.FC = () => {
         addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
         results.push({ status: 'fulfilled', value: output });
       } catch (error) {
+        applyLatestOpenRouterModelCooldowns(`String Resource: ${lang}`);
         completedLangCount += 1;
         const reason = error instanceof Error ? error.message : String(error);
         addLog(`String Resource: ${lang} 失败（${completedLangCount}/${totalLangCount}）：${reason}`);
@@ -3743,7 +3828,7 @@ const App: React.FC = () => {
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? usesDocumentQualityModels
         ? formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)
-        : formatModelChainLabel(openRouterModels)
+        : formatModelChainLabel(activeOpenRouterModels)
       : currentModelLabel;
   const currentModelDisplayLabel =
     translationModelPreference === AUTO_OPENROUTER_MODEL
@@ -4439,7 +4524,10 @@ const App: React.FC = () => {
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   {usesDocumentQualityModels
                     ? `${documentKind.toUpperCase()} Auto 顺序：${formatModelChainLabel(DOCX_MANUAL_OPENROUTER_MODELS)}；手工选择时只使用当前模型。`
-                    : `Auto 会按 ${formatModelChainLabel(openRouterModels)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
+                    : `Auto 会按 ${formatModelChainLabel(activeOpenRouterModels)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
+                  {!usesDocumentQualityModels && skippedOpenRouterModels.length > 0
+                    ? ` 当前跳过：${skippedOpenRouterModels.map(getModelLabel).join(', ')}。`
+                    : ''}
                 </p>
               </div>
 

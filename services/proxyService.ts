@@ -3,6 +3,13 @@ import type { TranslationProfile } from "../utils/translationProfiles";
 
 export type ProxyEngine = "auto" | "openrouter" | "deepseek" | "gemini";
 
+export type ProxyModelIssue = {
+  model: string;
+  status?: number | string;
+  message: string;
+  kind?: string;
+};
+
 const PROXY_NETWORK_RETRIES = 2;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,6 +37,7 @@ const getEnvValue = (key: string): string | undefined => {
 
 export class ProxyTranslationService {
   private lastEngine: "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
+  private lastModelIssues: ProxyModelIssue[] = [];
   private readonly endpoint: string;
 
   constructor(endpoint?: string) {
@@ -47,6 +55,7 @@ export class ProxyTranslationService {
       profile?: TranslationProfile;
     } = {}
   ): Promise<POCTRecord[]> {
+    this.lastModelIssues = [];
     const body = JSON.stringify({
       records,
       targetLang,
@@ -97,12 +106,21 @@ export class ProxyTranslationService {
 
     if (!response.ok) {
       const text = await response.text();
+      let message = text.slice(0, 200);
+      try {
+        const payload = JSON.parse(text);
+        message = String(payload?.error || message);
+        this.lastModelIssues = Array.isArray(payload?.modelIssues) ? payload.modelIssues : [];
+      } catch {
+        this.lastModelIssues = [];
+      }
       throw new Error(
-        `Proxy translate error ${response.status}: ${text.slice(0, 200)}`
+        `Proxy translate error ${response.status}: ${message.slice(0, 200)}`
       );
     }
 
     const payload = await response.json();
+    this.lastModelIssues = Array.isArray(payload?.modelIssues) ? payload.modelIssues : [];
     if (Array.isArray(payload)) return payload;
 
     const engineUsed = payload?.engine;
@@ -121,5 +139,9 @@ export class ProxyTranslationService {
 
   getLastEngine() {
     return this.lastEngine;
+  }
+
+  getLastModelIssues() {
+    return this.lastModelIssues;
   }
 }

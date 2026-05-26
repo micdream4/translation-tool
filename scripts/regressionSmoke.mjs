@@ -1328,6 +1328,8 @@ test("API translate auto model chain falls through when Gemini returns an error"
     assert.deepEqual(calls, ["google/gemini-3-flash-preview", "qwen/qwen3.6-plus"]);
     assert.equal(payload.model, "qwen/qwen3.6-plus");
     assert.deepEqual(payload.records, [{ id: "seg-1", content: "Fallback model translated sentence." }]);
+    assert.equal(payload.modelIssues[0].model, "google/gemini-3-flash-preview");
+    assert.equal(payload.modelIssues[0].status, 500);
   });
 });
 
@@ -1374,6 +1376,8 @@ test("API translate auto model chain falls through when a model request times ou
     assert.deepEqual(calls, ["qwen/qwen3.6-plus", "deepseek/deepseek-v4-pro"]);
     assert.equal(payload.model, "deepseek/deepseek-v4-pro");
     assert.deepEqual(payload.records, [{ id: "seg-1", content: "Timeout fallback translated sentence." }]);
+    assert.equal(payload.modelIssues[0].model, "qwen/qwen3.6-plus");
+    assert.equal(payload.modelIssues[0].status, "timeout");
   });
 });
 
@@ -1385,10 +1389,14 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /for \(const lang of targetLangs\)/);
   assert.doesNotMatch(appSource, /Promise\.allSettled\(targetLangs\.map/);
   assert.match(appSource, /String Resource: 使用左侧 Translation Model/);
+  assert.match(appSource, /applyOpenRouterModelCooldowns/);
+  assert.match(appSource, /Auto 将跳过 30 分钟/);
+  assert.match(appSource, /skippedOpenRouterModels/);
+  assert.match(appSource, /activeOpenRouterModels/);
   assert.match(appSource, /String Resource 共用此处选择/);
   assert.match(appSource, /这里只单独选择输出语言/);
   assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);
-  assert.match(appSource, /formatModelChainLabel\(openRouterModels\)/);
+  assert.match(appSource, /formatModelChainLabel\(activeOpenRouterModels\)/);
 });
 
 test("Proxy translation retries transient fetch failures before surfacing string resource errors", async () => {
@@ -1429,6 +1437,7 @@ test("Proxy translation retries transient fetch failures before surfacing string
     assert.deepEqual(calls, ["Portuguese", "Portuguese"]);
     assert.deepEqual(result, [{ content: "上传成功 traduzido" }]);
     assert.equal(service.getLastEngine(), "openrouter");
+    assert.deepEqual(service.getLastModelIssues(), []);
   });
 });
 

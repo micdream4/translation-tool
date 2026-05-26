@@ -1,7 +1,7 @@
 import { MedicalAIService } from "./geminiService";
 import { DeepseekService } from "./deepseekService";
 import { OpenRouterService } from "./openRouterService";
-import { ProxyTranslationService, ProxyEngine } from "./proxyService";
+import { ProxyTranslationService, ProxyEngine, type ProxyModelIssue } from "./proxyService";
 import { POCTRecord, TargetLanguage } from "../types";
 import type { TranslationProfile } from "../utils/translationProfiles";
 
@@ -66,6 +66,7 @@ export class TranslationHub {
     gemini: boolean;
   };
   private lastEngine: "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
+  private lastModelIssues: ProxyModelIssue[] = [];
 
   constructor() {
     if (isProxyMode()) {
@@ -170,17 +171,24 @@ export class TranslationHub {
 
     if (this.proxy) {
       const engine = (req.options?.model || "auto") as ProxyEngine;
-      const translated = await this.proxy.translateBatch(
-        req.records,
-        req.targetLang,
-        engine,
-        req.options?.openRouterModel,
-        {
-          models: req.options?.openRouterModels,
-          profile: req.options?.profile
-        }
-      );
+      let translated: POCTRecord[];
+      try {
+        translated = await this.proxy.translateBatch(
+          req.records,
+          req.targetLang,
+          engine,
+          req.options?.openRouterModel,
+          {
+            models: req.options?.openRouterModels,
+            profile: req.options?.profile
+          }
+        );
+      } catch (error) {
+        this.lastModelIssues = this.proxy.getLastModelIssues();
+        throw error;
+      }
       this.lastEngine = this.proxy.getLastEngine();
+      this.lastModelIssues = this.proxy.getLastModelIssues();
       if (!Array.isArray(translated) || translated.length !== req.records.length) {
         throw new Error(
           `Translation returned ${Array.isArray(translated) ? translated.length : 0} records (expected ${req.records.length}).`
@@ -194,6 +202,7 @@ export class TranslationHub {
       }
       return translated;
     }
+    this.lastModelIssues = [];
 
     const runDeepseek = async () => {
       let lastError;
@@ -313,5 +322,9 @@ export class TranslationHub {
 
   getLastEngine() {
     return this.lastEngine;
+  }
+
+  getLastModelIssues() {
+    return this.lastModelIssues;
   }
 }

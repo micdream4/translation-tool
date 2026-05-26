@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.89
+
+- Auto 模型链增加浏览器会话级冷却：OpenRouter 返回 403/TOS 或模型请求超时后，前端会把对应模型临时跳过 30 分钟，避免每个 String Resource batch 都先撞不可用的 Gemini / 慢模型。
+- Cloudflare `/api/translate` 返回结构化 `modelIssues`，包含失败模型、状态码和错误摘要；前端代理与 `TranslationHub` 会保留这些信息供 UI 日志和冷却策略使用。
+- String Resource 运行时会记录冷却跳过的模型，左侧 `Translation Model` 说明也会显示当前 Auto 实际链路与已跳过模型。
+- 手工选择模型不受冷却影响，仍然只调用用户指定模型。
+- 回归测试覆盖 403/timeout 模型问题回传、代理层 issue 保存、String Resource 复用全局 Auto 冷却链路。
+- 版本号更新为 `v0.0.89`。
+
 ## v0.0.88
 
 - String Resource Translator 明确共用左侧 `Translation Model`：面板内只保留输出语言选择，并显示当前使用的全局模型/Auto 链路。

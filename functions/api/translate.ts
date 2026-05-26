@@ -15,6 +15,13 @@ const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 const sanitizeResponse = (text: string) =>
   sanitizeModelJson(text.replace(/```json|```/gi, ""));
 
+type OpenRouterModelIssue = {
+  model: string;
+  status?: number | string;
+  message: string;
+  kind: "http" | "empty" | "exception";
+};
+
 const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
   const raw = Number(env.OPENROUTER_REQUEST_TIMEOUT_MS || env.VITE_OPENROUTER_REQUEST_TIMEOUT_MS);
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS;
@@ -130,6 +137,7 @@ export const onRequestPost = async (context: any) => {
         "https://poct-translator.local";
       const prompt = buildOpenRouterPrompt(records, targetLang, profile);
       const errors: string[] = [];
+      const modelIssues: OpenRouterModelIssue[] = [];
       const requestTimeoutMs = parseOpenRouterTimeoutMs(env);
       const provider = buildOpenRouterProviderRouting(env);
 
@@ -167,7 +175,20 @@ export const onRequestPost = async (context: any) => {
 
           if (!response.ok) {
             const text = await response.text();
-            errors.push(`${model}: OpenRouter error ${response.status}: ${text.slice(0, 200)}`);
+            let message = text.slice(0, 200);
+            try {
+              const parsed = JSON.parse(text);
+              message = String(parsed?.error?.message || message);
+            } catch {
+              // Keep raw response preview.
+            }
+            errors.push(`${model}: OpenRouter error ${response.status}: ${message.slice(0, 200)}`);
+            modelIssues.push({
+              model,
+              status: response.status,
+              message,
+              kind: "http"
+            });
             continue;
           }
 
@@ -179,18 +200,31 @@ export const onRequestPost = async (context: any) => {
           const text = typeof content === "string" ? sanitizeResponse(content) : "";
           if (!text) {
             errors.push(`${model}: OpenRouter returned empty content.`);
+            modelIssues.push({
+              model,
+              message: "OpenRouter returned empty content.",
+              kind: "empty"
+            });
             continue;
           }
           const parsed = parseModelJsonArray(text);
-          return jsonResponse({ engine: "openrouter", model, records: parsed });
+          return jsonResponse({ engine: "openrouter", model, records: parsed, modelIssues });
         } catch (error) {
-          errors.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);
+          const message = error instanceof Error ? error.message : String(error);
+          errors.push(`${model}: ${message}`);
+          modelIssues.push({
+            model,
+            status: /timed out|aborted|abort/i.test(message) ? "timeout" : "exception",
+            message,
+            kind: "exception"
+          });
         }
       }
 
       return jsonResponse(
         {
-          error: `All OpenRouter models failed. ${errors.join(" | ").slice(0, 1500)}`
+          error: `All OpenRouter models failed. ${errors.join(" | ").slice(0, 1500)}`,
+          modelIssues
         },
         500
       );

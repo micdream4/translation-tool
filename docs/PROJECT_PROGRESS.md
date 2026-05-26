@@ -1,5 +1,16 @@
 # 项目进度
 
+## v0.0.93
+
+- Cloudflare Pages Functions `/api/translate` 新增 DeepSeek 官方 API provider，默认模型 `deepseek-v4-flash`，请求中关闭 thinking 并要求 JSON object 输出。
+- Auto 模型链调整为 Cloudflare Gemini 3 Flash -> DeepSeek official -> OpenRouter；Cloudflare 或 DeepSeek 失败时仍会继续 fallback。
+- 左侧 `Translation Model` 下拉新增 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认只用 Flash，手工选择 Pro 时才请求官方 `deepseek-v4-pro`。
+- 本地 direct `DeepseekService` 同步使用官方 v4 模型、共用现有翻译 profile prompt，并支持 DOCX/PDF manual profile。
+- `wrangler.toml` 增加 `VITE_PROXY_ENGINES=cloudflare-ai,deepseek,openrouter`、`DEEPSEEK_MODELS`、`DEEPSEEK_REQUEST_TIMEOUT_MS`；密钥仍通过 Cloudflare encrypted Secret `DEEPSEEK_API_KEY` 配置。
+- 回归测试覆盖 DeepSeek official 直连、Cloudflare 失败后先落 DeepSeek 再落 OpenRouter、前端 DeepSeek Direct 选项和 provider model 传递。
+- 更新本地 issue 包 `local-data/issues/2026-05-26-model-routing-direct-deepseek-api-speed/`，记录归因、修复策略和沉淀层。
+- 版本号更新为 `v0.0.93`。
+
 ## v0.0.92
 
 - 修复俄语 DOCX Quality Report 对不翻译锚点的 non-target 误报：`B-IV` / `R-IV` 这类罗马数字试剂代码不再被当作英文残留。

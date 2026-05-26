@@ -26,8 +26,10 @@
    ```bash
    # 推荐：本地也走代理模式，避免把模型 Key 注入浏览器 bundle
    VITE_TRANSLATION_MODE=proxy
-   # 生产环境 Auto 优先走 Cloudflare AI Gateway Gemini 3 Flash
+   # 生产环境 Auto 优先走 Cloudflare AI Gateway Gemini 3 Flash，再走 DeepSeek 官方 API，最后走 OpenRouter
    CLOUDFLARE_AI_MODELS=google/gemini-3-flash
+   DEEPSEEK_API_KEY=your_deepseek_key
+   DEEPSEEK_MODELS=deepseek-v4-flash
    OPENROUTER_API_KEY=your_key
    OPENROUTER_MODELS=qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
    ```
@@ -66,6 +68,7 @@
    在 Cloudflare Pages 环境变量中设置：
    ```bash
    VITE_TRANSLATION_MODE=proxy
+   VITE_PROXY_ENGINES=cloudflare-ai,deepseek,openrouter
    ```
    这样浏览器只调用 `/api/translate`，不直接携带模型 Key。
 
@@ -77,6 +80,10 @@
 
    # 可选：未命中邮箱映射时的兜底 Key
    OPENROUTER_API_KEY=sk-or-fallback
+
+   # 可选：DeepSeek 官方 API 直连，Auto 会在 Cloudflare Gemini 失败后优先尝试它
+   DEEPSEEK_API_KEY=sk-deepseek
+   DEEPSEEK_MODELS=deepseek-v4-flash
 
    # 可选：OpenRouter 内部模型回退列表，按顺序尝试。Gemini 默认由 Cloudflare AI Gateway 承担。
    OPENROUTER_MODELS=qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
@@ -95,7 +102,8 @@
    给每个人那把 Key 设置 `limit` + `limit_reset=monthly`，即可限制每人每月花费。
 
 5. 安全建议  
-   不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。本项目只有在 `VITE_TRANSLATION_MODE=direct` 时才会把 `VITE_*_API_KEY` 注入前端。
+   不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。生产直连 DeepSeek 应使用服务端 Secret `DEEPSEEK_API_KEY`，不要使用 `VITE_DEEPSEEK_API_KEY`。
+   左侧 `Translation Model` 可手工选择 `DeepSeek Direct v4 Flash` 或 `DeepSeek Direct v4 Pro`；Auto 默认只使用 `deepseek-v4-flash` 作为 DeepSeek 官方 fallback。
    如果某个 OpenRouter 模型存在区域限制，优先改 `OPENROUTER_MODELS`，而不是改前端代码。
 
 6. DOCX 范围说明

@@ -25,23 +25,28 @@ Required:
 
 Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[vars]`, so it remains readable and editable in git:
 - `VITE_TRANSLATION_MODE=proxy`
-- `VITE_PROXY_ENGINES=cloudflare-ai,openrouter`
+- `VITE_PROXY_ENGINES=cloudflare-ai,deepseek,openrouter`
 - `CLOUDFLARE_AI_MODELS=google/gemini-3-flash`
 - `CLOUDFLARE_AI_GATEWAY_ID=default`
 - `CLOUDFLARE_AI_MAX_OUTPUT_TOKENS=8192`
+- `DEEPSEEK_MODELS=deepseek-v4-flash`
+- `DEEPSEEK_REQUEST_TIMEOUT_MS=30000`
 - `OPENROUTER_MODELS=...`
 - `REQUIRE_CF_ACCESS_EMAIL=true`
 
 Optional encrypted Secret:
 - `OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}`
+- `DEEPSEEK_API_KEY=<your_deepseek_key>` for official DeepSeek API fallback.
 
 说明：
 - Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.
-- Auto 模式优先走 Cloudflare AI Gateway 的 Gemini 3 Flash；Cloudflare AI 失败时，后端会按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
+- Auto 模式优先走 Cloudflare AI Gateway 的 Gemini 3 Flash；Cloudflare AI 失败时，后端会尝试 DeepSeek 官方 API `deepseek-v4-flash`，再按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
+- 前端手工选择 `DeepSeek Direct v4 Pro` 时会向 DeepSeek 官方 API 指定 `deepseek-v4-pro`；Auto 默认不使用 Pro。
 - OpenRouter Gemini 3 Flash Preview 保留为前端手工可选模型，但默认 Auto 链不使用它；如果 OpenRouter 以后恢复，可在左侧 `Translation Model` 手工选中验证。
 - 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。
 - `OPENROUTER_MODEL` 仍可保留给单模型场景；多模型时优先使用 `OPENROUTER_MODELS`。
 - 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。
+- `DEEPSEEK_API_KEY` 必须是 Cloudflare encrypted Secret；不要把它写成 `VITE_DEEPSEEK_API_KEY`，否则生产浏览器 bundle 可能暴露密钥。
 
 Public sharing (no Access) notes:
 - 保持 `REQUIRE_CF_ACCESS_EMAIL` 为空或 `false`。

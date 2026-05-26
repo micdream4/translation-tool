@@ -10,7 +10,10 @@ import {
 import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
+const DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 30000;
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const DEFAULT_CLOUDFLARE_AI_MODEL = "google/gemini-3-flash";
 const DEFAULT_CLOUDFLARE_AI_MAX_OUTPUT_TOKENS = 8192;
 
@@ -24,7 +27,7 @@ type TranslationModelIssue = {
   kind: "http" | "empty" | "exception";
 };
 
-type TranslationEngine = "cloudflare-ai" | "openrouter";
+type TranslationEngine = "cloudflare-ai" | "deepseek" | "openrouter";
 
 type CloudflareAiBinding = {
   run: (model: string, input: unknown, options?: unknown) => Promise<unknown>;
@@ -33,6 +36,12 @@ type CloudflareAiBinding = {
 const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
   const raw = Number(env.OPENROUTER_REQUEST_TIMEOUT_MS || env.VITE_OPENROUTER_REQUEST_TIMEOUT_MS);
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS;
+  return Math.min(55000, Math.max(5000, Math.round(raw)));
+};
+
+const parseDeepSeekTimeoutMs = (env: Record<string, unknown>) => {
+  const raw = Number(env.DEEPSEEK_REQUEST_TIMEOUT_MS || env.VITE_DEEPSEEK_REQUEST_TIMEOUT_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS;
   return Math.min(55000, Math.max(5000, Math.round(raw)));
 };
 
@@ -104,6 +113,27 @@ const parseCloudflareAiModels = (env: Record<string, unknown>) => {
   );
 };
 
+const parseDeepSeekModels = (env: Record<string, unknown>) => {
+  const rawList = String(
+    env.DEEPSEEK_MODELS ||
+      env.DEEPSEEK_MODEL ||
+      env.VITE_DEEPSEEK_MODELS ||
+      DEFAULT_DEEPSEEK_MODEL
+  );
+
+  return Array.from(
+    new Set(
+      rawList
+        .split(/[,\n;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const getDeepSeekKey = (env: Record<string, unknown>) =>
+  String(env.DEEPSEEK_API_KEY || env.Deepseek_API_KEY || "").trim();
+
 const parseCloudflareAiMaxOutputTokens = (env: Record<string, unknown>) => {
   const raw = Number(
     env.CLOUDFLARE_AI_MAX_OUTPUT_TOKENS ||
@@ -136,11 +166,13 @@ const getCloudflareAiBinding = (env: Record<string, unknown>) => {
 const parseEngineChain = (
   engine: string,
   hasCloudflareAi: boolean,
+  hasDeepSeek: boolean,
   hasOpenRouter: boolean
 ): TranslationEngine[] => {
   if (engine === "auto") {
     return [
       ...(hasCloudflareAi ? (["cloudflare-ai"] as const) : []),
+      ...(hasDeepSeek ? (["deepseek"] as const) : []),
       ...(hasOpenRouter ? (["openrouter"] as const) : [])
     ];
   }
@@ -149,6 +181,9 @@ const parseEngineChain = (
   }
   if (engine === "gemini") {
     return hasCloudflareAi ? ["cloudflare-ai"] : [];
+  }
+  if (engine === "deepseek" || engine === "deepseek-direct") {
+    return hasDeepSeek ? ["deepseek"] : [];
   }
   if (engine === "openrouter") {
     return hasOpenRouter ? ["openrouter"] : [];
@@ -192,9 +227,11 @@ export const onRequestPost = async (context: any) => {
     if (!authResult.ok) return authResult.response;
     const openRouterKey = getOpenRouterKeyForUser(env, authResult.auth.userEmail);
     const hasOpenRouter = Boolean(openRouterKey);
+    const deepSeekKey = getDeepSeekKey(env);
+    const hasDeepSeek = Boolean(deepSeekKey);
     const cloudflareAi = getCloudflareAiBinding(env);
     const hasCloudflareAi = Boolean(cloudflareAi);
-    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasOpenRouter);
+    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasDeepSeek, hasOpenRouter);
     const allErrors: string[] = [];
     const allModelIssues: TranslationModelIssue[] = [];
 
@@ -202,6 +239,8 @@ export const onRequestPost = async (context: any) => {
       const missing =
         engine === "cloudflare-ai" || engine === "cloudflare" || engine === "cf" || engine === "gemini"
           ? "Cloudflare AI binding missing."
+          : engine === "deepseek" || engine === "deepseek-direct"
+            ? "DeepSeek API key missing."
           : engine === "openrouter"
             ? "OpenRouter key missing."
             : "No available translation engine.";
@@ -378,11 +417,98 @@ export const onRequestPost = async (context: any) => {
       return null;
     };
 
+    const translateWithDeepSeek = async () => {
+      if (!deepSeekKey) throw new Error("DeepSeek API key missing.");
+      const models = requestedModel ? [requestedModel] : parseDeepSeekModels(env);
+      const requestTimeoutMs = parseDeepSeekTimeoutMs(env);
+
+      for (const model of models) {
+        try {
+          const response = await fetchWithTimeout(
+            DEEPSEEK_API_URL,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${deepSeekKey}`
+              },
+              body: JSON.stringify({
+                model,
+                temperature: 0,
+                thinking: { type: "disabled" },
+                response_format: {
+                  type: "json_object"
+                },
+                messages: [
+                  {
+                    role: "system",
+                    content: buildOpenRouterSystemPrompt(profile)
+                  },
+                  { role: "user", content: prompt }
+                ]
+              })
+            },
+            requestTimeoutMs,
+            model
+          );
+
+          if (!response.ok) {
+            const text = await response.text();
+            let message = text.slice(0, 200);
+            try {
+              const parsed = JSON.parse(text);
+              message = String(parsed?.error?.message || message);
+            } catch {
+              // Keep raw response preview.
+            }
+            allErrors.push(`${model}: DeepSeek error ${response.status}: ${message.slice(0, 200)}`);
+            allModelIssues.push({
+              model,
+              status: response.status,
+              message,
+              kind: "http"
+            });
+            continue;
+          }
+
+          const result = await response.json();
+          let content = result.choices?.[0]?.message?.content;
+          if (Array.isArray(content)) {
+            content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
+          }
+          const text = typeof content === "string" ? sanitizeResponse(content) : "";
+          if (!text) {
+            allErrors.push(`${model}: DeepSeek returned empty content.`);
+            allModelIssues.push({
+              model,
+              message: "DeepSeek returned empty content.",
+              kind: "empty"
+            });
+            continue;
+          }
+          const parsed = parseModelJsonArray(text);
+          return jsonResponse({ engine: "deepseek", model, records: parsed, modelIssues: allModelIssues });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          allErrors.push(`${model}: ${message}`);
+          allModelIssues.push({
+            model,
+            status: /timed out|aborted|abort/i.test(message) ? "timeout" : "exception",
+            message,
+            kind: "exception"
+          });
+        }
+      }
+      return null;
+    };
+
     for (const candidate of engineChain) {
       const result =
         candidate === "cloudflare-ai"
           ? await translateWithCloudflareAi()
-          : await translateWithOpenRouter();
+          : candidate === "deepseek"
+            ? await translateWithDeepSeek()
+            : await translateWithOpenRouter();
       if (result) return result;
     }
 

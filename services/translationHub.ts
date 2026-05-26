@@ -8,11 +8,12 @@ import type { TranslationProfile } from "../utils/translationProfiles";
 export interface TranslationRequest {
   records: POCTRecord[];
   targetLang: TargetLanguage;
-  options?: {
-    model?: "cloudflare-ai" | "deepseek" | "gemini" | "openrouter";
-    openRouterModel?: string;
-    openRouterModels?: string[];
-    profile?: TranslationProfile;
+    options?: {
+      model?: "cloudflare-ai" | "deepseek" | "gemini" | "openrouter";
+      providerModel?: string;
+      openRouterModel?: string;
+      openRouterModels?: string[];
+      profile?: TranslationProfile;
   };
 }
 
@@ -180,7 +181,7 @@ export class TranslationHub {
           req.records,
           req.targetLang,
           engine,
-          req.options?.openRouterModel,
+          req.options?.providerModel || req.options?.openRouterModel,
           {
             models: req.options?.openRouterModels,
             profile: req.options?.profile
@@ -209,9 +210,16 @@ export class TranslationHub {
 
     const runDeepseek = async () => {
       let lastError;
+      const deepseek = req.options?.providerModel
+        ? new DeepseekService(req.options.providerModel)
+        : this.deepseek;
       for (let attempt = 0; attempt <= this.DEFAULT_RETRIES; attempt++) {
         try {
-          return await this.deepseek.translateBatch(req.records, req.targetLang);
+          return await deepseek.translateBatch(
+            req.records,
+            req.targetLang,
+            req.options?.profile
+          );
         } catch (err) {
           lastError = err;
           if (attempt < this.DEFAULT_RETRIES) {
@@ -304,6 +312,7 @@ export class TranslationHub {
       lang: req.targetLang,
       records: req.records,
       model: preferred || "auto",
+      providerModel: req.options?.providerModel || "",
       openRouterModel: req.options?.openRouterModel || "",
       openRouterModels: req.options?.openRouterModels || [],
       profile: req.options?.profile || "spreadsheet",

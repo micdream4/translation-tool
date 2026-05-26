@@ -1,21 +1,13 @@
 import { POCTRecord, TargetLanguage } from "../types";
-import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "../utils/glossary";
 import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
-import { getSeedGlossaryPrompt } from "../utils/seedTerminology";
-import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../utils/targetLanguage";
+import {
+  buildOpenRouterPrompt,
+  buildOpenRouterSystemPrompt,
+  type TranslationProfile
+} from "../utils/translationProfiles";
 
-const API_URL = "https://api.deepseek.com/v1/chat/completions";
-const DEFAULT_MODEL = "deepseek-chat";
-
-const joinGlossaryBlocks = (...blocks: Array<string | undefined>) =>
-  Array.from(
-    new Set(
-      blocks
-        .flatMap((block) => String(block || "").split("\n"))
-        .map((line) => line.trim())
-        .filter(Boolean)
-    )
-  ).join("\n");
+const API_URL = "https://api.deepseek.com/chat/completions";
+const DEFAULT_MODEL = "deepseek-v4-flash";
 
 const getEnvKey = (): string => {
   const viteKey =
@@ -40,50 +32,15 @@ export class DeepseekService {
 
   async translateBatch(
     records: POCTRecord[],
-    targetLang: TargetLanguage
+    targetLang: TargetLanguage,
+    profile: TranslationProfile = "spreadsheet"
   ): Promise<POCTRecord[]> {
     const apiKey = getEnvKey();
     if (!apiKey) {
       throw new Error("Deepseek API key is missing. Set VITE_DEEPSEEK_API_KEY or Deepseek_API_KEY in .env.local.");
     }
 
-    const useEnglishGlossary = shouldUseEnglishGlossary(targetLang);
-    const sourceText = JSON.stringify(records);
-    const seedGlossaryPrompt = getSeedGlossaryPrompt(targetLang, sourceText);
-    const combinedGlossaryPrompt = joinGlossaryBlocks(
-      useEnglishGlossary ? GLOSSARY_PROMPT : "",
-      seedGlossaryPrompt
-    );
-    const glossarySection = combinedGlossaryPrompt
-      ? `\nTerminology (Chinese => preferred target wording):\n${combinedGlossaryPrompt}\n`
-      : "";
-    const targetLabel = getTargetLanguageLabel(targetLang);
-    const localeInstruction = getTargetLocaleInstruction(targetLang);
-    const glossaryRule = combinedGlossaryPrompt
-      ? "- Follow the terminology list exactly when the source contains those concepts."
-      : `- Translate medical terminology fully into ${targetLabel}. Keep only true codes, model numbers, and standard abbreviations (e.g., WBC, RBC, QC) unchanged.`;
-
-    const prompt = `
-You are a senior clinical documentation translator. Translate every string field in the JSON array to ${targetLabel} with fluent, professional POCT wording.
-${glossarySection}
-
-Rules:
-${glossaryRule}
-${localeInstruction}
-- Translate any non-${targetLabel} natural-language text (including full English sentences) into ${targetLabel}.
-- Translate address/common nouns such as "Room", "Building", "Street", "District", "City", "Province" into ${targetLabel}; keep only true proper names transliterated or unchanged.
-- Preserve IDs, numeric values, and codes exactly.
-- If a cell mixes codes with descriptive text, keep the code and only translate the descriptive part.
-- Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark protected IDs, codes, or format placeholders that must stay untouched.
-- Do not invent or introduce new placeholder tokens; only preserve placeholders already present in input.
-- Keep only true UI/code tokens (Login, admin, START, etc.) unchanged; do NOT keep full English prose unchanged when target is not English.
-- Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); do not replace them with straight quotes.
-- Produce natural manual-style sentences instead of literal word-by-word output.
-- Return a JSON array with the same length/keys as input. Respond with JSON only, no explanations.
-
-INPUT:
-${JSON.stringify(records)}
-`;
+    const prompt = buildOpenRouterPrompt(records, targetLang, profile);
 
     const response = await fetch(API_URL, {
       method: "POST",
@@ -94,11 +51,14 @@ ${JSON.stringify(records)}
       body: JSON.stringify({
         model: this.model,
         temperature: 0,
+        thinking: { type: "disabled" },
+        response_format: {
+          type: "json_object"
+        },
         messages: [
           {
             role: "system",
-            content:
-              "You translate structured POCT/clinical spreadsheets while preserving grid layout."
+            content: buildOpenRouterSystemPrompt(profile)
           },
           {
             role: "user",
@@ -114,8 +74,11 @@ ${JSON.stringify(records)}
     }
 
     const result = await response.json();
-    const text =
-      result.choices?.[0]?.message?.content?.replace(/```json|```/g, "") ?? "";
+    let content = result.choices?.[0]?.message?.content;
+    if (Array.isArray(content)) {
+      content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
+    }
+    const text = typeof content === "string" ? content.replace(/```json|```/g, "") : "";
     if (!text) {
       throw new Error("Deepseek API returned empty response.");
     }

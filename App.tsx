@@ -157,15 +157,33 @@ const OPENROUTER_MODEL_LABELS: Record<string, string> = {
   'openai/gpt-5.3-chat': 'OpenAI GPT-5.3 Chat'
 };
 const CLOUDFLARE_AI_MODEL_LABEL = 'Cloudflare Gemini 3 Flash';
+const DEEPSEEK_DIRECT_MODEL = '__DEEPSEEK_DIRECT_FLASH__';
+const DEEPSEEK_DIRECT_PRO_MODEL = '__DEEPSEEK_DIRECT_PRO__';
+const DEEPSEEK_DIRECT_MODEL_LABEL = 'DeepSeek Direct v4 Flash';
+const DEEPSEEK_DIRECT_PRO_MODEL_LABEL = 'DeepSeek Direct v4 Pro';
+const DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS: Record<string, string> = {
+  [DEEPSEEK_DIRECT_MODEL]: 'deepseek-v4-flash',
+  [DEEPSEEK_DIRECT_PRO_MODEL]: 'deepseek-v4-pro'
+};
+const DEEPSEEK_DIRECT_MODEL_LABELS: Record<string, string> = {
+  [DEEPSEEK_DIRECT_MODEL]: DEEPSEEK_DIRECT_MODEL_LABEL,
+  [DEEPSEEK_DIRECT_PRO_MODEL]: DEEPSEEK_DIRECT_PRO_MODEL_LABEL
+};
 const getModelLabel = (model: string) => OPENROUTER_MODEL_LABELS[model] || model;
+const getDeepSeekDirectModelLabel = (model: string) => DEEPSEEK_DIRECT_MODEL_LABELS[model] || model;
+const getDeepSeekDirectProviderModel = (model: string) => DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS[model];
+const isDeepSeekDirectModel = (model: string) =>
+  Object.prototype.hasOwnProperty.call(DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS, model);
 const formatModelChainLabel = (models: readonly string[]) =>
   models.map(getModelLabel).join(' -> ');
 const formatAutoModelChainLabel = (
   models: readonly string[],
-  includeCloudflareAi: boolean
+  includeCloudflareAi: boolean,
+  includeDeepSeekDirect: boolean
 ) =>
   [
     ...(includeCloudflareAi ? [CLOUDFLARE_AI_MODEL_LABEL] : []),
+    ...(includeDeepSeekDirect ? [DEEPSEEK_DIRECT_MODEL_LABEL] : []),
     ...models.map(getModelLabel)
   ].join(' -> ');
 type TranslationEngine = 'cloudflare-ai' | 'openrouter' | 'deepseek' | 'gemini';
@@ -532,6 +550,13 @@ const App: React.FC = () => {
         : openRouterModels,
     [usesDocumentQualityModels, openRouterModels]
   );
+  const availableTranslationModels = useMemo(
+    () => [
+      ...(capabilities.deepseek ? [DEEPSEEK_DIRECT_MODEL, DEEPSEEK_DIRECT_PRO_MODEL] : []),
+      ...availableOpenRouterModels
+    ],
+    [availableOpenRouterModels, capabilities.deepseek]
+  );
   const [translationModelPreference, setTranslationModelPreference] = useState<string>(
     AUTO_OPENROUTER_MODEL
   );
@@ -548,13 +573,12 @@ const App: React.FC = () => {
   }, []);
   useEffect(() => {
     if (
-      !usesDocumentQualityModels &&
       translationModelPreference !== AUTO_OPENROUTER_MODEL &&
-      !openRouterModels.includes(translationModelPreference)
+      !availableTranslationModels.includes(translationModelPreference)
     ) {
       setTranslationModelPreference(AUTO_OPENROUTER_MODEL);
     }
-  }, [usesDocumentQualityModels, openRouterModels, translationModelPreference]);
+  }, [availableTranslationModels, translationModelPreference]);
   const modelReviewService = useMemo(() => new ModelReviewService(), []);
   const selectedStringTargetLangs = useMemo<TargetLanguage[]>(
     () =>
@@ -624,11 +648,14 @@ const App: React.FC = () => {
   ): TranslationEngine[] => {
     const engines: TranslationEngine[] = [];
     if (capabilities.cloudflareAi) engines.push('cloudflare-ai');
-    if (capabilities.openrouter) engines.push('openrouter');
     if (capabilities.deepseek) engines.push('deepseek');
+    if (capabilities.openrouter) engines.push('openrouter');
     if (capabilities.gemini) engines.push('gemini');
 
     if (respectSelectedEngine && translationModelPreference !== AUTO_OPENROUTER_MODEL) {
+      if (isDeepSeekDirectModel(translationModelPreference) && capabilities.deepseek) {
+        return ['deepseek'];
+      }
       if (capabilities.openrouter) return ['openrouter'];
     }
 
@@ -641,6 +668,12 @@ const App: React.FC = () => {
         openRouterModels: activeOpenRouterModels
       };
     }
+    if (isDeepSeekDirectModel(translationModelPreference)) {
+      return {
+        model: 'deepseek' as const,
+        providerModel: getDeepSeekDirectProviderModel(translationModelPreference)
+      };
+    }
     return {
       model: 'openrouter' as const,
       openRouterModel: translationModelPreference
@@ -649,6 +682,13 @@ const App: React.FC = () => {
 
   const getDocumentQualityTranslationOptions = () => {
     if (translationModelPreference !== AUTO_OPENROUTER_MODEL) {
+      if (isDeepSeekDirectModel(translationModelPreference)) {
+        return {
+          model: 'deepseek' as const,
+          providerModel: getDeepSeekDirectProviderModel(translationModelPreference),
+          profile: 'docx-manual' as const
+        };
+      }
       return {
         model: 'openrouter' as const,
         openRouterModel: translationModelPreference,
@@ -3335,6 +3375,10 @@ const App: React.FC = () => {
             targetLang,
             options: {
               model,
+              providerModel:
+                model === 'deepseek' && isDeepSeekDirectModel(translationModelPreference)
+                  ? getDeepSeekDirectProviderModel(translationModelPreference)
+                  : undefined,
               openRouterModel:
                 model === 'openrouter' && translationModelPreference !== AUTO_OPENROUTER_MODEL
                   ? translationModelPreference
@@ -3537,6 +3581,10 @@ const App: React.FC = () => {
             targetLang,
             options: {
               model,
+              providerModel:
+                model === 'deepseek' && isDeepSeekDirectModel(translationModelPreference)
+                  ? getDeepSeekDirectProviderModel(translationModelPreference)
+                  : undefined,
               openRouterModel:
                 model === 'openrouter' && translationModelPreference !== AUTO_OPENROUTER_MODEL
                   ? translationModelPreference
@@ -3938,12 +3986,22 @@ const App: React.FC = () => {
   const currentModelLabel =
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? 'Auto'
+      : isDeepSeekDirectModel(translationModelPreference)
+        ? getDeepSeekDirectModelLabel(translationModelPreference)
       : OPENROUTER_MODEL_LABELS[translationModelPreference] || translationModelPreference;
   const currentModelChainLabel =
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? usesDocumentQualityModels
-        ? formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi)
-        : formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi)
+        ? formatAutoModelChainLabel(
+            activeDocumentQualityOpenRouterModels,
+            capabilities.cloudflareAi,
+            capabilities.deepseek
+          )
+        : formatAutoModelChainLabel(
+            activeOpenRouterModels,
+            capabilities.cloudflareAi,
+            capabilities.deepseek
+          )
       : currentModelLabel;
   const currentModelDisplayLabel =
     translationModelPreference === AUTO_OPENROUTER_MODEL
@@ -4627,19 +4685,19 @@ const App: React.FC = () => {
                 >
                   <option value={AUTO_OPENROUTER_MODEL}>
                     {usesDocumentQualityModels
-                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi)})`
-                      : `Auto (${formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi)})`}
+                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi, capabilities.deepseek)})`
+                      : `Auto (${formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi, capabilities.deepseek)})`}
                   </option>
-                  {availableOpenRouterModels.map((model) => (
+                  {availableTranslationModels.map((model) => (
                     <option key={model} value={model}>
-                      {getModelLabel(model)}
+                      {isDeepSeekDirectModel(model) ? getDeepSeekDirectModelLabel(model) : getModelLabel(model)}
                     </option>
                   ))}
                 </select>
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
                   {usesDocumentQualityModels
-                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi)}；手工选择时只使用当前模型。`
-                    : `Auto 会按 ${formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
+                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatAutoModelChainLabel(activeDocumentQualityOpenRouterModels, capabilities.cloudflareAi, capabilities.deepseek)}；手工选择时只使用当前模型。`
+                    : `Auto 会按 ${formatAutoModelChainLabel(activeOpenRouterModels, capabilities.cloudflareAi, capabilities.deepseek)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
                   {currentSkippedOpenRouterModels.length > 0
                     ? ` 当前跳过：${currentSkippedOpenRouterModels.map(getModelLabel).join(', ')}。`
                     : ''}

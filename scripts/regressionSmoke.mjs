@@ -389,7 +389,8 @@ test("real document smoke uses a local-only regression manifest", () => {
   assert.match(smokeSource, /poct\.real_document_regression\.v1/);
   assert.match(smokeSource, /caseId: caseConfig\.id/);
   assert.match(smokeSource, /knownResidualHits/);
-  assert.match(smokeSource, /legacy image-only artifact tracked/);
+  assert.match(smokeSource, /current translated PDF has extractable text/);
+  assert.match(smokeSource, /translatedPath: path\.relative\(repoRoot, translatedPath\)/);
   assert.match(gitignoreSource, /^local-data\/$/m);
 });
 
@@ -1066,6 +1067,34 @@ test("quality core adapters preserve existing row-based quality checks", async (
         (segment) => segment.original
       ),
       { targetLang: "Russian" }
+    ).issues.spacing.length,
+    0
+  );
+  assert.equal(
+    runQualityChecks([{ id: "da224cff-fd10-4d8f-b374-66b5d0ff6e70" }], [{ id: "da224cff-fd10-4d8f-b374-66b5d0ff6e70" }]).issues.spacing.length,
+    0
+  );
+  assert.equal(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [{ original: "白细胞升高", translated: "WBCs are increased and RBCs are stable." }],
+        "excel",
+        (segment) => segment.translated,
+        (segment) => segment.original
+      ),
+      { targetLang: "English" }
+    ).totals.spacingHigh,
+    0
+  );
+  assert.equal(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [{ original: "维生素B12缺乏", translated: "Vitamin B 12 deficiency." }],
+        "excel",
+        (segment) => segment.translated,
+        (segment) => segment.original
+      ),
+      { targetLang: "English" }
     ).issues.spacing.length,
     0
   );

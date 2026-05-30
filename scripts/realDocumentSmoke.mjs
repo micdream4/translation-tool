@@ -321,7 +321,7 @@ const runPdfSmoke = () => {
         actualTextChars: translated.text.chars,
         note: translated.text.chars === 0 ? "legacy image-only artifact tracked" : "translated PDF has extractable text"
       })
-    : check("translated PDF has extractable text", translated.text.chars > 0, { actualTextChars: translated.text.chars });
+    : check("current translated PDF has extractable text", translated.text.chars > 0, { actualTextChars: translated.text.chars });
   const checks = [
     check("source PDF text extraction meets baseline", source.text.chars >= (expectations.sourceMinTextChars || 0), {
       actual: source.text.chars,
@@ -341,6 +341,8 @@ const runPdfSmoke = () => {
     caseId: caseConfig.id,
     skipped: false,
     status: summarizeChecks(checks),
+    sourcePath: path.relative(repoRoot, sourcePath),
+    translatedPath: path.relative(repoRoot, translatedPath),
     source,
     translated,
     checks

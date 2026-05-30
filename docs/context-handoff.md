@@ -119,11 +119,11 @@ Commit: 057364a
 
 最近一次 `npm run test:real-docs` 结果摘要：
 
-- Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；统一 Quality Core 统计正常，仍有大量 spacing 类提示，需要后续分级优化。
+- Excel：真实文件 818 行解析和导出正常，结构无错、无中文残留、无空译文、无占位符异常；v0.0.99 降噪后 spacing 从 3034 降到 2186，high 从 50 降到 0，low 从 815 降到 0；剩余主要是 `e. g. ,`、`Co. , Ltd.` 等标点风格问题。
 - DOCX 俄语：旧译文仍有英文残留，真实回归 manifest 会持续跟踪非目标语言段落、常见残留词和自动编号是否还带 CJK 格式。
 - DOCX 俄语最新复测：`EN/CE` 子串污染明显减少；后续重点转为目录/标题编号空格、UI 标签策略和真实残留降噪。
 - DOCX 西语最新复测：发现标题/目录编号空格、字母级 run 回写断词和个别语义错译；v0.0.76 已修 run split 和编号空格，v0.0.77 已将自然语言 UI 标签改为默认翻译，语义错译后续通过 issue case / sample review 沉淀。
-- PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但可能文本层为空。新导出的法语 PDF 已改为先写规范化文本层，并在下载日志暴露文本层覆盖率。
+- PDF：真实样本源 PDF 可抽取文本；最新法语译后 PDF `local-data/done/Translated_French_检测教程-202英文_0524.pdf` 可抽取 3923 个非空字符。旧 `local-data/pdf/Translated_French_检测教程-202英文.pdf` 仍是 image-only，但不再作为当前 smoke 的通过条件。
 
 ## 当前模型路由状态
 

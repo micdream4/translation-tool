@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.99
+
+- 重新实测 4-7 点优化项，确认 PDF 文本层问题对最新译后文件已经修复：`local-data/done/Translated_French_检测教程-202英文_0524.pdf` 可抽取 3923 个非空字符。
+- 更新真实文档 smoke：PDF 回归现在优先检查最新 `local-data/done` 译后 PDF，并要求当前译后 PDF 必须具备可抽取文本层，不再把旧 image-only PDF 当作通过条件。
+- Excel spacing QA 降噪：跳过锁定 ID / UUID / identifier 的 spacing 检查，避免 `id` 列被误报 high；缩写复数 `WBCs` / `RBCs` 不再触发 high glue；`Vitamin B 12` 这类安全医学写法不再进入 low spacing 噪声。
+- 真实 Excel smoke spacing 从 3034 降到 2186，spacing high 从 50 降到 0，spacing low 从 815 降到 0；剩余主要是 `e. g. ,`、`Co. , Ltd.` 等真实标点风格问题。
+- 建立本地 issue 包 `local-data/issues/2026-05-30-real-docs-pdf-excel-spacing-current-verification/`，记录当前实测结论和后续沉淀层。
+- 版本号更新为 `v0.0.99`。
+
 ## v0.0.98
 
 - Multi-AI Review 默认候选翻译模型扩展为 5 个：Cloudflare Gemini 3 Flash、DeepSeek v4 Flash、DeepSeek v4 Pro、Cloudflare GPT-5.4、Cloudflare Claude Sonnet 4.6。

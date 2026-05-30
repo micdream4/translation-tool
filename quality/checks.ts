@@ -46,7 +46,7 @@ const SAFE_STANDARD_SPACING_REGEX =
   /\b(?:EN|IEC|ISO|GB|YY)\s+\d[\d-]*(?::\s?\d{4})?/gi;
 const GLUED_PUNCT_REGEX = /\b[A-Za-z]+[,.:][A-Za-z]+\b/;
 const CAMEL_GLUE_REGEX = /\b[a-z]{2,}[A-Z][a-z]+\b/;
-const UPPER_ABBR_GLUE_REGEX = /\b(?:[A-Z]{2,}\d*(?:\/[A-Z]+)?)(?:[A-Z][a-z]+|[a-z]{2,})\b/;
+const UPPER_ABBR_GLUE_REGEX = /\b(?:[A-Z]{2,}\d*(?:\/[A-Z]+)?)(?:[A-Z][a-z]{2,}|[a-z]{2,})\b/;
 const DIGIT_BOUNDARY_GLUE_REGEX =
   /\b(?:[a-z]{2,}\d+(?:[-/.]\d+)*[A-Za-z]{2,}|[A-Z][a-z]{3,}\d+|[A-Za-z]{3,}\d+[A-Za-z]{2,})\b/;
 const LOWER_COMPOUND_GLUE_REGEX =
@@ -131,7 +131,7 @@ export const getSpacingSeverity = (value: string): QualitySeverity | null => {
     return 'medium';
   }
   if (LETTER_DIGIT_SPACE_REGEX.test(checkValue)) {
-    if (SAFE_MEDICAL_SPACING_REGEX.test(checkValue)) return 'low';
+    if (SAFE_MEDICAL_SPACING_REGEX.test(checkValue)) return null;
     return 'medium';
   }
   return null;
@@ -275,7 +275,9 @@ export const runQualityChecksOnUnits = (
     }
 
     const spacingText = unit.translatedText.trim();
-    const spacingSeverity = spacingText ? getSpacingSeverity(spacingText) : null;
+    const shouldSkipSpacingCheck =
+      shouldLockCell(unit.columnKey, unit.originalValue) || isLikelyIdentifier(spacingText);
+    const spacingSeverity = spacingText && !shouldSkipSpacingCheck ? getSpacingSeverity(spacingText) : null;
     if (spacingSeverity) {
       totals.spacingIssues += 1;
       spacingRows.add(unit.rowIndex);

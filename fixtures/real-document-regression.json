@@ -53,6 +53,8 @@
           "local-data/pdf/检测教程-202英文.pdf"
         ],
         "translatedCandidates": [
+          "local-data/done/Translated_French_检测教程-202英文_0524.pdf",
+          "local-data/done/Translated_French_检测教程-202英文.pdf",
           "local-data/pdf/Translated_French_检测教程-202英文.pdf"
         ]
       },
@@ -60,7 +62,7 @@
         "sourceMinTextChars": 1000,
         "sourceMinRenderBytes": 1000,
         "translatedMinRenderBytes": 1000,
-        "translatedLegacyImageOnlyAllowed": true
+        "translatedLegacyImageOnlyAllowed": false
       }
     }
   ]

@@ -44,6 +44,7 @@
 - `npm run build`：生产构建
 - `npm run preview`：本地预览
 - `npm run test`：运行轻量回归检查（多工作表 Excel、上传格式、安全配置、DOCX 范围提示、PDF 文本导出路径）
+- `npm run smoke:openrouter`：用当前 OpenRouter key 实测模型可用性，不输出密钥
 - `npm run deepseek:test`：DeepSeek 接口连通性测试
 - `npm run docx:translate -- "<docx_path>" --target English`：离线批量翻译/验收脚本（运维辅助，不是最终用户入口）
 - `npm run deploy:pages`：构建并发布到 Cloudflare Pages（需先 `wrangler login`）
@@ -104,7 +105,7 @@
 5. 安全建议  
    不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。生产直连 DeepSeek 应使用服务端 Secret `DEEPSEEK_API_KEY`，不要使用 `VITE_DEEPSEEK_API_KEY`。
    配置 `DEEPSEEK_API_KEY` 后，左侧 `Translation Model` 会显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认只使用 `deepseek-v4-flash` 作为 DeepSeek 官方 fallback。
-   如果某个 OpenRouter 模型存在区域限制，优先改 `OPENROUTER_MODELS`，而不是改前端代码。
+   当前默认 OpenRouter 链只保留实测可用的 `qwen/qwen3.6-plus` 与 `deepseek/deepseek-v4-pro`；Gemini 默认由 Cloudflare AI Gateway 承担。若 OpenRouter 后续恢复 Google/OpenAI 模型，可先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
 
 6. DOCX 范围说明
    浏览器端 DOCX 翻译当前处理正文 `word/document.xml` 的段落/表格文本；页眉页脚、脚注/尾注、批注会在上传后提示为暂不翻译范围。

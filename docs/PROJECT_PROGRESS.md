@@ -1,5 +1,15 @@
 # 项目进度
 
+## v0.0.95
+
+- 生产 Cloudflare Pages secret 检查确认已配置 `DEEPSEEK_API_KEY` 和 `OPENROUTER_API_KEY`；当前部署 `/api/me` 返回 `cloudflareAi/deepseek/openrouter` 能力均为 true。
+- 重新实测 OpenRouter：`google/gemini-3-flash-preview`、`google/gemini-3.1-pro-preview`、`openai/gpt-5.3-chat` 仍返回 403 区域不可用；`qwen/qwen3.6-plus` 与 `deepseek/deepseek-v4-pro` 可用。
+- 前端 `Translation Model` 的默认 OpenRouter 手工列表收敛为 Qwen 3.6 Plus 与 DeepSeek V4 Pro，避免用户选择已知 403 的 Google/OpenAI OpenRouter 模型；Gemini 继续走 Cloudflare AI Gateway。
+- Model Review、Sample Review 和 Multi-AI Judge 的默认 OpenRouter 模型从不可用的 Gemini/OpenAI/Claude 候选收敛到 Qwen / DeepSeek，减少审阅链路因区域限制失败。
+- 新增 `npm run smoke:openrouter`，用于后续重复验证 OpenRouter 模型可用性。
+- 建立本地 issue 包 `local-data/issues/2026-05-30-model-routing-openrouter-gemini-gpt-region-unavailable/`。
+- 版本号更新为 `v0.0.95`。
+
 ## v0.0.94
 
 - 修复 DeepSeek Direct 前端能力误显示：`/api/me` 现在返回后端实际翻译能力，前端只有在 Cloudflare Pages 已配置 `DEEPSEEK_API_KEY` secret 时才显示 `DeepSeek Direct v4 Flash/Pro`。

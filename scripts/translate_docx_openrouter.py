@@ -602,7 +602,7 @@ def translate_docx(
     model = (
         env.get("OPENROUTER_MODEL")
         or os.environ.get("OPENROUTER_MODEL")
-        or "google/gemini-3-flash-preview"
+        or "qwen/qwen3.6-plus"
     ).strip()
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY missing.")

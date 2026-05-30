@@ -42,7 +42,7 @@ Optional encrypted Secret:
 - Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.
 - Auto 模式优先走 Cloudflare AI Gateway 的 Gemini 3 Flash；Cloudflare AI 失败时，后端会尝试 DeepSeek 官方 API `deepseek-v4-flash`，再按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
 - 前端会从 `/api/me` 读取后端能力；只有 Cloudflare Pages 配置了 encrypted Secret `DEEPSEEK_API_KEY` 时，才显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`。手工选择 Pro 时会向 DeepSeek 官方 API 指定 `deepseek-v4-pro`；Auto 默认不使用 Pro。
-- OpenRouter Gemini 3 Flash Preview 保留为前端手工可选模型，但默认 Auto 链不使用它；如果 OpenRouter 以后恢复，可在左侧 `Translation Model` 手工选中验证。
+- OpenRouter 默认只保留当前实测可用的 Qwen / DeepSeek 模型；Gemini 默认由 Cloudflare AI Gateway 承担，不再作为 OpenRouter 手工默认项展示。若 OpenRouter 以后恢复 Google/OpenAI 模型，先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
 - 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。
 - `OPENROUTER_MODEL` 仍可保留给单模型场景；多模型时优先使用 `OPENROUTER_MODELS`。
 - 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。

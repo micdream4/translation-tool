@@ -82,17 +82,14 @@ export interface ModelReviewResult {
 
 export const DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS = Array.from(
   new Set([
-    "google/gemini-3-flash-preview",
-    "google/gemini-3.1-pro-preview",
     "qwen/qwen3.6-plus",
-    DEEPSEEK_OPENROUTER_MODEL,
-    "openai/gpt-5.3-chat"
+    DEEPSEEK_OPENROUTER_MODEL
   ].map(normalizeOpenRouterModelId))
 );
 
 export const DEFAULT_MODEL_REVIEW_JUDGE_MODELS = [
-  "openai/gpt-5.4",
-  "anthropic/claude-sonnet-4.6"
+  "qwen/qwen3.6-plus",
+  DEEPSEEK_OPENROUTER_MODEL
 ];
 
 export const DEFAULT_DOCX_REVIEW_MODEL_CHAIN = DOCX_MANUAL_OPENROUTER_MODELS;

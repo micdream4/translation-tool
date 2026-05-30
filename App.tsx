@@ -136,11 +136,8 @@ const TRANSLATION_MEMORY_ENABLED_STORAGE_KEY = 'poct.translation_memory_enabled'
 const PACKAGE_VERSION = String((packageJson as { version?: string }).version || '').trim();
 const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || PACKAGE_VERSION).trim();
 const DEFAULT_OPENROUTER_MODELS = [
-  'google/gemini-3-flash-preview',
-  'google/gemini-3.1-pro-preview',
   'qwen/qwen3.6-plus',
-  DEEPSEEK_OPENROUTER_MODEL,
-  'openai/gpt-5.3-chat'
+  DEEPSEEK_OPENROUTER_MODEL
 ] as const;
 const DEFAULT_OPENROUTER_AUTO_MODELS = [
   'qwen/qwen3.6-plus',

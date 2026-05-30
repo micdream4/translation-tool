@@ -125,6 +125,13 @@ Commit: 057364a
 - DOCX 西语最新复测：发现标题/目录编号空格、字母级 run 回写断词和个别语义错译；v0.0.76 已修 run split 和编号空格，v0.0.77 已将自然语言 UI 标签改为默认翻译，语义错译后续通过 issue case / sample review 沉淀。
 - PDF：真实样本源 PDF 可抽取文本；旧法语译后 PDF 可渲染但可能文本层为空。新导出的法语 PDF 已改为先写规范化文本层，并在下载日志暴露文本层覆盖率。
 
+## 当前模型路由状态
+
+- v0.0.95 已确认生产 Cloudflare Pages 配置了 `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`，`/api/me` 能力响应中 `cloudflareAi/deepseek/openrouter` 均为 true。
+- 2026-05-30 OpenRouter 实测：Google Gemini 3 Flash Preview、Gemini 3.1 Pro Preview、OpenAI GPT-5.3 Chat 仍返回 403 区域不可用；Qwen 3.6 Plus 与 DeepSeek V4 Pro 可用。
+- 默认 OpenRouter 手工列表、Model Review、Sample Review、Multi-AI Judge 已收敛到 Qwen / DeepSeek；Gemini 默认继续走 Cloudflare AI Gateway。
+- 后续如需恢复 OpenRouter Google/OpenAI 模型，先运行 `npm run smoke:openrouter` 验证，再显式加入 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS`。
+
 ## 当前主要待办
 
 ### 1. 问题反馈闭环

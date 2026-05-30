@@ -1693,7 +1693,10 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /currentSkippedOpenRouterModels/);
   assert.match(appSource, /activeOpenRouterModels/);
   assert.match(appSource, /allOpenRouterModels/);
-  assert.match(appSource, /DEFAULT_OPENROUTER_MODELS = \[[\s\S]*google\/gemini-3-flash-preview/);
+  const defaultOpenRouterModelsBlock = appSource.match(/DEFAULT_OPENROUTER_MODELS = \[([\s\S]*?)\] as const/);
+  assert.ok(defaultOpenRouterModelsBlock);
+  assert.doesNotMatch(defaultOpenRouterModelsBlock[1], /google\/gemini|openai\/gpt/);
+  assert.match(defaultOpenRouterModelsBlock[1], /qwen\/qwen3\.6-plus[\s\S]*DEEPSEEK_OPENROUTER_MODEL/);
   assert.match(appSource, /DEFAULT_OPENROUTER_AUTO_MODELS = \[[\s\S]*qwen\/qwen3\.6-plus[\s\S]*deepseek\/deepseek-v4-pro/);
   assert.match(appSource, /String Resource 共用此处选择/);
   assert.match(appSource, /这里只单独选择输出语言/);

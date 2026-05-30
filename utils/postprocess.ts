@@ -259,8 +259,7 @@ const fixSegmentSpacing = (segment: string) => {
     if (compacted === result) break;
     result = compacted;
   }
-  result = result.replace(/\bCo\.\s*,\s*Ltd\.\s*\./g, "Co., Ltd.");
-  result = result.replace(/\bCo\.\s*,\s*Ltd\./g, "Co., Ltd.");
+  result = result.replace(/\bCo\s*\.\s*,\s*Ltd\b(?:\s*\.)+/g, "Co., Ltd.");
   result = result.replace(/\bEHB\s+T-75\b/g, "EHBT-75");
   result = result.replace(/\bozellemed\.\s+com\b/g, "ozellemed.com");
   result = result.replace(/\[\s*\.\s*\.\s*\.\s*\]/g, "[...]");
@@ -279,8 +278,7 @@ const fixSegmentSpacing = (segment: string) => {
   result = result.replace(/([0-9])([A-Za-z])/g, "$1 $2");
   result = result.replace(/([A-Za-z])([0-9])/g, "$1 $2");
   result = result.replace(/ {2,}/g, (match, offset) => (offset === 0 ? match : " "));
-  result = result.replace(/\bCo\s*\.\s*,\s*Ltd\s*\.\s*\./g, "Co., Ltd.");
-  result = result.replace(/\bCo\s*\.\s*,\s*Ltd\s*\./g, "Co., Ltd.");
+  result = result.replace(/\bCo\s*\.\s*,\s*Ltd\b(?:\s*\.)+/g, "Co., Ltd.");
   result = result.replace(/\bEHB\s+T-75\b/g, "EHBT-75");
   result = result.replace(/\bA\s+4\b/g, "A4");
   result = result.replace(/\bA\s+1\b/g, "A1");
@@ -288,6 +286,12 @@ const fixSegmentSpacing = (segment: string) => {
   result = result.replace(/\bIEEE\s+802\.\s+11\s*/g, "IEEE 802.11");
   result = result.replace(/\[\s*\.\s*\.\s*\.\s*\]/g, "[...]");
   result = result.replace(/\bozellemed\.\s+com\b/g, "ozellemed.com");
+  result = result.replace(/\b([eE])\s*\.\s*g\s*\.\s*,/g, "$1.g.,");
+  result = result.replace(/\b([eE])\s*\.\s*g\s*\./g, "$1.g.");
+  result = result.replace(/\b([iI])\s*\.\s*e\s*\.\s*,/g, "$1.e.,");
+  result = result.replace(/\b([iI])\s*\.\s*e\s*\./g, "$1.e.");
+  result = result.replace(/\b(etc|vs|fig|no)\.\s+([,;:])/gi, "$1.$2");
+  result = result.replace(/\bCo\s*\.\s*,\s*Ltd\b(?:\s*\.)+/g, "Co., Ltd.");
   return result;
 };
 
@@ -399,15 +403,15 @@ const fixEnglishGlueArtifacts = (
   output = output.replace(/\b(complete)(sample)\b/gi, "$1 $2");
   output = output.replace(/\b(Hunan)\s+(Yi\s*Hong)(?=\s+Health\s+Technology)/gi, "$1 Ehome");
   output = output.replace(
-    /\bHunan\s+E[a-z]{2,10}\s+Health\s+Technology\s+Co\.?\s*,?\s*Ltd\.?\b/gi,
+    /\bHunan\s+E[a-z]{2,10}\s+Health\s+Technology\s+Co\.?\s*,?\s*Ltd\b(?:\s*\.)*/gi,
     "Hunan Ehome Health Technology Co., Ltd."
   );
   output = output.replace(
-    /\bHunan\s+Yi\s*Hong\s+Health\s+Technology\s+Co\.?\s*,?\s*Ltd\.?\b/gi,
+    /\bHunan\s+Yi\s*Hong\s+Health\s+Technology\s+Co\.?\s*,?\s*Ltd\b(?:\s*\.)*/gi,
     "Hunan Ehome Health Technology Co., Ltd."
   );
   output = output.replace(
-    /\bE[a-z]{2,10}\s+Health\s+Technology\s+Co\.?\s*,?\s*Ltd\.?\b/gi,
+    /\bE[a-z]{2,10}\s+Health\s+Technology\s+Co\.?\s*,?\s*Ltd\b(?:\s*\.)*/gi,
     "Ehome Health Technology Co., Ltd."
   );
   output = preserveUiMarkerSymbols(original, output);

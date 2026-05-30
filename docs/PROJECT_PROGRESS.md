@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.100
+
+- Excel spacing QA 继续降噪：`e. g. ,`、`i. e. ,`、`etc. ;`、`Co. , Ltd. .` 这类本地后处理可自动修复的标点空格，不再作为 Quality Report medium finding 淹没有效问题。
+- `fixSpacingArtifacts` 在通用标点空格整理后追加英文缩写和公司后缀收敛，避免 `e.g.` / `i.e.` / `etc.;` / `Co., Ltd.` 被前序规则来回打散。
+- 回归测试新增 Quality Core 与后处理双覆盖，锁定自动可修复标点空格不再进入 Excel spacing finding，同时仍保留真实范围/单位 spacing 问题的检测。
+- 真实 Excel smoke spacing 从 v0.0.99 的 2186 个 medium 进一步降到 0；当前结构、中文残留、空译文、占位符、结构错位仍为 0。
+- 更新本地 issue 包 `local-data/issues/2026-05-30-real-docs-pdf-excel-spacing-current-verification/`，记录第二轮实测结论。
+- 版本号更新为 `v0.0.100`。
+
 ## v0.0.99
 
 - 重新实测 4-7 点优化项，确认 PDF 文本层问题对最新译后文件已经修复：`local-data/done/Translated_French_检测教程-202英文_0524.pdf` 可抽取 3923 个非空字符。

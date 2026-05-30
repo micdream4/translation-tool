@@ -44,6 +44,7 @@ const SAFE_NUMBER_UNIT_SPACING_REGEX =
   /\b\d+(?:[.,]\d+)?\s+(?:V|Hz|Гц|kg|g|mg|mL|ml|L|mm|cm|pg|fL|dBA)\b/gi;
 const SAFE_STANDARD_SPACING_REGEX =
   /\b(?:EN|IEC|ISO|GB|YY)\s+\d[\d-]*(?::\s?\d{4})?/gi;
+const SAFE_LATIN_ABBREVIATION_REGEX = /\b(?:e\.g\.|i\.e\.|etc\.|vs\.|fig\.|no\.)/gi;
 const GLUED_PUNCT_REGEX = /\b[A-Za-z]+[,.:][A-Za-z]+\b/;
 const CAMEL_GLUE_REGEX = /\b[a-z]{2,}[A-Z][a-z]+\b/;
 const UPPER_ABBR_GLUE_REGEX = /\b(?:[A-Z]{2,}\d*(?:\/[A-Z]+)?)(?:[A-Z][a-z]{2,}|[a-z]{2,})\b/;
@@ -104,29 +105,28 @@ const createQualityIssues = (): QualityReport['issues'] => ({
 });
 
 export const hasSpacingIssue = (value: string) => {
-  const checkValue = stripUrls(value)
-    .replace(SAFE_NUMBER_UNIT_SPACING_REGEX, ' ')
-    .replace(SAFE_STANDARD_SPACING_REGEX, ' ');
-  if (SAFE_MEDICAL_SPACING_REGEX.test(checkValue)) {
-    return (
-      EG_REGEX.test(checkValue) ||
-      EXTRA_SPACE_REGEX.test(checkValue) ||
-      SPACE_BEFORE_PUNCT_REGEX.test(checkValue)
-    );
-  }
-  return (
-    EG_REGEX.test(checkValue) ||
-    EXTRA_SPACE_REGEX.test(checkValue) ||
-    SPACE_BEFORE_PUNCT_REGEX.test(checkValue) ||
-    LETTER_DIGIT_SPACE_REGEX.test(checkValue)
-  );
+  return Boolean(getSpacingSeverity(value));
 };
+
+const normalizeAutoFixablePunctuationSpacing = (value: string) =>
+  String(value || '')
+    .replace(/\b([eE])\s*\.\s*g\s*\.\s*,/g, '$1.g.,')
+    .replace(/\b([eE])\s*\.\s*g\s*\./g, '$1.g.')
+    .replace(/\b([iI])\s*\.\s*e\s*\.\s*,/g, '$1.e.,')
+    .replace(/\b([iI])\s*\.\s*e\s*\./g, '$1.e.')
+    .replace(/\b(etc|vs|fig|no)\.\s+([,;:])/gi, '$1.$2')
+    .replace(/\bCo\s*\.\s*,\s*Ltd\b(?:\s*\.)+/g, 'Co., Ltd.')
+    .replace(/\s+([,.;:!?])/g, '$1');
+
+const getSpacingCheckValue = (value: string) =>
+  stripUrls(normalizeAutoFixablePunctuationSpacing(value))
+    .replace(SAFE_NUMBER_UNIT_SPACING_REGEX, 'SAFE')
+    .replace(SAFE_STANDARD_SPACING_REGEX, 'SAFE')
+    .replace(SAFE_LATIN_ABBREVIATION_REGEX, 'SAFE');
 
 export const getSpacingSeverity = (value: string): QualitySeverity | null => {
   if (hasGlueIssue(value)) return 'high';
-  const checkValue = stripUrls(value)
-    .replace(SAFE_NUMBER_UNIT_SPACING_REGEX, ' ')
-    .replace(SAFE_STANDARD_SPACING_REGEX, ' ');
+  const checkValue = getSpacingCheckValue(value);
   if (EXTRA_SPACE_REGEX.test(checkValue) || SPACE_BEFORE_PUNCT_REGEX.test(checkValue) || EG_REGEX.test(checkValue)) {
     return 'medium';
   }
@@ -138,7 +138,7 @@ export const getSpacingSeverity = (value: string): QualitySeverity | null => {
 };
 
 export const hasGlueIssue = (value: string) => {
-  const checkValue = stripUrls(value);
+  const checkValue = stripUrls(normalizeAutoFixablePunctuationSpacing(value)).replace(SAFE_LATIN_ABBREVIATION_REGEX, 'SAFE');
   return (
     GLUED_PUNCT_REGEX.test(checkValue) ||
     CAMEL_GLUE_REGEX.test(checkValue) ||

@@ -1098,6 +1098,23 @@ test("quality core adapters preserve existing row-based quality checks", async (
     ).issues.spacing.length,
     0
   );
+  assert.equal(
+    runQualityChecksOnUnits(
+      segmentsToQualityUnits(
+        [
+          {
+            original: "示例",
+            translated: "Can manifest as abnormalities (e. g. , amylase); etc. ; Ehome Health Technology Co. , Ltd. ."
+          }
+        ],
+        "excel",
+        (segment) => segment.translated,
+        (segment) => segment.original
+      ),
+      { targetLang: "English" }
+    ).issues.spacing.length,
+    0
+  );
   assert.deepEqual(
     qualityRowsToUnits({ sourceRows, targetRows }, "docx").units.map((unit) => unit.documentKind).every((kind) => kind === "docx"),
     true
@@ -1335,6 +1352,14 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(
     polishTranslation("", "Ehome Health Technology Co. , Ltd. . поддерживает принтер A 4 и https://ozellemed. com/.", "Russian").trim(),
     "Ehome Health Technology Co., Ltd. поддерживает принтер A4 и https://ozellemed.com/."
+  );
+  assert.equal(
+    polishTranslation(
+      "",
+      "Can manifest as abnormalities (e. g. , amylase); etc. ; Ehome Health Technology Co. , Ltd. .",
+      "English"
+    ).trim(),
+    "Can manifest as abnormalities (e.g., amylase); etc.; Ehome Health Technology Co., Ltd."
   );
   assert.ok(getRussianResidueProfile().disallowedLatinResidueWords.includes("home"));
   assert.equal(isRussianDisallowedLatinResidue("Reports"), true);

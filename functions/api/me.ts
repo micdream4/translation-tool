@@ -1,17 +1,19 @@
 import { getAuthContext, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
+import { hasCloudflareAiBinding, getDeepSeekKey, parseDelimitedModelList } from "../_shared/llmProviders";
 
-const getDeepSeekKey = (env: Record<string, unknown>) =>
-  String(env.DEEPSEEK_API_KEY || env.Deepseek_API_KEY || "").trim();
-
-const hasCloudflareAiBinding = (env: Record<string, unknown>) => {
-  const binding = env.AI as { run?: unknown } | undefined;
-  return Boolean(binding && typeof binding.run === "function");
-};
+const hasOpenRouterModels = (env: Record<string, unknown>) =>
+  parseDelimitedModelList(
+    env.OPENROUTER_MODELS ||
+      env.VITE_OPENROUTER_MODELS ||
+      env.OPENROUTER_MODEL ||
+      env.VITE_OPENROUTER_MODEL,
+    []
+  ).length > 0;
 
 const getTranslationCapabilities = (env: Record<string, unknown>, userEmail: string) => ({
   cloudflareAi: hasCloudflareAiBinding(env),
   deepseek: Boolean(getDeepSeekKey(env)),
-  openrouter: Boolean(getOpenRouterKeyForUser(env, userEmail)),
+  openrouter: Boolean(getOpenRouterKeyForUser(env, userEmail) && hasOpenRouterModels(env)),
   gemini: false
 });
 

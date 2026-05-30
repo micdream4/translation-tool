@@ -191,6 +191,7 @@ test("frontend auth state is isolated in useAuth hook", () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   const authHookSource = fs.readFileSync(path.join(repoRoot, "hooks/useAuth.ts"), "utf8");
   const authFunctionSource = fs.readFileSync(path.join(repoRoot, "functions/_shared/auth.ts"), "utf8");
+  const llmProviderSource = fs.readFileSync(path.join(repoRoot, "functions/_shared/llmProviders.ts"), "utf8");
   const meFunctionSource = fs.readFileSync(path.join(repoRoot, "functions/api/me.ts"), "utf8");
   const wranglerSource = fs.readFileSync(path.join(repoRoot, "wrangler.toml"), "utf8");
   assert.match(appSource, /import \{ useAuth \} from '\.\/hooks\/useAuth'/);
@@ -207,7 +208,7 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.doesNotMatch(wranglerSource, /ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
   assert.match(meFunctionSource, /accessControlledBy: "cloudflare-zero-trust"/);
   assert.match(meFunctionSource, /getTranslationCapabilities/);
-  assert.match(meFunctionSource, /DEEPSEEK_API_KEY/);
+  assert.match(llmProviderSource, /DEEPSEEK_API_KEY/);
   assert.doesNotMatch(meFunctionSource, /whitelistEnabled|allowedEmails/);
   assert.doesNotMatch(authFunctionSource, /parseAllowedEmails|ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
   assert.doesNotMatch(authFunctionSource, /Forbidden: user not in whitelist/);
@@ -226,6 +227,7 @@ test("API me exposes server-side translation capabilities without leaking keys",
       ALLOW_LOCAL_WITHOUT_ACCESS: "true",
       LOCAL_DEV_EMAIL: "dev@example.com",
       OPENROUTER_API_KEY: "test-openrouter-key",
+      OPENROUTER_MODELS: "fallback-model",
       DEEPSEEK_API_KEY: "test-deepseek-key",
       AI: {
         run: async () => ({})
@@ -1436,7 +1438,7 @@ test("API translate auto uses Cloudflare AI Gateway Gemini before OpenRouter", a
     assert.equal(fetchCalled, false);
     assert.equal(aiCalls.length, 1);
     assert.equal(aiCalls[0].model, "google/gemini-3-flash");
-    assert.equal(aiCalls[0].input.generationConfig.maxOutputTokens, 2048);
+    assert.equal(aiCalls[0].input.max_tokens, 2048);
     assert.deepEqual(aiCalls[0].options, { gateway: { id: "default" } });
   });
 });
@@ -1693,20 +1695,18 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /currentSkippedOpenRouterModels/);
   assert.match(appSource, /activeOpenRouterModels/);
   assert.match(appSource, /allOpenRouterModels/);
-  const defaultOpenRouterModelsBlock = appSource.match(/DEFAULT_OPENROUTER_MODELS = \[([\s\S]*?)\] as const/);
-  assert.ok(defaultOpenRouterModelsBlock);
-  assert.doesNotMatch(defaultOpenRouterModelsBlock[1], /google\/gemini|openai\/gpt/);
-  assert.match(defaultOpenRouterModelsBlock[1], /qwen\/qwen3\.6-plus[\s\S]*DEEPSEEK_OPENROUTER_MODEL/);
-  assert.match(appSource, /DEFAULT_OPENROUTER_AUTO_MODELS = \[[\s\S]*qwen\/qwen3\.6-plus[\s\S]*deepseek\/deepseek-v4-pro/);
+  assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS = \[[\s\S]*google\/gemini-3-flash[\s\S]*openai\/gpt-5\.4[\s\S]*anthropic\/claude-sonnet-4\.6/);
+  assert.match(appSource, /const DEFAULT_OPENROUTER_MODELS: string\[\] = \[\]/);
+  assert.match(appSource, /const DEFAULT_OPENROUTER_AUTO_MODELS: string\[\] = \[\]/);
   assert.match(appSource, /String Resource 共用此处选择/);
   assert.match(appSource, /这里只单独选择输出语言/);
   assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);
-  assert.match(appSource, /CLOUDFLARE_AI_MODEL_LABEL/);
+  assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS/);
   assert.match(appSource, /DEEPSEEK_DIRECT_MODEL_LABEL/);
   assert.match(appSource, /DEEPSEEK_DIRECT_PRO_MODEL_LABEL/);
   assert.match(appSource, /availableTranslationModels/);
   assert.match(appSource, /isDeepSeekDirectModel\(translationModelPreference\)[\s\S]*model: 'deepseek' as const[\s\S]*providerModel/);
-  assert.match(appSource, /formatAutoModelChainLabel\(activeOpenRouterModels, capabilities\.cloudflareAi, capabilities\.deepseek\)/);
+  assert.match(appSource, /formatAutoModelChainLabel\([\s\S]*cloudflareAiModels[\s\S]*activeOpenRouterModels[\s\S]*capabilities\.deepseek/);
 });
 
 test("Proxy translation retries transient fetch failures before surfacing string resource errors", async () => {
@@ -1813,22 +1813,28 @@ test("API review-samples function parses anonymous review JSON without network",
     });
 
     const response = await onRequestPost(
-      functionContext({
-        samples: [
-          {
-            id: "sample-1",
-            location: "row 1",
-            source: "白细胞升高",
-            target: "White blood cells are high"
-          }
-        ],
-        targetLang: "English",
-        model: "judge-model"
-      })
+      functionContext(
+        {
+          samples: [
+            {
+              id: "sample-1",
+              location: "row 1",
+              source: "白细胞升高",
+              target: "White blood cells are high"
+            }
+          ],
+          targetLang: "English",
+          model: "deepseek:judge-model"
+        },
+        {
+          DEEPSEEK_API_KEY: "test-deepseek-key"
+        }
+      )
     );
     const payload = await response.json();
     assert.equal(response.status, 200);
-    assert.equal(payload.model, "judge-model");
+    assert.equal(payload.engine, "deepseek");
+    assert.equal(payload.model, "deepseek:judge-model");
     assert.equal(payload.reviews[0].verdict, "warning");
     assert.equal(payload.reviews[0].risk, "medium");
     assert.deepEqual(payload.reviews[0].issueTypes, ["terminology"]);
@@ -1886,22 +1892,27 @@ test("API model-review function translates candidates and ranks anonymous judge 
     });
 
     const response = await onRequestPost(
-      functionContext({
-        samples: [
-          {
-            id: "sample-1",
-            location: "DOCX segment 1",
-            sourceText: "请勿触摸探头",
-            contextBefore: ["安全说明"],
-            contextAfter: ["继续操作前关闭电源"]
-          }
-        ],
-        targetLang: "English",
-        translationModels: ["model-a", "model-b"],
-        judgeModels: ["judge-a"],
-        reviewStyle: "ifu-manual",
-        profile: "docx-manual"
-      })
+      functionContext(
+        {
+          samples: [
+            {
+              id: "sample-1",
+              location: "DOCX segment 1",
+              sourceText: "请勿触摸探头",
+              contextBefore: ["安全说明"],
+              contextAfter: ["继续操作前关闭电源"]
+            }
+          ],
+          targetLang: "English",
+          translationModels: ["deepseek:model-a", "deepseek:model-b"],
+          judgeModels: ["deepseek:judge-a"],
+          reviewStyle: "ifu-manual",
+          profile: "docx-manual"
+        },
+        {
+          DEEPSEEK_API_KEY: "test-deepseek-key"
+        }
+      )
     );
     const payload = await response.json();
     assert.equal(response.status, 200);
@@ -1909,7 +1920,7 @@ test("API model-review function translates candidates and ranks anonymous judge 
     assert.equal(payload.candidates.length, 2);
     assert.equal(payload.judges.length, 1);
     assert.equal(payload.ranking[0].alias, "Candidate A");
-    assert.equal(payload.ranking[0].model, "model-a");
+    assert.equal(payload.ranking[0].model, "deepseek:model-a");
     assert.ok(payload.ranking[0].overall > payload.ranking[1].overall);
   });
 });

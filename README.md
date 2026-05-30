@@ -26,12 +26,12 @@
    ```bash
    # 推荐：本地也走代理模式，避免把模型 Key 注入浏览器 bundle
    VITE_TRANSLATION_MODE=proxy
-   # 生产环境 Auto 优先走 Cloudflare AI Gateway Gemini 3 Flash，再走 DeepSeek 官方 API，最后走 OpenRouter
-   CLOUDFLARE_AI_MODELS=google/gemini-3-flash
+   # 生产环境 Auto 优先走 Cloudflare AI Gateway，再走 DeepSeek 官方 API，OpenRouter 仅作显式兜底
+   CLOUDFLARE_AI_MODELS=google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6
    DEEPSEEK_API_KEY=your_deepseek_key
    DEEPSEEK_MODELS=deepseek-v4-flash
    OPENROUTER_API_KEY=your_key
-   OPENROUTER_MODELS=qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
+   OPENROUTER_MODELS=
    ```
    如需本地纯浏览器直连模型，显式设置 `VITE_TRANSLATION_MODE=direct` 后再使用 `VITE_*_API_KEY`。
 3. 启动开发环境
@@ -86,8 +86,8 @@
    DEEPSEEK_API_KEY=sk-deepseek
    DEEPSEEK_MODELS=deepseek-v4-flash
 
-   # 可选：OpenRouter 内部模型回退列表，按顺序尝试。Gemini 默认由 Cloudflare AI Gateway 承担。
-   OPENROUTER_MODELS=qwen/qwen3.6-plus,deepseek/deepseek-v4-pro
+   # 可选：OpenRouter 最后兜底模型列表；默认留空，不再通过 OpenRouter 调国内模型。
+   OPENROUTER_MODELS=
 
    # 可选：本地调试（线上不要开）
    ALLOW_LOCAL_WITHOUT_ACCESS=false
@@ -105,7 +105,7 @@
 5. 安全建议  
    不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。生产直连 DeepSeek 应使用服务端 Secret `DEEPSEEK_API_KEY`，不要使用 `VITE_DEEPSEEK_API_KEY`。
    配置 `DEEPSEEK_API_KEY` 后，左侧 `Translation Model` 会显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认只使用 `deepseek-v4-flash` 作为 DeepSeek 官方 fallback。
-   当前默认 OpenRouter 链只保留实测可用的 `qwen/qwen3.6-plus` 与 `deepseek/deepseek-v4-pro`；Gemini 默认由 Cloudflare AI Gateway 承担。若 OpenRouter 后续恢复 Google/OpenAI 模型，可先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
+   当前默认 OpenRouter 链为空；Gemini、GPT 和 Claude 统一通过 Cloudflare AI Gateway 调用，DeepSeek 通过官方 API 直连。若后续确实需要 OpenRouter 兜底，可先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
 
 6. DOCX 范围说明
    浏览器端 DOCX 翻译当前处理正文 `word/document.xml` 的段落/表格文本；页眉页脚、脚注/尾注、批注会在上传后提示为暂不翻译范围。

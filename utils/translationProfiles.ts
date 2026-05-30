@@ -8,10 +8,7 @@ export type TranslationProfile = "spreadsheet" | "docx-manual";
 export const DEEPSEEK_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro";
 const LEGACY_DEEPSEEK_OPENROUTER_MODELS = new Set(["deepseek/deepseek-v3.2"]);
 
-export const DOCX_MANUAL_OPENROUTER_MODELS = [
-  "qwen/qwen3.6-plus",
-  DEEPSEEK_OPENROUTER_MODEL
-];
+export const DOCX_MANUAL_OPENROUTER_MODELS: string[] = [];
 
 export const normalizeOpenRouterModelId = (model: string) => {
   const normalized = String(model || "").trim();

@@ -7,28 +7,14 @@ import type {
 } from "../../types";
 import { parseModelJsonObject } from "../../utils/jsonRepair";
 import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../../utils/targetLanguage";
-import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
+import { enforceRequestAuth, jsonResponse } from "../_shared/auth";
+import { callRoutedChat, parseDelimitedModelList } from "../_shared/llmProviders";
 
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-
-const parseOpenRouterModels = (env: Record<string, unknown>) => {
-  const rawList = String(
-    env.OPENROUTER_MODELS ||
-      env.VITE_OPENROUTER_MODELS ||
-      env.OPENROUTER_MODEL ||
-      env.VITE_OPENROUTER_MODEL ||
-      "qwen/qwen3.6-plus,deepseek/deepseek-v4-pro"
-  );
-
-  return Array.from(
-    new Set(
-      rawList
-        .split(/[,\n;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
-};
+const DEFAULT_REVIEW_MODELS = [
+  "cloudflare-ai:openai/gpt-5.4",
+  "cloudflare-ai:anthropic/claude-sonnet-4.6",
+  "deepseek:deepseek-v4-flash"
+];
 
 const parseRequestedModel = (value: unknown) => String(value || "").trim();
 
@@ -116,57 +102,30 @@ export const onRequestPost = async (context: any) => {
     const env = (context.env || {}) as Record<string, unknown>;
     const authResult = enforceRequestAuth(context.request, env);
     if (!authResult.ok) return authResult.response;
-    const openRouterKey = getOpenRouterKeyForUser(env, authResult.auth.userEmail);
-    if (!openRouterKey) return jsonResponse({ error: "OpenRouter key missing." }, 400);
-
-    const models = requestedModel ? [requestedModel] : parseOpenRouterModels(env);
-    const referer =
-      env.OPENROUTER_SITE ||
-      context.request.headers.get("Origin") ||
-      "https://poct-translator.local";
+    const models = requestedModel
+      ? [requestedModel]
+      : parseDelimitedModelList(
+          env.SAMPLE_REVIEW_MODELS ||
+            env.MODEL_REVIEW_JUDGE_MODELS ||
+            env.CLOUDFLARE_REVIEW_JUDGE_MODELS,
+          DEFAULT_REVIEW_MODELS
+        );
     const prompt = buildReviewPrompt(samples, targetLang);
     const errors: string[] = [];
 
     for (const model of models) {
       try {
-        const response = await fetch(OPENROUTER_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openRouterKey}`,
-            "HTTP-Referer": referer,
-            "X-Title": String(env.OPENROUTER_APP_TITLE || "POCT Medical Translator")
-          },
-          body: JSON.stringify({
-            model,
-            temperature: 0,
-            response_format: {
-              type: "json_object"
-            },
-            messages: [
-              {
-                role: "system",
-                content: "You review medical spreadsheet translations and return strict JSON only."
-              },
-              { role: "user", content: prompt }
-            ]
-          })
+        const result = await callRoutedChat({
+          env,
+          model,
+          system: "You review medical spreadsheet translations and return strict JSON only.",
+          user: prompt,
+          maxTokens: 7000,
+          json: true
         });
-
-        if (!response.ok) {
-          const text = await response.text();
-          errors.push(`${model}: OpenRouter error ${response.status}: ${text.slice(0, 200)}`);
-          continue;
-        }
-
-        const result = await response.json();
-        let content = result.choices?.[0]?.message?.content;
-        if (Array.isArray(content)) {
-          content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
-        }
-        const parsed = parseModelJsonObject<{ reviews?: unknown }>(String(content || ""));
+        const parsed = parseModelJsonObject<{ reviews?: unknown }>(result.text);
         const reviews = normalizeReviewResults(parsed.reviews);
-        return jsonResponse({ engine: "openrouter", model, reviews });
+        return jsonResponse({ engine: result.engine, model, reviews });
       } catch (error) {
         errors.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -174,7 +133,7 @@ export const onRequestPost = async (context: any) => {
 
     return jsonResponse(
       {
-        error: `All OpenRouter models failed. ${errors.join(" | ").slice(0, 1500)}`
+        error: `All review models failed. ${errors.join(" | ").slice(0, 1500)}`
       },
       500
     );

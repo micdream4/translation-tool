@@ -8,6 +8,13 @@ import {
   type TranslationProfile
 } from "../../utils/translationProfiles";
 import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
+import {
+  callCloudflareAiChat,
+  extractChatText,
+  getCloudflareAiBinding,
+  getCloudflareAiGatewayId,
+  getDeepSeekKey
+} from "../_shared/llmProviders";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
@@ -28,10 +35,6 @@ type TranslationModelIssue = {
 };
 
 type TranslationEngine = "cloudflare-ai" | "deepseek" | "openrouter";
-
-type CloudflareAiBinding = {
-  run: (model: string, input: unknown, options?: unknown) => Promise<unknown>;
-};
 
 const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
   const raw = Number(env.OPENROUTER_REQUEST_TIMEOUT_MS || env.VITE_OPENROUTER_REQUEST_TIMEOUT_MS);
@@ -82,7 +85,7 @@ const parseOpenRouterModels = (env: Record<string, unknown>) => {
       env.VITE_OPENROUTER_MODELS ||
       env.OPENROUTER_MODEL ||
       env.VITE_OPENROUTER_MODEL ||
-      "qwen/qwen3.6-plus,deepseek/deepseek-v4-pro"
+      ""
   );
 
   return Array.from(
@@ -131,9 +134,6 @@ const parseDeepSeekModels = (env: Record<string, unknown>) => {
   );
 };
 
-const getDeepSeekKey = (env: Record<string, unknown>) =>
-  String(env.DEEPSEEK_API_KEY || env.Deepseek_API_KEY || "").trim();
-
 const parseCloudflareAiMaxOutputTokens = (env: Record<string, unknown>) => {
   const raw = Number(
     env.CLOUDFLARE_AI_MAX_OUTPUT_TOKENS ||
@@ -157,11 +157,6 @@ const parseRequestedModels = (value: unknown) => {
 
 const parseTranslationProfile = (value: unknown): TranslationProfile =>
   String(value || "").trim() === "docx-manual" ? "docx-manual" : "spreadsheet";
-
-const getCloudflareAiBinding = (env: Record<string, unknown>) => {
-  const binding = env.AI as CloudflareAiBinding | undefined;
-  return binding && typeof binding.run === "function" ? binding : null;
-};
 
 const parseEngineChain = (
   engine: string,
@@ -191,23 +186,6 @@ const parseEngineChain = (
   return [];
 };
 
-const extractCloudflareAiText = (result: any) => {
-  if (typeof result?.response === "string") return result.response.trim();
-  if (typeof result?.text === "string") return result.text.trim();
-  if (typeof result?.result?.response === "string") return result.result.response.trim();
-  if (typeof result?.result?.text === "string") return result.result.text.trim();
-
-  const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
-  return candidates
-    .flatMap((candidate: any) =>
-      Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []
-    )
-    .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-};
-
 export const onRequestPost = async (context: any) => {
   try {
     const payload = await context.request.json();
@@ -226,7 +204,10 @@ export const onRequestPost = async (context: any) => {
     const authResult = enforceRequestAuth(context.request, env);
     if (!authResult.ok) return authResult.response;
     const openRouterKey = getOpenRouterKeyForUser(env, authResult.auth.userEmail);
-    const hasOpenRouter = Boolean(openRouterKey);
+    const configuredOpenRouterModels = parseOpenRouterModels(env);
+    const hasOpenRouter = Boolean(
+      openRouterKey && (configuredOpenRouterModels.length || requestedModel || requestedModels.length)
+    );
     const deepSeekKey = getDeepSeekKey(env);
     const hasDeepSeek = Boolean(deepSeekKey);
     const cloudflareAi = getCloudflareAiBinding(env);
@@ -252,46 +233,22 @@ export const onRequestPost = async (context: any) => {
     const translateWithCloudflareAi = async () => {
       if (!cloudflareAi) throw new Error("Cloudflare AI binding missing.");
       const models = requestedModel ? [requestedModel] : parseCloudflareAiModels(env);
-      const gatewayId = String(
-        env.CLOUDFLARE_AI_GATEWAY_ID ||
-          env.VITE_CLOUDFLARE_AI_GATEWAY_ID ||
-          "default"
-      ).trim() || "default";
+      const gatewayId = getCloudflareAiGatewayId(env);
       const maxOutputTokens = parseCloudflareAiMaxOutputTokens(env);
 
       for (const model of models) {
         try {
-          const result = await cloudflareAi.run(
-            model,
-            {
-              contents: [
-                {
-                  role: "user",
-                  parts: [{ text: prompt }]
-                }
-              ],
-              systemInstruction: {
-                parts: [{ text: buildOpenRouterSystemPrompt(profile) }]
-              },
-              generationConfig: {
-                temperature: 0,
-                maxOutputTokens
-              }
-            },
-            {
-              gateway: { id: gatewayId }
-            }
+          const text = sanitizeResponse(
+            await callCloudflareAiChat({
+              ai: cloudflareAi,
+              gatewayId,
+              model,
+              system: buildOpenRouterSystemPrompt(profile),
+              user: prompt,
+              maxTokens: maxOutputTokens,
+              json: true
+            })
           );
-          const text = sanitizeResponse(extractCloudflareAiText(result));
-          if (!text) {
-            const finishReason = (result as any)?.candidates?.[0]?.finishReason;
-            const message = finishReason
-              ? `Cloudflare AI returned empty content (${finishReason}).`
-              : "Cloudflare AI returned empty content.";
-            allErrors.push(`${model}: ${message}`);
-            allModelIssues.push({ model, message, kind: "empty" });
-            continue;
-          }
           const parsed = parseModelJsonArray(text);
           return jsonResponse({
             engine: "cloudflare-ai",
@@ -327,7 +284,7 @@ export const onRequestPost = async (context: any) => {
               )
                 .concat(DOCX_MANUAL_OPENROUTER_MODELS)
                 .filter((model, index, arr) => arr.indexOf(model) === index)
-            : parseOpenRouterModels(env);
+            : configuredOpenRouterModels;
       const referer =
         env.OPENROUTER_SITE ||
         context.request.headers.get("Origin") ||
@@ -387,11 +344,7 @@ export const onRequestPost = async (context: any) => {
           }
 
           const result = await response.json();
-          let content = result.choices?.[0]?.message?.content;
-          if (Array.isArray(content)) {
-            content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
-          }
-          const text = typeof content === "string" ? sanitizeResponse(content) : "";
+          const text = sanitizeResponse(extractChatText(result));
           if (!text) {
             allErrors.push(`${model}: OpenRouter returned empty content.`);
             allModelIssues.push({
@@ -472,11 +425,7 @@ export const onRequestPost = async (context: any) => {
           }
 
           const result = await response.json();
-          let content = result.choices?.[0]?.message?.content;
-          if (Array.isArray(content)) {
-            content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
-          }
-          const text = typeof content === "string" ? sanitizeResponse(content) : "";
+          const text = sanitizeResponse(extractChatText(result));
           if (!text) {
             allErrors.push(`${model}: DeepSeek returned empty content.`);
             allModelIssues.push({

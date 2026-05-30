@@ -1,10 +1,5 @@
 import type { TargetLanguage } from "../types";
-import {
-  DEEPSEEK_OPENROUTER_MODEL,
-  DOCX_MANUAL_OPENROUTER_MODELS,
-  normalizeOpenRouterModelId,
-  type TranslationProfile
-} from "./translationProfiles";
+import { type TranslationProfile } from "./translationProfiles";
 
 export type ModelReviewStyle =
   | "auto"
@@ -82,17 +77,18 @@ export interface ModelReviewResult {
 
 export const DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS = Array.from(
   new Set([
-    "qwen/qwen3.6-plus",
-    DEEPSEEK_OPENROUTER_MODEL
-  ].map(normalizeOpenRouterModelId))
+    "cloudflare-ai:google/gemini-3-flash",
+    "deepseek:deepseek-v4-flash"
+  ])
 );
 
 export const DEFAULT_MODEL_REVIEW_JUDGE_MODELS = [
-  "qwen/qwen3.6-plus",
-  DEEPSEEK_OPENROUTER_MODEL
+  "cloudflare-ai:openai/gpt-5.4",
+  "cloudflare-ai:anthropic/claude-sonnet-4.6",
+  "deepseek:deepseek-v4-pro"
 ];
 
-export const DEFAULT_DOCX_REVIEW_MODEL_CHAIN = DOCX_MANUAL_OPENROUTER_MODELS;
+export const DEFAULT_DOCX_REVIEW_MODEL_CHAIN = DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS;
 
 export const MODEL_REVIEW_STYLE_LABELS: Record<ModelReviewStyle, string> = {
   auto: "Auto / General medical",

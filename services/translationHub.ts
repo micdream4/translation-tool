@@ -42,7 +42,7 @@ const isProxyMode = () => {
 const parseProxyCapabilities = () => {
   const raw = (getEnvValue("VITE_PROXY_ENGINES") || "").toLowerCase();
   if (!raw) {
-    return { cloudflareAi: true, openrouter: true, deepseek: false, gemini: false };
+    return { cloudflareAi: true, openrouter: false, deepseek: false, gemini: false };
   }
   const items = raw.split(",").map((item) => item.trim()).filter(Boolean);
   return {
@@ -263,32 +263,32 @@ export class TranslationHub {
       this.lastEngine = "deepseek";
     } else {
       let used = false;
-      if (this.openRouter) {
+      try {
+        translated = await runDeepseek();
+        used = true;
+        this.lastEngine = "deepseek";
+      } catch (deepseekError) {
+        console.warn("Deepseek translation failed, trying Gemini fallback.", deepseekError);
+      }
+      if (!used && this.hasGeminiKey) {
+        try {
+          translated = await runGemini();
+          used = true;
+          this.lastEngine = "gemini";
+        } catch (geminiError) {
+          console.warn("Gemini translation failed, trying OpenRouter fallback.", geminiError);
+        }
+      }
+      if (!used && this.openRouter) {
         try {
           translated = await runOpenRouter();
           used = true;
           this.lastEngine = "openrouter";
-        } catch (primaryError) {
-          console.warn("OpenRouter translation failed, fall back to Deepseek.", primaryError);
+        } catch (openRouterError) {
+          throw openRouterError;
         }
       }
-      if (!used) {
-        try {
-          translated = await runDeepseek();
-          this.lastEngine = "deepseek";
-        } catch (primaryError) {
-          if (this.hasGeminiKey) {
-            console.warn(
-              "Deepseek translation failed, trying Gemini fallback.",
-              primaryError
-            );
-            translated = await runGemini();
-            this.lastEngine = "gemini";
-          } else {
-            throw primaryError;
-          }
-        }
-      }
+      if (!used) throw new Error("No direct translation engine succeeded.");
     }
 
     if (!Array.isArray(translated) || translated.length !== req.records.length) {

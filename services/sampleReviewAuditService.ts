@@ -9,7 +9,8 @@ import { parseModelJsonObject } from "../utils/jsonRepair";
 import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../utils/targetLanguage";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "qwen/qwen3.6-plus";
+const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
+const DEFAULT_MODEL = "deepseek-v4-flash";
 
 const getEnvValue = (key: string): string | undefined => {
   if (typeof import.meta !== "undefined") {
@@ -42,6 +43,15 @@ const getOpenRouterKey = () =>
     getEnvValue("VITE_OPENROUTER_API_KEY") ||
     getEnvValue("Openrouter_API_KEY") ||
     getEnvValue("VITE_Openrouter_API_KEY") ||
+    ""
+  ).trim();
+
+const getDeepSeekKey = () =>
+  (
+    getEnvValue("DEEPSEEK_API_KEY") ||
+    getEnvValue("VITE_DEEPSEEK_API_KEY") ||
+    getEnvValue("Deepseek_API_KEY") ||
+    getEnvValue("VITE_Deepseek_API_KEY") ||
     ""
   ).trim();
 
@@ -118,6 +128,7 @@ ${JSON.stringify(samples)}
 export class SampleReviewAuditService {
   private readonly endpoint = getProxyEndpoint();
   private readonly openRouterKey = getOpenRouterKey();
+  private readonly deepSeekKey = getDeepSeekKey();
 
   async reviewSamples(
     samples: ReviewSample[],
@@ -165,15 +176,16 @@ export class SampleReviewAuditService {
     targetLang: TargetLanguage,
     model?: string
   ) {
-    if (!this.openRouterKey) {
-      throw new Error("Missing OpenRouter API key for AI review.");
+    if (!this.deepSeekKey && !this.openRouterKey) {
+      throw new Error("Missing DeepSeek API key for AI review.");
     }
 
-    const response = await fetch(OPENROUTER_API_URL, {
+    const useOpenRouter = Boolean(model && model.includes("/"));
+    const response = await fetch(useOpenRouter ? OPENROUTER_API_URL : DEEPSEEK_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.openRouterKey}`,
+        Authorization: `Bearer ${useOpenRouter ? this.openRouterKey : this.deepSeekKey}`,
         "HTTP-Referer":
           typeof window !== "undefined" ? window.location.origin : "http://localhost",
         "X-Title": "POCT Medical Translator"
@@ -181,6 +193,7 @@ export class SampleReviewAuditService {
       body: JSON.stringify({
         model: model || DEFAULT_MODEL,
         temperature: 0,
+        ...(useOpenRouter ? {} : { thinking: { type: "disabled" } }),
         response_format: {
           type: "json_object"
         },
@@ -199,7 +212,7 @@ export class SampleReviewAuditService {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`OpenRouter review error ${response.status}: ${text.slice(0, 300)}`);
+      throw new Error(`${useOpenRouter ? "OpenRouter" : "DeepSeek"} review error ${response.status}: ${text.slice(0, 300)}`);
     }
 
     const payload = await response.json();
@@ -209,7 +222,7 @@ export class SampleReviewAuditService {
     }
     const parsed = parseModelJsonObject<{ reviews?: unknown }>(String(content || ""));
     return {
-      engine: "openrouter",
+      engine: useOpenRouter ? "openrouter" : "deepseek",
       model: model || DEFAULT_MODEL,
       reviews: normalizeReviewResults(parsed.reviews)
     };

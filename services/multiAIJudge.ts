@@ -10,16 +10,9 @@ interface CrossCheckOptions {
 }
 
 export class MultiAIJudge {
-  private readonly openRouterKey?: string;
   private readonly deepseekKey?: string;
 
   constructor() {
-    this.openRouterKey = this.resolveEnvKey([
-      "OPENROUTER_API_KEY",
-      "VITE_OPENROUTER_API_KEY",
-      "Openrouter_API_KEY",
-      "VITE_Openrouter_API_KEY"
-    ]);
     this.deepseekKey = this.resolveEnvKey([
       "VITE_DEEPSEEK_API_KEY",
       "DEEPSEEK_API_KEY",
@@ -44,24 +37,6 @@ export class MultiAIJudge {
     const heuristic = this.buildHeuristicConclusion(rule);
     const conclusions: CrossCheckConclusion[] = [heuristic.conclusion];
     const conflicts: string[] = [];
-
-    const openRouterText = await this.queryOpenRouter(rule, heuristic.template).catch(
-      (err) => {
-        console.warn("OpenRouter insight failed:", err);
-        return null;
-      }
-    );
-    if (openRouterText) {
-      const classification = this.classifyTheme(openRouterText);
-      conclusions.push({
-        model: "OpenRouter",
-        text: openRouterText,
-        confidence: this.estimateConfidence(openRouterText)
-      });
-      conflicts.push(
-        ...this.detectConflict(heuristic.theme, classification, "OpenRouter")
-      );
-    }
 
     const deepseekText = await this.queryDeepseek(rule, heuristic.template).catch(
       (err) => {
@@ -108,58 +83,18 @@ export class MultiAIJudge {
     return base;
   }
 
-  private async queryOpenRouter(rule: ClinicalRule, template?: string) {
-    if (!this.openRouterKey) return null;
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.openRouterKey}`
-      },
-      body: JSON.stringify({
-        model: "qwen/qwen3.6-plus",
-        reasoning: { enabled: false },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a hematology expert that validates POCT rule interpretations. Respond concisely in Chinese."
-          },
-          {
-            role: "user",
-            content: this.buildPrompt(rule, template)
-          }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`OpenRouter insight error ${response.status}: ${text}`);
-    }
-    const payload = await response.json();
-    const content = payload.choices?.[0]?.message?.content;
-    if (typeof content === "string") return content.trim();
-    if (Array.isArray(content)) {
-      return content
-        .map((chunk: any) => chunk?.text ?? chunk?.content ?? "")
-        .join("\n")
-        .trim();
-    }
-    return null;
-  }
-
   private async queryDeepseek(rule: ClinicalRule, template?: string) {
     if (!this.deepseekKey) return null;
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+    const response = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.deepseekKey}`
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: "deepseek-v4-flash",
         temperature: 0.3,
+        thinking: { type: "disabled" },
         messages: [
           {
             role: "system",

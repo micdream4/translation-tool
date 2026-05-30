@@ -8,7 +8,7 @@ import {
 } from "../utils/translationProfiles";
 
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "qwen/qwen3.6-plus";
+const DEFAULT_MODEL = "";
 const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 
 const getEnvModel = (): string | undefined => {
@@ -126,6 +126,9 @@ export class OpenRouterService {
           .filter(Boolean)
       )
     );
+    if (models.length === 0) {
+      throw new Error("No OpenRouter model configured.");
+    }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

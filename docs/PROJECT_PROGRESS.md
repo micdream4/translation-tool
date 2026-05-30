@@ -1,5 +1,15 @@
 # 项目进度
 
+## v0.0.96
+
+- 模型路由收敛为 Cloudflare AI Gateway 优先：`google/gemini-3-flash` -> `openai/gpt-5.4` -> `anthropic/claude-sonnet-4.6`，再走 DeepSeek 官方直连，OpenRouter 仅保留为显式配置后的最后兜底。
+- `wrangler.toml` 默认清空 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` / `VITE_OPENROUTER_AUTO_MODELS`，不再通过 OpenRouter 调 Qwen 或 DeepSeek。
+- 前端 `Translation Model` 增加 Cloudflare GPT-5.4 / Claude 4.6 Sonnet 手工选择项，并按 `/api/me` 后端能力动态显示。
+- Multi-AI Review / Sample Review 从 OpenRouter 路径迁移到 Cloudflare AI Gateway + DeepSeek 官方直连；默认候选模型为 Cloudflare Gemini + DeepSeek，匿名评审为 Cloudflare GPT / Claude + DeepSeek。
+- 新增 `functions/_shared/llmProviders.ts`，复用 Cloudflare AI binding、DeepSeek direct 和模型路由解析。
+- 建立本地 issue 包 `local-data/issues/2026-05-30-model-routing-openrouter-last-cloudflare-gpt-claude/`。
+- 版本号更新为 `v0.0.96`。
+
 ## v0.0.95
 
 - 生产 Cloudflare Pages secret 检查确认已配置 `DEEPSEEK_API_KEY` 和 `OPENROUTER_API_KEY`；当前部署 `/api/me` 返回 `cloudflareAi/deepseek/openrouter` 能力均为 true。

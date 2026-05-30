@@ -131,7 +131,7 @@ Commit: 057364a
 - 2026-05-30 OpenRouter 实测：Google Gemini 3 Flash Preview、Gemini 3.1 Pro Preview、OpenAI GPT-5.3 Chat 仍返回 403 区域不可用；Qwen 3.6 Plus 与 DeepSeek V4 Pro 可用。
 - 默认 OpenRouter 手工列表、Model Review、Sample Review、Multi-AI Judge 已收敛到 Qwen / DeepSeek；Gemini 默认继续走 Cloudflare AI Gateway。
 - 后续如需恢复 OpenRouter Google/OpenAI 模型，先运行 `npm run smoke:openrouter` 验证，再显式加入 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS`。
-- v0.0.97 调整后，默认 OpenRouter 模型列表为空；Auto 成本顺序为 Cloudflare Gemini 3 Flash -> DeepSeek Direct v4 Flash -> DeepSeek Direct v4 Pro -> Cloudflare GPT-5.4 -> Cloudflare Claude Sonnet 4.6 -> OpenRouter 显式兜底。Multi-AI Review 匿名评审锁定为 Cloudflare GPT-5.4、Cloudflare Claude Sonnet 4.6、DeepSeek v4 Pro。
+- v0.0.98 调整后，默认 OpenRouter 模型列表为空；Auto 成本顺序为 Cloudflare Gemini 3 Flash -> DeepSeek Direct v4 Flash -> DeepSeek Direct v4 Pro -> Cloudflare GPT-5.4 -> Cloudflare Claude Sonnet 4.6 -> OpenRouter 显式兜底。Multi-AI Review 候选翻译模型为 Cloudflare Gemini 3 Flash、DeepSeek v4 Flash、DeepSeek v4 Pro、Cloudflare GPT-5.4、Cloudflare Claude Sonnet 4.6；匿名评审锁定为 Cloudflare GPT-5.4、Cloudflare Claude Sonnet 4.6、DeepSeek v4 Pro。
 
 ## 当前主要待办
 

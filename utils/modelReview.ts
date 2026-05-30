@@ -78,7 +78,10 @@ export interface ModelReviewResult {
 export const DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS = Array.from(
   new Set([
     "cloudflare-ai:google/gemini-3-flash",
-    "deepseek:deepseek-v4-flash"
+    "deepseek:deepseek-v4-flash",
+    "deepseek:deepseek-v4-pro",
+    "cloudflare-ai:openai/gpt-5.4",
+    "cloudflare-ai:anthropic/claude-sonnet-4.6"
   ])
 );
 

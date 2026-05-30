@@ -30,6 +30,8 @@ Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[va
 - `CLOUDFLARE_AI_FALLBACK_MODELS=openai/gpt-5.4,anthropic/claude-sonnet-4.6`
 - `CLOUDFLARE_AI_GATEWAY_ID=default`
 - `CLOUDFLARE_AI_MAX_OUTPUT_TOKENS=8192`
+- `CLOUDFLARE_REVIEW_TRANSLATION_MODELS=cloudflare-ai:google/gemini-3-flash,deepseek:deepseek-v4-flash,deepseek:deepseek-v4-pro,cloudflare-ai:openai/gpt-5.4,cloudflare-ai:anthropic/claude-sonnet-4.6`
+- `CLOUDFLARE_REVIEW_JUDGE_MODELS=cloudflare-ai:openai/gpt-5.4,cloudflare-ai:anthropic/claude-sonnet-4.6,deepseek:deepseek-v4-pro`
 - `DEEPSEEK_MODELS=deepseek-v4-flash,deepseek-v4-pro`
 - `DEEPSEEK_REQUEST_TIMEOUT_MS=30000`
 - `OPENROUTER_MODELS=` (empty by default; use only as explicit last fallback)
@@ -43,6 +45,7 @@ Optional encrypted Secret:
 说明：
 - Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.
 - Auto 模式按成本优先顺序执行：Cloudflare Gemini 3 Flash -> DeepSeek 官方 API `deepseek-v4-flash` -> DeepSeek 官方 API `deepseek-v4-pro` -> Cloudflare GPT-5.4 -> Cloudflare Claude 4.6 Sonnet；最后才按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
+- Multi-AI Review 会并发调用 5 个候选翻译模型，再由 3 个匿名强评审模型打分；默认不使用 OpenRouter。
 - 前端会从 `/api/me` 读取后端能力；只有 Cloudflare Pages 配置了 encrypted Secret `DEEPSEEK_API_KEY` 时，才在 Auto 后方显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`。手工选择 Pro 时会向 DeepSeek 官方 API 指定 `deepseek-v4-pro`。
 - OpenRouter 默认留空，不再通过 OpenRouter 调 Qwen / DeepSeek；DeepSeek 走官方直连，GPT / Claude / Gemini 走 Cloudflare AI Gateway。若后续需要 OpenRouter 兜底，先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
 - 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。

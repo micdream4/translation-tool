@@ -208,6 +208,7 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(wranglerSource, /CLOUDFLARE_AI_PRIMARY_MODELS = "google\/gemini-3-flash"/);
   assert.match(wranglerSource, /CLOUDFLARE_AI_FALLBACK_MODELS = "openai\/gpt-5\.4,anthropic\/claude-sonnet-4\.6"/);
   assert.match(wranglerSource, /DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro"/);
+  assert.match(wranglerSource, /CLOUDFLARE_REVIEW_TRANSLATION_MODELS = "cloudflare-ai:google\/gemini-3-flash,deepseek:deepseek-v4-flash,deepseek:deepseek-v4-pro,cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6"/);
   assert.match(wranglerSource, /CLOUDFLARE_REVIEW_JUDGE_MODELS = "cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6,deepseek:deepseek-v4-pro"/);
   assert.doesNotMatch(wranglerSource, /ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
   assert.match(meFunctionSource, /accessControlledBy: "cloudflare-zero-trust"/);
@@ -1789,10 +1790,17 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /formatAutoModelChainLabel\([\s\S]*cloudflareAiModels[\s\S]*activeOpenRouterModels[\s\S]*capabilities\.deepseek/);
 });
 
-test("Multi-AI Review default judges use Cloudflare GPT, Cloudflare Claude, and DeepSeek Pro", async () => {
-  const { DEFAULT_MODEL_REVIEW_JUDGE_MODELS } = await transpileTsModule(
+test("Multi-AI Review defaults compare five translation candidates with three strong judges", async () => {
+  const { DEFAULT_MODEL_REVIEW_JUDGE_MODELS, DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS } = await transpileTsModule(
     path.join(repoRoot, "utils/modelReview.ts")
   );
+  assert.deepEqual(DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS, [
+    "cloudflare-ai:google/gemini-3-flash",
+    "deepseek:deepseek-v4-flash",
+    "deepseek:deepseek-v4-pro",
+    "cloudflare-ai:openai/gpt-5.4",
+    "cloudflare-ai:anthropic/claude-sonnet-4.6"
+  ]);
   assert.deepEqual(DEFAULT_MODEL_REVIEW_JUDGE_MODELS, [
     "cloudflare-ai:openai/gpt-5.4",
     "cloudflare-ai:anthropic/claude-sonnet-4.6",

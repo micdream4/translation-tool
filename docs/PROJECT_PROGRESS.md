@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.98
+
+- Multi-AI Review 默认候选翻译模型扩展为 5 个：Cloudflare Gemini 3 Flash、DeepSeek v4 Flash、DeepSeek v4 Pro、Cloudflare GPT-5.4、Cloudflare Claude Sonnet 4.6。
+- 匿名评审模型保持 3 个强评审：Cloudflare GPT-5.4、Cloudflare Claude Sonnet 4.6、DeepSeek v4 Pro。
+- `wrangler.toml` 的 `CLOUDFLARE_REVIEW_TRANSLATION_MODELS` 与前端默认常量保持一致，继续不使用 OpenRouter 默认模型。
+- 回归测试锁定 Multi-AI Review 的 5 个候选翻译模型和 3 个匿名评审模型。
+- 更新本地 issue 包 `local-data/issues/2026-05-30-model-routing-deepseek-auto-priority-review-judges/`。
+- 版本号更新为 `v0.0.98`。
+
 ## v0.0.97
 
 - Auto 翻译链路调整为成本优先：Cloudflare Gemini 3 Flash -> DeepSeek Direct v4 Flash -> DeepSeek Direct v4 Pro -> Cloudflare OpenAI GPT-5.4 -> Cloudflare Claude 4.6 Sonnet -> OpenRouter 显式兜底。

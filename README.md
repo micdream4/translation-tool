@@ -107,6 +107,7 @@
 5. 安全建议  
    不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。生产直连 DeepSeek 应使用服务端 Secret `DEEPSEEK_API_KEY`，不要使用 `VITE_DEEPSEEK_API_KEY`。
    配置 `DEEPSEEK_API_KEY` 后，左侧 `Translation Model` 会在 Auto 后方显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认按 Gemini -> DeepSeek Flash -> DeepSeek Pro -> GPT-5.4 -> Claude Sonnet 4.6 -> OpenRouter 显式兜底执行。
+   Multi-AI Review 默认会并发调用 Gemini Flash、DeepSeek Flash、DeepSeek Pro、GPT-5.4、Claude Sonnet 4.6 生成候选译文，再由 GPT-5.4、Claude Sonnet 4.6、DeepSeek Pro 匿名评分。
    当前默认 OpenRouter 链为空；Gemini、GPT 和 Claude 统一通过 Cloudflare AI Gateway 调用，DeepSeek 通过官方 API 直连。若后续确实需要 OpenRouter 兜底，可先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
 
 6. DOCX 范围说明

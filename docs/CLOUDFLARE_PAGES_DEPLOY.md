@@ -7,7 +7,7 @@ upload `.xlsx` / `.docx` / text-based `.pdf` -> translate -> download. Excel `.x
 - Cloudflare account
 - Node.js 18+
 - Repository code pushed to Git provider (GitHub/GitLab)
-- At least one model key (recommended: OpenRouter)
+- Cloudflare AI binding configured; optional DeepSeek / OpenRouter secrets for fallback paths.
 
 ## 2. Create Pages Project
 1. Open Cloudflare Dashboard -> `Workers & Pages` -> `Create` -> `Pages`.
@@ -21,15 +21,16 @@ Set these in Cloudflare Pages project -> `Settings` -> `Environment variables`.
 
 Required:
 - Cloudflare AI Gateway credits or BYOK configured for `google/gemini-3-flash`.
-- `OPENROUTER_API_KEY=<your_key>` as an encrypted Secret for fallback models.
 
 Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[vars]`, so it remains readable and editable in git:
 - `VITE_TRANSLATION_MODE=proxy`
 - `VITE_PROXY_ENGINES=cloudflare-ai`
 - `CLOUDFLARE_AI_MODELS=google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6`
+- `CLOUDFLARE_AI_PRIMARY_MODELS=google/gemini-3-flash`
+- `CLOUDFLARE_AI_FALLBACK_MODELS=openai/gpt-5.4,anthropic/claude-sonnet-4.6`
 - `CLOUDFLARE_AI_GATEWAY_ID=default`
 - `CLOUDFLARE_AI_MAX_OUTPUT_TOKENS=8192`
-- `DEEPSEEK_MODELS=deepseek-v4-flash`
+- `DEEPSEEK_MODELS=deepseek-v4-flash,deepseek-v4-pro`
 - `DEEPSEEK_REQUEST_TIMEOUT_MS=30000`
 - `OPENROUTER_MODELS=` (empty by default; use only as explicit last fallback)
 - `REQUIRE_CF_ACCESS_EMAIL=true`
@@ -37,11 +38,12 @@ Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[va
 Optional encrypted Secret:
 - `OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}`
 - `DEEPSEEK_API_KEY=<your_deepseek_key>` for official DeepSeek API fallback.
+- `OPENROUTER_API_KEY=<your_key>` for explicit OpenRouter last fallback.
 
 说明：
 - Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.
-- Auto 模式优先走 Cloudflare AI Gateway 模型链：Gemini 3 Flash -> GPT-5.4 -> Claude 4.6 Sonnet；Cloudflare AI 失败时，后端会尝试 DeepSeek 官方 API `deepseek-v4-flash`，最后才按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
-- 前端会从 `/api/me` 读取后端能力；只有 Cloudflare Pages 配置了 encrypted Secret `DEEPSEEK_API_KEY` 时，才显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`。手工选择 Pro 时会向 DeepSeek 官方 API 指定 `deepseek-v4-pro`；Auto 默认不使用 Pro。
+- Auto 模式按成本优先顺序执行：Cloudflare Gemini 3 Flash -> DeepSeek 官方 API `deepseek-v4-flash` -> DeepSeek 官方 API `deepseek-v4-pro` -> Cloudflare GPT-5.4 -> Cloudflare Claude 4.6 Sonnet；最后才按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
+- 前端会从 `/api/me` 读取后端能力；只有 Cloudflare Pages 配置了 encrypted Secret `DEEPSEEK_API_KEY` 时，才在 Auto 后方显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`。手工选择 Pro 时会向 DeepSeek 官方 API 指定 `deepseek-v4-pro`。
 - OpenRouter 默认留空，不再通过 OpenRouter 调 Qwen / DeepSeek；DeepSeek 走官方直连，GPT / Claude / Gemini 走 Cloudflare AI Gateway。若后续需要 OpenRouter 兜底，先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
 - 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。
 - `OPENROUTER_MODEL` 仍可保留给单模型场景；多模型时优先使用 `OPENROUTER_MODELS`。

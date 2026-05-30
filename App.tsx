@@ -168,10 +168,15 @@ const DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS: Record<string, string> = {
   [DEEPSEEK_DIRECT_MODEL]: 'deepseek-v4-flash',
   [DEEPSEEK_DIRECT_PRO_MODEL]: 'deepseek-v4-pro'
 };
+const DEEPSEEK_DIRECT_MODEL_VALUES = [DEEPSEEK_DIRECT_MODEL, DEEPSEEK_DIRECT_PRO_MODEL] as const;
 const DEEPSEEK_DIRECT_MODEL_LABELS: Record<string, string> = {
   [DEEPSEEK_DIRECT_MODEL]: DEEPSEEK_DIRECT_MODEL_LABEL,
   [DEEPSEEK_DIRECT_PRO_MODEL]: DEEPSEEK_DIRECT_PRO_MODEL_LABEL
 };
+const DEEPSEEK_DIRECT_AUTO_LABELS = [
+  DEEPSEEK_DIRECT_MODEL_LABEL,
+  DEEPSEEK_DIRECT_PRO_MODEL_LABEL
+] as const;
 const CLOUDFLARE_AI_MODEL_VALUE_PREFIX = '__CLOUDFLARE_AI__:';
 const toCloudflareAiModelValue = (model: string) => `${CLOUDFLARE_AI_MODEL_VALUE_PREFIX}${model}`;
 const isCloudflareAiModelValue = (model: string) => model.startsWith(CLOUDFLARE_AI_MODEL_VALUE_PREFIX);
@@ -189,16 +194,23 @@ const getTranslationModelLabel = (model: string) => {
 };
 const formatModelChainLabel = (models: readonly string[]) =>
   models.map(getModelLabel).join(' -> ');
+const splitCloudflareAutoModels = (models: readonly string[]) => ({
+  primary: models.slice(0, 1),
+  fallback: models.slice(1)
+});
 const formatAutoModelChainLabel = (
   cloudflareModels: readonly string[],
   openRouterModels: readonly string[],
   includeDeepSeekDirect: boolean
-) =>
-  [
-    ...cloudflareModels.map(getModelLabel),
-    ...(includeDeepSeekDirect ? [DEEPSEEK_DIRECT_MODEL_LABEL] : []),
+) => {
+  const cloudflareAuto = splitCloudflareAutoModels(cloudflareModels);
+  return [
+    ...cloudflareAuto.primary.map(getModelLabel),
+    ...(includeDeepSeekDirect ? DEEPSEEK_DIRECT_AUTO_LABELS : []),
+    ...cloudflareAuto.fallback.map(getModelLabel),
     ...openRouterModels.map(getModelLabel)
   ].join(' -> ');
+};
 type TranslationEngine = 'cloudflare-ai' | 'openrouter' | 'deepseek' | 'gemini';
 type ThemeMode = 'light' | 'dark';
 type AppView = 'translator' | 'modelReview';
@@ -582,8 +594,8 @@ const App: React.FC = () => {
   );
   const availableTranslationModels = useMemo(
     () => [
+      ...(capabilities.deepseek ? DEEPSEEK_DIRECT_MODEL_VALUES : []),
       ...(capabilities.cloudflareAi ? cloudflareAiModels.map(toCloudflareAiModelValue) : []),
-      ...(capabilities.deepseek ? [DEEPSEEK_DIRECT_MODEL, DEEPSEEK_DIRECT_PRO_MODEL] : []),
       ...availableOpenRouterModels
     ],
     [availableOpenRouterModels, capabilities.cloudflareAi, capabilities.deepseek, cloudflareAiModels]

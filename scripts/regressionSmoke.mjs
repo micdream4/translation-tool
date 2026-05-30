@@ -205,6 +205,10 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(authHookSource, /status: 'blocked'/);
   assert.match(authHookSource, /status: 'anonymous'/);
   assert.match(wranglerSource, /REQUIRE_CF_ACCESS_EMAIL = "true"/);
+  assert.match(wranglerSource, /CLOUDFLARE_AI_PRIMARY_MODELS = "google\/gemini-3-flash"/);
+  assert.match(wranglerSource, /CLOUDFLARE_AI_FALLBACK_MODELS = "openai\/gpt-5\.4,anthropic\/claude-sonnet-4\.6"/);
+  assert.match(wranglerSource, /DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro"/);
+  assert.match(wranglerSource, /CLOUDFLARE_REVIEW_JUDGE_MODELS = "cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6,deepseek:deepseek-v4-pro"/);
   assert.doesNotMatch(wranglerSource, /ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
   assert.match(meFunctionSource, /accessControlledBy: "cloudflare-zero-trust"/);
   assert.match(meFunctionSource, /getTranslationCapabilities/);
@@ -1480,6 +1484,8 @@ test("API translate auto falls back to OpenRouter when Cloudflare AI fails", asy
     assert.equal(response.status, 200);
     assert.deepEqual(calls, [
       { provider: "cloudflare-ai", model: "google/gemini-3-flash" },
+      { provider: "cloudflare-ai", model: "openai/gpt-5.4" },
+      { provider: "cloudflare-ai", model: "anthropic/claude-sonnet-4.6" },
       { provider: "openrouter", model: "qwen/qwen3.6-plus" }
     ]);
     assert.equal(payload.engine, "openrouter");
@@ -1570,6 +1576,7 @@ test("API translate auto tries DeepSeek official API before OpenRouter when Clou
           },
           DEEPSEEK_API_KEY: "test-deepseek-key",
           DEEPSEEK_MODELS: "deepseek-v4-flash",
+          CLOUDFLARE_AI_MODELS: "google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6",
           OPENROUTER_MODELS: "qwen/qwen3.6-plus"
         }
       )
@@ -1585,6 +1592,72 @@ test("API translate auto tries DeepSeek official API before OpenRouter when Clou
     assert.deepEqual(payload.records, [{ id: "seg-1", content: "DeepSeek fallback translated sentence." }]);
     assert.equal(payload.modelIssues[0].model, "google/gemini-3-flash");
     assert.equal(payload.modelIssues[0].kind, "exception");
+  });
+});
+
+test("API translate auto tries DeepSeek Pro before Cloudflare GPT and Claude fallbacks", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const calls = [];
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (url, init) => {
+      const body = JSON.parse(String(init.body));
+      const provider = String(url).includes("api.deepseek.com") ? "deepseek" : "openrouter";
+      calls.push({ provider, model: body.model });
+      if (provider === "openrouter") {
+        throw new Error("OpenRouter should not be called when DeepSeek Pro succeeds.");
+      }
+      if (body.model === "deepseek-v4-flash") {
+        return new Response(JSON.stringify({ error: { message: "Flash temporarily unavailable" } }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+      return openRouterResponse(
+        JSON.stringify({
+          records: [{ id: "seg-1", content: "DeepSeek Pro translated sentence." }]
+        })
+      );
+    });
+
+    const response = await onRequestPost(
+      functionContext(
+        {
+          records: [{ id: "seg-1", content: "中文说明" }],
+          targetLang: "English",
+          engine: "auto"
+        },
+        {
+          AI: {
+            run: async (model) => {
+              calls.push({ provider: "cloudflare-ai", model });
+              if (model !== "google/gemini-3-flash") {
+                throw new Error("Cloudflare GPT/Claude should run after DeepSeek Pro.");
+              }
+              throw new Error("Cloudflare Gemini temporary error");
+            }
+          },
+          DEEPSEEK_API_KEY: "test-deepseek-key",
+          DEEPSEEK_MODELS: "deepseek-v4-flash,deepseek-v4-pro",
+          CLOUDFLARE_AI_MODELS: "google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6",
+          OPENROUTER_MODELS: "qwen/qwen3.6-plus"
+        }
+      )
+    );
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls, [
+      { provider: "cloudflare-ai", model: "google/gemini-3-flash" },
+      { provider: "deepseek", model: "deepseek-v4-flash" },
+      { provider: "deepseek", model: "deepseek-v4-pro" }
+    ]);
+    assert.equal(payload.engine, "deepseek");
+    assert.equal(payload.model, "deepseek-v4-pro");
+    assert.deepEqual(payload.records, [{ id: "seg-1", content: "DeepSeek Pro translated sentence." }]);
+    assert.deepEqual(
+      payload.modelIssues.map((issue) => issue.model),
+      ["google/gemini-3-flash", "deepseek-v4-flash"]
+    );
   });
 });
 
@@ -1704,9 +1777,27 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS/);
   assert.match(appSource, /DEEPSEEK_DIRECT_MODEL_LABEL/);
   assert.match(appSource, /DEEPSEEK_DIRECT_PRO_MODEL_LABEL/);
+  assert.match(appSource, /DEEPSEEK_DIRECT_AUTO_LABELS/);
+  assert.match(appSource, /splitCloudflareAutoModels/);
   assert.match(appSource, /availableTranslationModels/);
+  assert.match(
+    appSource,
+    /\.\.\.\(capabilities\.deepseek \? DEEPSEEK_DIRECT_MODEL_VALUES : \[\]\),[\s\S]*\.\.\.\(capabilities\.cloudflareAi \? cloudflareAiModels\.map\(toCloudflareAiModelValue\) : \[\]\),/
+  );
   assert.match(appSource, /isDeepSeekDirectModel\(translationModelPreference\)[\s\S]*model: 'deepseek' as const[\s\S]*providerModel/);
+  assert.match(appSource, /includeDeepSeekDirect \? DEEPSEEK_DIRECT_AUTO_LABELS : \[\]/);
   assert.match(appSource, /formatAutoModelChainLabel\([\s\S]*cloudflareAiModels[\s\S]*activeOpenRouterModels[\s\S]*capabilities\.deepseek/);
+});
+
+test("Multi-AI Review default judges use Cloudflare GPT, Cloudflare Claude, and DeepSeek Pro", async () => {
+  const { DEFAULT_MODEL_REVIEW_JUDGE_MODELS } = await transpileTsModule(
+    path.join(repoRoot, "utils/modelReview.ts")
+  );
+  assert.deepEqual(DEFAULT_MODEL_REVIEW_JUDGE_MODELS, [
+    "cloudflare-ai:openai/gpt-5.4",
+    "cloudflare-ai:anthropic/claude-sonnet-4.6",
+    "deepseek:deepseek-v4-pro"
+  ]);
 });
 
 test("Proxy translation retries transient fetch failures before surfacing string resource errors", async () => {

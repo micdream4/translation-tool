@@ -1,5 +1,15 @@
 # 项目进度
 
+## v0.0.97
+
+- Auto 翻译链路调整为成本优先：Cloudflare Gemini 3 Flash -> DeepSeek Direct v4 Flash -> DeepSeek Direct v4 Pro -> Cloudflare OpenAI GPT-5.4 -> Cloudflare Claude 4.6 Sonnet -> OpenRouter 显式兜底。
+- 前端 `Translation Model` 下拉中 `DeepSeek Direct v4 Flash` / `DeepSeek Direct v4 Pro` 移到 Auto 后方，Cloudflare GPT / Claude 手工选项保留在 DeepSeek 后面。
+- 后端 `/api/translate` 拆分 Cloudflare AI primary / fallback 模型，避免 Auto 在 DeepSeek 官方直连前先调用 GPT / Claude。
+- Multi-AI Review 默认匿名评审模型确认并用回归测试锁定为 Cloudflare GPT-5.4、Cloudflare Claude Sonnet 4.6、DeepSeek v4 Pro。
+- `wrangler.toml` 增加 `CLOUDFLARE_AI_PRIMARY_MODELS` / `CLOUDFLARE_AI_FALLBACK_MODELS`，并将 `DEEPSEEK_MODELS` 扩展为 `deepseek-v4-flash,deepseek-v4-pro`。
+- 建立本地 issue 包 `local-data/issues/2026-05-30-model-routing-deepseek-auto-priority-review-judges/`。
+- 版本号更新为 `v0.0.97`。
+
 ## v0.0.96
 
 - 模型路由收敛为 Cloudflare AI Gateway 优先：`google/gemini-3-flash` -> `openai/gpt-5.4` -> `anthropic/claude-sonnet-4.6`，再走 DeepSeek 官方直连，OpenRouter 仅保留为显式配置后的最后兜底。

@@ -20,8 +20,10 @@ const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 30000;
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
-const DEFAULT_CLOUDFLARE_AI_MODEL = "google/gemini-3-flash";
+const DEFAULT_DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro";
+const DEFAULT_CLOUDFLARE_AI_PRIMARY_MODELS = "google/gemini-3-flash";
+const DEFAULT_CLOUDFLARE_AI_FALLBACK_MODELS = "openai/gpt-5.4,anthropic/claude-sonnet-4.6";
+const DEFAULT_CLOUDFLARE_AI_MODELS = `${DEFAULT_CLOUDFLARE_AI_PRIMARY_MODELS},${DEFAULT_CLOUDFLARE_AI_FALLBACK_MODELS}`;
 const DEFAULT_CLOUDFLARE_AI_MAX_OUTPUT_TOKENS = 8192;
 
 const sanitizeResponse = (text: string) =>
@@ -35,6 +37,16 @@ type TranslationModelIssue = {
 };
 
 type TranslationEngine = "cloudflare-ai" | "deepseek" | "openrouter";
+
+const parsePlainModelList = (rawList: string) =>
+  Array.from(
+    new Set(
+      rawList
+        .split(/[,\n;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  );
 
 const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
   const raw = Number(env.OPENROUTER_REQUEST_TIMEOUT_MS || env.VITE_OPENROUTER_REQUEST_TIMEOUT_MS);
@@ -103,17 +115,32 @@ const parseCloudflareAiModels = (env: Record<string, unknown>) => {
     env.CLOUDFLARE_AI_MODELS ||
       env.CLOUDFLARE_AI_MODEL ||
       env.VITE_CLOUDFLARE_AI_MODELS ||
-      DEFAULT_CLOUDFLARE_AI_MODEL
+      DEFAULT_CLOUDFLARE_AI_MODELS
   );
 
-  return Array.from(
-    new Set(
-      rawList
-        .split(/[,\n;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
+  return parsePlainModelList(rawList);
+};
+
+const parseCloudflareAiPrimaryModels = (env: Record<string, unknown>) => {
+  const rawList = String(
+    env.CLOUDFLARE_AI_PRIMARY_MODELS ||
+      env.VITE_CLOUDFLARE_AI_PRIMARY_MODELS ||
+      ""
   );
+  const explicitModels = parsePlainModelList(rawList);
+  if (explicitModels.length > 0) return explicitModels;
+  return parseCloudflareAiModels(env).slice(0, 1);
+};
+
+const parseCloudflareAiFallbackModels = (env: Record<string, unknown>) => {
+  const rawList = String(
+    env.CLOUDFLARE_AI_FALLBACK_MODELS ||
+      env.VITE_CLOUDFLARE_AI_FALLBACK_MODELS ||
+      ""
+  );
+  const explicitModels = parsePlainModelList(rawList);
+  if (explicitModels.length > 0) return explicitModels;
+  return parseCloudflareAiModels(env).slice(1);
 };
 
 const parseDeepSeekModels = (env: Record<string, unknown>) => {
@@ -121,17 +148,10 @@ const parseDeepSeekModels = (env: Record<string, unknown>) => {
     env.DEEPSEEK_MODELS ||
       env.DEEPSEEK_MODEL ||
       env.VITE_DEEPSEEK_MODELS ||
-      DEFAULT_DEEPSEEK_MODEL
+      DEFAULT_DEEPSEEK_MODELS
   );
 
-  return Array.from(
-    new Set(
-      rawList
-        .split(/[,\n;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
+  return parsePlainModelList(rawList);
 };
 
 const parseCloudflareAiMaxOutputTokens = (env: Record<string, unknown>) => {
@@ -230,9 +250,10 @@ export const onRequestPost = async (context: any) => {
 
     const prompt = buildOpenRouterPrompt(records, targetLang, profile);
 
-    const translateWithCloudflareAi = async () => {
+    const translateWithCloudflareAi = async (modelsOverride?: string[]) => {
       if (!cloudflareAi) throw new Error("Cloudflare AI binding missing.");
-      const models = requestedModel ? [requestedModel] : parseCloudflareAiModels(env);
+      const models = requestedModel ? [requestedModel] : modelsOverride ?? parseCloudflareAiModels(env);
+      if (models.length === 0) return null;
       const gatewayId = getCloudflareAiGatewayId(env);
       const maxOutputTokens = parseCloudflareAiMaxOutputTokens(env);
 
@@ -450,6 +471,36 @@ export const onRequestPost = async (context: any) => {
       }
       return null;
     };
+
+    if (engine === "auto" && !requestedModel) {
+      if (hasCloudflareAi) {
+        const result = await translateWithCloudflareAi(parseCloudflareAiPrimaryModels(env));
+        if (result) return result;
+      }
+
+      if (hasDeepSeek) {
+        const result = await translateWithDeepSeek();
+        if (result) return result;
+      }
+
+      if (hasCloudflareAi) {
+        const result = await translateWithCloudflareAi(parseCloudflareAiFallbackModels(env));
+        if (result) return result;
+      }
+
+      if (hasOpenRouter) {
+        const result = await translateWithOpenRouter();
+        if (result) return result;
+      }
+
+      return jsonResponse(
+        {
+          error: `All translation engines failed. ${allErrors.join(" | ").slice(0, 1500)}`,
+          modelIssues: allModelIssues
+        },
+        500
+      );
+    }
 
     for (const candidate of engineChain) {
       const result =

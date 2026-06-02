@@ -1425,6 +1425,19 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(polishTranslation("名称", "名称", "French"), "Nom");
   assert.equal(polishTranslation("几率", "几率", "Russian"), "Вероятность");
   assert.equal(polishTranslation("分析", "分析", "Portuguese"), "Análise");
+  const frenchCompoundRepair = polishTranslation(
+    "提示可能为复合病因",
+    "Peut suggérer la présence d'une étiologie复合.",
+    "French"
+  );
+  assert.equal(
+    frenchCompoundRepair,
+    "Peut suggérer la présence d'une étiologie complexe."
+  );
+  assert.equal(
+    detectUntranslatedCells([{ content: frenchCompoundRepair }], "French").length,
+    0
+  );
   assert.match(getTargetLocaleInstruction("French"), /hémoglobine/);
   assert.equal(getTargetLanguageProfile("Traditional Chinese (Taiwan)")?.preferredLocale, "zh-TW");
 

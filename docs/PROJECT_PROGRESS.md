@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.107
+
+- 批量翻译真实 Excel 法语文件 `白细胞增高-AWBC.xlsx` 时，Quality Check 发现模型 retry 后仍残留中文 `复合`，例如 `étiologie复合`、`réaction复合`。
+- 确认该问题属于 `non-target-residual` 翻译错误，不是法语重音或显示问题；Quality Core 能发现，但模型二次请求不稳定。
+- `utils/postprocess.ts` 新增 French 中文残留后处理修复，将法语译文中的残留 `复合` 修正为 `complexe`，并处理与拉丁词粘连的空格。
+- 回归测试新增真实残留样本，确认 `polishTranslation` 能修复 `étiologie复合`，且修复后的法语文本不再触发 `detectUntranslatedCells`。
+- 建立本地 issue 包 `local-data/issues/2026-06-02-excel-french-compound-chinese-residual/`，记录真实文件、归因和沉淀层。
+- 版本号更新为 `v0.0.107`。
+
 ## v0.0.106
 
 - 确认真实 Excel 法语输出 `Peut suggerer la presence... medicaments` 属于法语正字法错误，不是格式显示问题；标准交付应使用 `suggérer`、`présence`、`médicaments` 等带重音词形。

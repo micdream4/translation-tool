@@ -171,6 +171,11 @@ const RUSSIAN_MODEL_ARTIFACT_FIXES: Array<[RegExp, string]> = [
   [/\s*\(ce\)/g, ""],
   [/([\u0400-\u04FF])\s+ce\b/g, "$1"]
 ];
+const FRENCH_CHINESE_RESIDUE_FIXES: Array<[RegExp, string]> = [
+  [/([A-Za-zÀ-ÖØ-öø-ÿœŒ])复合/g, "$1 complexe"],
+  [/复合([A-Za-zÀ-ÖØ-öø-ÿœŒ])/g, "complexe $1"],
+  [/复合/g, "complexe"]
+];
 const EXACT_SHORT_SOURCE_TRANSLATIONS: Record<string, Record<string, string>> = {
   french: {
     名称: "Nom",
@@ -489,6 +494,15 @@ const fixFrenchDiacritics = (translated: string, targetLang?: TargetLanguage) =>
   return output;
 };
 
+const fixFrenchChineseResidue = (translated: string, targetLang?: TargetLanguage) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
+  let output = translated;
+  FRENCH_CHINESE_RESIDUE_FIXES.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
+  return output;
+};
+
 const fixBracketArtifacts = (text: string) => {
   if (!text) return text;
   let output = text;
@@ -516,5 +530,6 @@ export const polishTranslation = (
   refined = enforceSeedTerminology(original || "", refined, targetLang);
   refined = adjustLongFormStatus(refined);
   refined = fixFrenchDiacritics(refined, targetLang);
+  refined = fixFrenchChineseResidue(refined, targetLang);
   return refined;
 };

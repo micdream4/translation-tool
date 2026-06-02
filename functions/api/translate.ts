@@ -20,6 +20,9 @@ const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 30000;
+const DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 55000;
+const DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS = 16384;
+const DEFAULT_DEEPSEEK_PRO_MAX_OUTPUT_TOKENS = 24576;
 const DEFAULT_DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro";
 const DEFAULT_CLOUDFLARE_AI_PRIMARY_MODELS = "google/gemini-3-flash";
 const DEFAULT_CLOUDFLARE_AI_FALLBACK_MODELS = "openai/gpt-5.4,anthropic/claude-sonnet-4.6";
@@ -54,10 +57,40 @@ const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
   return Math.min(55000, Math.max(5000, Math.round(raw)));
 };
 
-const parseDeepSeekTimeoutMs = (env: Record<string, unknown>) => {
-  const raw = Number(env.DEEPSEEK_REQUEST_TIMEOUT_MS || env.VITE_DEEPSEEK_REQUEST_TIMEOUT_MS);
-  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS;
+const isDeepSeekProModel = (model: string) => /deepseek[-/]v4-pro/i.test(String(model || ""));
+
+const parseDeepSeekTimeoutMs = (env: Record<string, unknown>, model = "") => {
+  const raw = Number(
+    isDeepSeekProModel(model)
+      ? env.DEEPSEEK_PRO_REQUEST_TIMEOUT_MS ||
+          env.VITE_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS ||
+          env.DEEPSEEK_REQUEST_TIMEOUT_MS ||
+          env.VITE_DEEPSEEK_REQUEST_TIMEOUT_MS
+      : env.DEEPSEEK_REQUEST_TIMEOUT_MS || env.VITE_DEEPSEEK_REQUEST_TIMEOUT_MS
+  );
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return isDeepSeekProModel(model)
+      ? DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS
+      : DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS;
+  }
   return Math.min(55000, Math.max(5000, Math.round(raw)));
+};
+
+const parseDeepSeekMaxOutputTokens = (env: Record<string, unknown>, model = "") => {
+  const raw = Number(
+    isDeepSeekProModel(model)
+      ? env.DEEPSEEK_PRO_MAX_OUTPUT_TOKENS ||
+          env.VITE_DEEPSEEK_PRO_MAX_OUTPUT_TOKENS ||
+          env.DEEPSEEK_MAX_OUTPUT_TOKENS ||
+          env.VITE_DEEPSEEK_MAX_OUTPUT_TOKENS
+      : env.DEEPSEEK_MAX_OUTPUT_TOKENS || env.VITE_DEEPSEEK_MAX_OUTPUT_TOKENS
+  );
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return isDeepSeekProModel(model)
+      ? DEFAULT_DEEPSEEK_PRO_MAX_OUTPUT_TOKENS
+      : DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS;
+  }
+  return Math.min(65536, Math.max(1024, Math.round(raw)));
 };
 
 const buildOpenRouterProviderRouting = (env: Record<string, unknown>) => {
@@ -394,9 +427,10 @@ export const onRequestPost = async (context: any) => {
     const translateWithDeepSeek = async () => {
       if (!deepSeekKey) throw new Error("DeepSeek API key missing.");
       const models = requestedModel ? [requestedModel] : parseDeepSeekModels(env);
-      const requestTimeoutMs = parseDeepSeekTimeoutMs(env);
 
       for (const model of models) {
+        const requestTimeoutMs = parseDeepSeekTimeoutMs(env, model);
+        const maxTokens = parseDeepSeekMaxOutputTokens(env, model);
         try {
           const response = await fetchWithTimeout(
             DEEPSEEK_API_URL,
@@ -409,6 +443,7 @@ export const onRequestPost = async (context: any) => {
               body: JSON.stringify({
                 model,
                 temperature: 0,
+                max_tokens: maxTokens,
                 thinking: { type: "disabled" },
                 response_format: {
                   type: "json_object"
@@ -446,6 +481,16 @@ export const onRequestPost = async (context: any) => {
           }
 
           const result = await response.json();
+          const finishReason = result?.choices?.[0]?.finish_reason;
+          if (finishReason === "length") {
+            allErrors.push(`${model}: DeepSeek output was truncated by max_tokens.`);
+            allModelIssues.push({
+              model,
+              message: "DeepSeek output was truncated by max_tokens.",
+              kind: "exception"
+            });
+            continue;
+          }
           const text = sanitizeResponse(extractChatText(result));
           if (!text) {
             allErrors.push(`${model}: DeepSeek returned empty content.`);

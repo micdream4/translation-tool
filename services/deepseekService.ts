@@ -8,6 +8,8 @@ import {
 
 const API_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_MODEL = "deepseek-v4-flash";
+const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
+const DEFAULT_PRO_MAX_OUTPUT_TOKENS = 24576;
 
 const getEnvKey = (): string => {
   const viteKey =
@@ -21,6 +23,29 @@ const getEnvKey = (): string => {
         process.env.DEEPSEEK_API_KEY
       : "";
   return (viteKey || nodeKey || "").trim();
+};
+
+const getEnvNumber = (key: string): number | null => {
+  const viteValue =
+    typeof import.meta !== "undefined"
+      ? (import.meta as any).env?.[key] ?? (import.meta as any).env?.[`VITE_${key}`]
+      : undefined;
+  const nodeValue =
+    typeof process !== "undefined"
+      ? process.env[key] ?? process.env[`VITE_${key}`]
+      : undefined;
+  const value = Number(viteValue ?? nodeValue);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const isDeepSeekProModel = (model: string) => /deepseek-v4-pro/i.test(model);
+
+const getMaxOutputTokens = (model: string) => {
+  const configured = isDeepSeekProModel(model)
+    ? getEnvNumber("DEEPSEEK_PRO_MAX_OUTPUT_TOKENS") ?? getEnvNumber("DEEPSEEK_MAX_OUTPUT_TOKENS")
+    : getEnvNumber("DEEPSEEK_MAX_OUTPUT_TOKENS");
+  const fallback = isDeepSeekProModel(model) ? DEFAULT_PRO_MAX_OUTPUT_TOKENS : DEFAULT_MAX_OUTPUT_TOKENS;
+  return Math.min(65536, Math.max(1024, Math.round(configured ?? fallback)));
 };
 
 export class DeepseekService {
@@ -51,6 +76,7 @@ export class DeepseekService {
       body: JSON.stringify({
         model: this.model,
         temperature: 0,
+        max_tokens: getMaxOutputTokens(this.model),
         thinking: { type: "disabled" },
         response_format: {
           type: "json_object"

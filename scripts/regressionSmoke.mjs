@@ -208,6 +208,10 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(wranglerSource, /CLOUDFLARE_AI_PRIMARY_MODELS = "google\/gemini-3-flash"/);
   assert.match(wranglerSource, /CLOUDFLARE_AI_FALLBACK_MODELS = "openai\/gpt-5\.4,anthropic\/claude-sonnet-4\.6"/);
   assert.match(wranglerSource, /DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro"/);
+  assert.match(wranglerSource, /DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = "55000"/);
+  assert.match(wranglerSource, /DEEPSEEK_PRO_MAX_OUTPUT_TOKENS = "24576"/);
+  assert.match(wranglerSource, /MODEL_REVIEW_TRANSLATION_CONCURRENCY = "2"/);
+  assert.match(wranglerSource, /MODEL_REVIEW_JUDGE_CONCURRENCY = "1"/);
   assert.match(wranglerSource, /CLOUDFLARE_REVIEW_TRANSLATION_MODELS = "cloudflare-ai:google\/gemini-3-flash,deepseek:deepseek-v4-flash,deepseek:deepseek-v4-pro,cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6"/);
   assert.match(wranglerSource, /CLOUDFLARE_REVIEW_JUDGE_MODELS = "cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6,deepseek:deepseek-v4-pro"/);
   assert.doesNotMatch(wranglerSource, /ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);
@@ -336,6 +340,9 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(appSource, /buildAdaptiveTextBatches/);
   assert.match(appSource, /const DOCX_BATCH_SIZE = 20/);
   assert.match(appSource, /const DOCX_BATCH_CHAR_LIMIT = 12000/);
+  assert.match(appSource, /const DEEPSEEK_PRO_DOCX_BATCH_SIZE = 8/);
+  assert.match(appSource, /const DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT = 6000/);
+  assert.match(appSource, /getDocumentBatchPolicy/);
   assert.match(pdfWorkflowSource, /applyLatestModelCooldowns\?\.\(`PDF Batch/);
   assert.match(pdfWorkflowSource, /batchCharLimit/);
 });
@@ -1285,15 +1292,19 @@ test("Russian and French profiles flag high-confidence source-language residue",
   );
   const { polishTranslation } = await bundleTsModule(path.join(repoRoot, "utils/postprocess.ts"));
   const {
+    collectFrenchDiacriticRisks,
     TARGET_LANGUAGE_PROFILES,
     getRussianResidueProfile,
     getTargetLanguageProfile,
     hasProfileEnglishResidue,
+    hasFrenchDiacriticRisk,
     isProfileEnglishResidueToken,
     isRussianDisallowedLatinResidue
   } = await bundleTsModule(
     path.join(repoRoot, "utils/languageProfiles.ts")
   );
+  const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "quality/checks.ts"));
+  const { getTargetLocaleInstruction } = await bundleTsModule(path.join(repoRoot, "utils/targetLanguage.ts"));
 
   assert.equal(isLikelyTargetLanguage("Описание продукта", "Russian"), true);
   assert.equal(isLikelyTargetLanguage("Home: Главная страница", "Russian"), false);
@@ -1366,13 +1377,22 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(isRussianDisallowedLatinResidue("year"), true);
   assert.ok(TARGET_LANGUAGE_PROFILES.french.commonFunctionWords.includes("avec"));
   assert.ok(TARGET_LANGUAGE_PROFILES.french.englishResidueWords.includes("quickly"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.french.diacriticRiskWords.some((item) => item.plain === "hemoglobine"));
   assert.equal(getTargetLanguageProfile("French")?.target, "French");
   assert.equal(isLikelyTargetLanguage("Remplissage de l'échantillon", "French"), true);
+  assert.equal(isLikelyTargetLanguage("Hemoglobine elevee avec anemie legere.", "French"), false);
+  assert.equal(isLikelyTargetLanguage("Hémoglobine élevée avec anémie légère.", "French"), true);
   assert.equal(isLikelyTargetLanguage("Quickly squeeze", "French"), false);
   assert.equal(isLikelyTargetLanguage("The blue button is lifted", "French"), false);
   assert.equal(isLikelyTargetLanguage("Insérez le flacon quadruple dans l'injecteur d'échantillon.", "French"), true);
   assert.equal(isProfileEnglishResidueToken("squeeze", "French"), true);
   assert.equal(hasProfileEnglishResidue("The blue button is lifted", "French"), true);
+  assert.equal(hasFrenchDiacriticRisk("Hemoglobine elevee avec anemie legere.", "French"), true);
+  assert.deepEqual(
+    collectFrenchDiacriticRisks("Hemoglobine elevee avec anemie legere.", "French").map((item) => item.preferred),
+    ["hémoglobine", "élevée", "anémie", "légère"]
+  );
+  assert.match(getTargetLocaleInstruction("French"), /hémoglobine/);
   assert.equal(getTargetLanguageProfile("Traditional Chinese (Taiwan)")?.preferredLocale, "zh-TW");
 
   const issues = detectUntranslatedCells(
@@ -1390,6 +1410,7 @@ test("Russian and French profiles flag high-confidence source-language residue",
   const frenchIssues = detectUntranslatedCells(
     [
       { content: "Remplissage de l'échantillon" },
+      { content: "Hemoglobine elevee avec anemie legere." },
       { content: "Quickly squeeze" },
       { content: "The blue button is lifted" }
     ],
@@ -1397,8 +1418,14 @@ test("Russian and French profiles flag high-confidence source-language residue",
   );
   assert.deepEqual(
     frenchIssues.map((issue) => issue.value),
-    ["Quickly squeeze", "The blue button is lifted"]
+    ["Hemoglobine elevee avec anemie legere.", "Quickly squeeze", "The blue button is lifted"]
   );
+  const frenchQualityReport = runQualityChecks(
+    [{ content: "血红蛋白升高，提示轻度贫血" }],
+    [{ content: "Hemoglobine elevee avec anemie legere." }],
+    { targetLang: "French" }
+  );
+  assert.equal(frenchQualityReport.totals.nonTargetCells, 1);
 });
 
 test("API translate function accepts proxy payload and normalizes OpenRouter records", async () => {
@@ -1590,6 +1617,7 @@ test("API translate can call DeepSeek official API directly with thinking disabl
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "https://api.deepseek.com/chat/completions");
     assert.equal(calls[0].body.model, "deepseek-v4-pro");
+    assert.equal(calls[0].body.max_tokens, 24576);
     assert.deepEqual(calls[0].body.thinking, { type: "disabled" });
     assert.deepEqual(calls[0].body.response_format, { type: "json_object" });
     assert.match(calls[0].body.messages[0].content, /IFU|operator manual/i);
@@ -1823,6 +1851,10 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /currentSkippedOpenRouterModels/);
   assert.match(appSource, /activeOpenRouterModels/);
   assert.match(appSource, /allOpenRouterModels/);
+  assert.match(appSource, /getSpreadsheetBatchSize/);
+  assert.match(appSource, /const getSpreadsheetBatchSize = \(\) => BATCH_SIZE/);
+  assert.match(appSource, /getDocumentBatchPolicy/);
+  assert.match(appSource, /isDeepSeekDirectProModel\(translationModelPreference\)/);
   assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS = \[[\s\S]*google\/gemini-3-flash[\s\S]*openai\/gpt-5\.4[\s\S]*anthropic\/claude-sonnet-4\.6/);
   assert.match(appSource, /const DEFAULT_OPENROUTER_MODELS: string\[\] = \[\]/);
   assert.match(appSource, /const DEFAULT_OPENROUTER_AUTO_MODELS: string\[\] = \[\]/);
@@ -2069,6 +2101,7 @@ test("API model-review function translates candidates and ranks anonymous judge 
     );
     const payload = await response.json();
     assert.equal(response.status, 200);
+    assert.deepEqual(payload.concurrency, { translation: 2, judge: 1 });
     assert.deepEqual(seenModels.sort(), ["judge-a", "model-a", "model-b"].sort());
     assert.equal(payload.candidates.length, 2);
     assert.equal(payload.judges.length, 1);
@@ -2120,6 +2153,71 @@ test("TranslationHub retry flow splits recoverable proxy batch failures and pres
       });
       assert.deepEqual(calls, [["A", "B"], ["A"], ["B"]]);
       assert.deepEqual(result, [{ content: "A translated" }, { content: "B translated" }]);
+    });
+  } finally {
+    if (originalMode === undefined) {
+      delete process.env.VITE_TRANSLATION_MODE;
+    } else {
+      process.env.VITE_TRANSLATION_MODE = originalMode;
+    }
+  }
+});
+
+test("TranslationHub splits DeepSeek Pro proxy overload failures before skipping a batch", async () => {
+  const { TranslationHub } = await bundleTsModule(path.join(repoRoot, "services/translationHub.ts"), {
+    external: ["@google/genai"]
+  });
+  const originalMode = process.env.VITE_TRANSLATION_MODE;
+  const calls = [];
+
+  try {
+    process.env.VITE_TRANSLATION_MODE = "proxy";
+    await withMockedFetch(async (setFetch) => {
+      setFetch(async (_url, init) => {
+        const body = JSON.parse(String(init.body));
+        calls.push(body.records.map((record) => record.content));
+        if (body.records.length > 1) {
+          return new Response(
+            JSON.stringify({
+              error: "All translation engines failed. deepseek-v4-pro: DeepSeek error 503: Server overloaded",
+              modelIssues: [
+                {
+                  model: "deepseek-v4-pro",
+                  status: 503,
+                  message: "Server overloaded",
+                  kind: "http"
+                }
+              ]
+            }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            engine: "deepseek",
+            records: body.records.map((record) => ({
+              ...record,
+              content: `${record.content} traduit`
+            }))
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      });
+
+      const hub = new TranslationHub();
+      const result = await hub.translateBatch({
+        records: [{ content: "A" }, { content: "B" }],
+        targetLang: "French",
+        options: { model: "deepseek", providerModel: "deepseek-v4-pro" }
+      });
+      assert.deepEqual(calls, [["A", "B"], ["A"], ["B"]]);
+      assert.deepEqual(result, [{ content: "A traduit" }, { content: "B traduit" }]);
     });
   } finally {
     if (originalMode === undefined) {

@@ -125,6 +125,8 @@ import {
 const BATCH_SIZE = 5;
 const DOCX_BATCH_SIZE = 20;
 const DOCX_BATCH_CHAR_LIMIT = 12000;
+const DEEPSEEK_PRO_DOCX_BATCH_SIZE = 8;
+const DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT = 6000;
 const RETRY_BATCH_SIZE = 5;
 const STRING_BATCH_SIZE = 40;
 const SOURCE_LANG_REGEX = /[\u4e00-\u9fff]/;
@@ -187,6 +189,7 @@ const getDeepSeekDirectModelLabel = (model: string) => DEEPSEEK_DIRECT_MODEL_LAB
 const getDeepSeekDirectProviderModel = (model: string) => DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS[model];
 const isDeepSeekDirectModel = (model: string) =>
   Object.prototype.hasOwnProperty.call(DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS, model);
+const isDeepSeekDirectProModel = (model: string) => model === DEEPSEEK_DIRECT_PRO_MODEL;
 const getTranslationModelLabel = (model: string) => {
   if (isDeepSeekDirectModel(model)) return getDeepSeekDirectModelLabel(model);
   if (isCloudflareAiModelValue(model)) return getModelLabel(getCloudflareAiProviderModel(model));
@@ -760,6 +763,23 @@ const App: React.FC = () => {
     };
   };
 
+  const isUsingDeepSeekPro = () => isDeepSeekDirectProModel(translationModelPreference);
+
+  const getSpreadsheetBatchSize = () => BATCH_SIZE;
+
+  const getDocumentBatchPolicy = () =>
+    isUsingDeepSeekPro()
+      ? {
+          maxItems: DEEPSEEK_PRO_DOCX_BATCH_SIZE,
+          maxChars: DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT,
+          label: 'DeepSeek Pro conservative'
+        }
+      : {
+          maxItems: DOCX_BATCH_SIZE,
+          maxChars: DOCX_BATCH_CHAR_LIMIT,
+          label: 'standard'
+        };
+
   const createTranslationMemoryStats = (): TranslationMemoryStats => ({
     hits: 0,
     deduped: 0,
@@ -1155,7 +1175,7 @@ const App: React.FC = () => {
       status: 'idle',
       progress,
       total: data.length,
-      currentBatch: Math.ceil(translatedCount / BATCH_SIZE)
+      currentBatch: Math.ceil(translatedCount / getSpreadsheetBatchSize())
     }));
     setTranslationStatus('paused');
     addLog(`已恢复本地进度：${translatedCount}/${data.length} 行。`);
@@ -1729,7 +1749,7 @@ const App: React.FC = () => {
       message: `Translating ${samples.length} samples with ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} candidate models...`
     });
 	    addLog(
-	      `Multi-AI Review: 抽取 ${samples.length} 个 ${getModelReviewSourceLabel()}，评审风格 ${MODEL_REVIEW_STYLE_LABELS[reviewStyle]}，并发调用 ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} 个候选模型和 ${DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length} 个匿名评审模型。`
+	      `Multi-AI Review: 抽取 ${samples.length} 个 ${getModelReviewSourceLabel()}，评审风格 ${MODEL_REVIEW_STYLE_LABELS[reviewStyle]}，调用 ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} 个候选模型和 ${DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length} 个匿名评审模型；后端按保守并发执行。`
 	    );
     try {
       window.setTimeout(() => {
@@ -1963,14 +1983,15 @@ const App: React.FC = () => {
       total: candidates.length,
       currentBatch: 0
     });
+    const documentBatchPolicy = getDocumentBatchPolicy();
     const batches = buildAdaptiveTextBatches<DocxSegment>({
       items: candidates,
       getText: (segment) => getDocxSegmentText(segment) || segment.original,
-      maxItems: DOCX_BATCH_SIZE,
-      maxChars: DOCX_BATCH_CHAR_LIMIT
+      maxItems: documentBatchPolicy.maxItems,
+      maxChars: documentBatchPolicy.maxChars
     });
     addLog(
-      `Docx: 使用 ${currentModelDisplayLabel}，按 ${batches.length} 批处理；每批最多 ${DOCX_BATCH_SIZE} 段 / ${DOCX_BATCH_CHAR_LIMIT} 字符。`
+      `Docx: 使用 ${currentModelDisplayLabel}，按 ${batches.length} 批处理；每批最多 ${documentBatchPolicy.maxItems} 段 / ${documentBatchPolicy.maxChars} 字符（${documentBatchPolicy.label}）。`
     );
 
     try {
@@ -2149,15 +2170,16 @@ const App: React.FC = () => {
       addLog('PDF: 未检测到可翻译的内容。');
       return;
     }
+    const documentBatchPolicy = getDocumentBatchPolicy();
     addLog(
-      `PDF: 使用 ${currentModelDisplayLabel}，每批最多 ${DOCX_BATCH_SIZE} 段 / ${DOCX_BATCH_CHAR_LIMIT} 字符。`
+      `PDF: 使用 ${currentModelDisplayLabel}，每批最多 ${documentBatchPolicy.maxItems} 段 / ${documentBatchPolicy.maxChars} 字符（${documentBatchPolicy.label}）。`
     );
 
     await runPdfTranslationWorkflow({
       context,
       mode,
-      batchSize: DOCX_BATCH_SIZE,
-      batchCharLimit: DOCX_BATCH_CHAR_LIMIT,
+      batchSize: documentBatchPolicy.maxItems,
+      batchCharLimit: documentBatchPolicy.maxChars,
       targetLang,
       documentKind,
       fileName: file?.name,
@@ -2263,11 +2285,12 @@ const App: React.FC = () => {
       const result = await runStage('translate', async () => {
         let completed = 0;
         let paused = false;
+        const documentBatchPolicy = getDocumentBatchPolicy();
         const batches = buildAdaptiveTextBatches<DocxSegment>({
           items: targets,
           getText: (segment) => segment.original || getDocxSegmentText(segment),
-          maxItems: DOCX_BATCH_SIZE,
-          maxChars: DOCX_BATCH_CHAR_LIMIT
+          maxItems: documentBatchPolicy.maxItems,
+          maxChars: documentBatchPolicy.maxChars
         });
         const totalBatches = batches.length;
         for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
@@ -2463,11 +2486,12 @@ const App: React.FC = () => {
       const result = await runStage('translate', async () => {
         let completed = 0;
         let paused = false;
+        const documentBatchPolicy = getDocumentBatchPolicy();
         const batches = buildAdaptiveTextBatches<PdfSegment>({
           items: targets,
           getText: (segment) => getPdfSegmentText(segment) || segment.original,
-          maxItems: DOCX_BATCH_SIZE,
-          maxChars: DOCX_BATCH_CHAR_LIMIT
+          maxItems: documentBatchPolicy.maxItems,
+          maxChars: documentBatchPolicy.maxChars
         });
         const totalBatches = batches.length;
         for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
@@ -2963,6 +2987,7 @@ const App: React.FC = () => {
         : [...initialFlags];
     const resumeMissing = shouldResume ? summarizeUntranslated(workingResults, targetLang).rowIndices : [];
     const workingMissing = new Set<number>(resumeMissing);
+    const spreadsheetBatchSize = getSpreadsheetBatchSize();
 
     if (!shouldResume) {
       clearTranslationProgress(fileId, targetLang);
@@ -2989,7 +3014,7 @@ const App: React.FC = () => {
         ...prev,
         status: 'processing',
         total: data.length,
-        currentBatch: Math.max(1, Math.ceil(resumeRow / BATCH_SIZE))
+        currentBatch: Math.max(1, Math.ceil(resumeRow / spreadsheetBatchSize))
       }));
     }
 
@@ -3018,18 +3043,18 @@ const App: React.FC = () => {
         const writeFailedRows = new Set<number>(
           (shouldResume ? writeFailedRowIndices : []).filter((idx) => missingRows.has(idx))
         );
-        const totalBatches = Math.ceil(data.length / BATCH_SIZE);
+        const totalBatches = Math.ceil(data.length / spreadsheetBatchSize);
         let paused = false;
 
-        for (let i = startIndex; i < data.length; i += BATCH_SIZE) {
+        for (let i = startIndex; i < data.length; i += spreadsheetBatchSize) {
           const chunkIndices: number[] = [];
-          for (let offset = 0; offset < BATCH_SIZE && i + offset < data.length; offset++) {
+          for (let offset = 0; offset < spreadsheetBatchSize && i + offset < data.length; offset++) {
             chunkIndices.push(i + offset);
           }
           const pendingIndices = chunkIndices.filter(idx => !flags[idx]);
           if (pendingIndices.length === 0) continue;
 
-          const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+          const batchNum = Math.floor(i / spreadsheetBatchSize) + 1;
           const rowLabel = formatRowRanges(pendingIndices, 1);
           addLog(`Translating Batch ${batchNum}/${totalBatches} (${pendingIndices.length} records，行 ${rowLabel})...`);
 

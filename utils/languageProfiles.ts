@@ -7,6 +7,7 @@ export type TargetLanguageProfile = {
   disallowedLatinResidueWords?: string[];
   englishResidueWords?: string[];
   englishResiduePhrases?: string[];
+  diacriticRiskWords?: Array<{ plain: string; preferred: string }>;
   commonFunctionWords?: string[];
   distinctiveCharacters?: RegExp;
   notes: string[];
@@ -84,8 +85,38 @@ export const FRENCH_ENGLISH_RESIDUE_PHRASES = [
   'the blue button is lifted'
 ];
 
+export const FRENCH_DIACRITIC_RISK_WORDS = [
+  { plain: 'hemoglobine', preferred: 'hémoglobine' },
+  { plain: 'anemie', preferred: 'anémie' },
+  { plain: 'hemolytique', preferred: 'hémolytique' },
+  { plain: 'hemolyse', preferred: 'hémolyse' },
+  { plain: 'reticulocytes', preferred: 'réticulocytes' },
+  { plain: 'spherocytes', preferred: 'sphérocytes' },
+  { plain: 'defaut', preferred: 'défaut' },
+  { plain: 'medicaments', preferred: 'médicaments' },
+  { plain: 'declencher', preferred: 'déclencher' },
+  { plain: 'presence', preferred: 'présence' },
+  { plain: 'reaction', preferred: 'réaction' },
+  { plain: 'eleve', preferred: 'élevé' },
+  { plain: 'elevee', preferred: 'élevée' },
+  { plain: 'elevation', preferred: 'élévation' },
+  { plain: 'synthese', preferred: 'synthèse' },
+  { plain: 'reserves', preferred: 'réserves' },
+  { plain: 'suggere', preferred: 'suggère' },
+  { plain: 'leger', preferred: 'léger' },
+  { plain: 'legere', preferred: 'légère' },
+  { plain: 'modere', preferred: 'modéré' }
+];
+
+const FRENCH_DIACRITIC_RISK_MAP = new Map(
+  FRENCH_DIACRITIC_RISK_WORDS.map((item) => [normalizeLatinToken(item.plain), item])
+);
+
 export const isRussianTarget = (targetLang?: TargetLanguage) =>
   String(targetLang || '').toLowerCase().includes('russian');
+
+export const isFrenchTarget = (targetLang?: TargetLanguage) =>
+  String(targetLang || '').toLowerCase().includes('french');
 
 export const isRussianDisallowedLatinResidue = (token: string) =>
   RUSSIAN_DISALLOWED_LATIN_RESIDUE_SET.has(normalizeLatinToken(token));
@@ -110,9 +141,11 @@ export const TARGET_LANGUAGE_PROFILES: Record<string, TargetLanguageProfile> = {
     script: 'latin',
     englishResidueWords: [...FRENCH_ENGLISH_RESIDUE_WORDS],
     englishResiduePhrases: [...FRENCH_ENGLISH_RESIDUE_PHRASES],
+    diacriticRiskWords: [...FRENCH_DIACRITIC_RISK_WORDS],
     commonFunctionWords: ['le', 'la', 'les', 'des', 'une', 'avec', 'pour', 'dans', 'sur'],
     distinctiveCharacters: /[éèêëàâçîïôûùüÿœ]/i,
     notes: [
+      'Use standard French orthography with accents for medical/common terms.',
       'Conserve numeric/unit forms such as 2-8°C when source uses compact medical formatting.',
       'Do not over-flag shared Latin medical abbreviations as English.'
     ]
@@ -203,3 +236,19 @@ export const hasProfileEnglishResidue = (text: string, targetLang?: TargetLangua
   const tokens = text.match(/\b[A-Za-z][A-Za-z0-9'-]{1,}\b/g) || [];
   return tokens.some((token) => isProfileEnglishResidueToken(token, targetLang));
 };
+
+export const collectFrenchDiacriticRisks = (text: string, targetLang?: TargetLanguage) => {
+  if (!isFrenchTarget(targetLang)) return [];
+  const tokens = String(text || '').match(/\b[A-Za-zÀ-ÖØ-öø-ÿœŒ][A-Za-zÀ-ÖØ-öø-ÿœŒ'-]{2,}\b/g) || [];
+  const risks: Array<{ token: string; preferred: string }> = [];
+  tokens.forEach((token) => {
+    if (/[À-ÖØ-öø-ÿœŒ]/.test(token)) return;
+    const risk = FRENCH_DIACRITIC_RISK_MAP.get(normalizeLatinToken(token));
+    if (!risk) return;
+    risks.push({ token, preferred: risk.preferred });
+  });
+  return risks;
+};
+
+export const hasFrenchDiacriticRisk = (text: string, targetLang?: TargetLanguage) =>
+  collectFrenchDiacriticRisks(text, targetLang).length > 0;

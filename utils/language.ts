@@ -1,5 +1,9 @@
 import { POCTRecord, TargetLanguage } from "../types";
-import { hasProfileEnglishResidue, isRussianDisallowedLatinResidue } from "./languageProfiles";
+import {
+  hasFrenchDiacriticRisk,
+  hasProfileEnglishResidue,
+  isRussianDisallowedLatinResidue
+} from "./languageProfiles";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
 import { isLikelyIdentifier, isProtectedTerm, stripProtectedTerms, stripPreservedUiLabels } from "./translationTokens";
 
@@ -479,6 +483,9 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
     return false;
   }
   if (targetCode !== "en" && hasProfileEnglishResidue(trimmed, targetLang)) {
+    return false;
+  }
+  if (targetCode === "fr" && hasFrenchDiacriticRisk(trimmed, targetLang)) {
     return false;
   }
 

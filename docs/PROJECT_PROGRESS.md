@@ -1,5 +1,17 @@
 # 项目进度
 
+## v0.0.101
+
+- DeepSeek Direct v4 Pro 策略收敛：Excel 保持与其他模型一致的 5 行顺序批次；遇到 DeepSeek `429`、`503`、`timeout`、`server overloaded` 会由 `TranslationHub` 自动拆批重试，避免整批直接跳过。
+- DOCX/PDF 在 DeepSeek Direct v4 Pro 下启用保守段落批量：从 20 段 / 12000 字符降到 8 段 / 6000 字符，降低 Pro 模型超时、JSON 截断或服务过载风险。
+- `/api/translate` 对 DeepSeek v4 Pro 默认超时提升到 55 秒，并增加 DeepSeek JSON 输出 token 上限；本地 direct `DeepseekService` 同步 max token 策略，避免本地和 Cloudflare Pages 代理行为分叉。
+- Multi-AI Review 后端从全量并发改为有限并发：候选翻译默认并发 2，匿名评审默认并发 1；`wrangler.toml` 增加对应可配置变量，前端日志改为提示后端按保守并发执行。
+- French target language profile 新增法语重音风险词表，Quality Check 可拦截 `Hemoglobine elevee avec anemie legere.` 这类 ASCII-only 法语医学词形；French prompt 增加标准法语正字法和重音要求。
+- 回归测试新增 DeepSeek Pro 请求体、代理 503 拆批重试、Multi-AI Review 并发配置、前端 Pro 批量策略、法语重音 QA 样本。
+- 建立并更新本地 issue 包：`local-data/issues/2026-06-02-excel-french-diacritics-inconsistent/`、`local-data/issues/2026-06-02-excel-multiai-review-unavailable/`、`local-data/issues/2026-06-02-excel-deepseek-pro-concurrency-batch-failure/`。
+- 验证通过：targeted regression、`npm run typecheck`、`npm test`、`npm run build`、`npm run test:issue-regression`、`npm run test:real-docs`，并完成 inbox 9 个 Excel 文件读取 smoke。
+- 版本号更新为 `v0.0.101`。
+
 ## v0.0.100
 
 - Excel spacing QA 继续降噪：`e. g. ,`、`i. e. ,`、`etc. ;`、`Co. , Ltd. .` 这类本地后处理可自动修复的标点空格，不再作为 Quality Report medium finding 淹没有效问题。

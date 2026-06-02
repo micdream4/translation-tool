@@ -208,6 +208,32 @@ ${JSON.stringify(anonymousOutputs)}
 `;
 };
 
+const parseConcurrencyLimit = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(5, Math.floor(parsed)));
+};
+
+const runWithConcurrency = async <T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+) => {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await worker(items[index], index);
+      }
+    })
+  );
+  return results;
+};
+
 export const onRequestPost = async (context: any) => {
   try {
     const payload = await context.request.json();
@@ -231,9 +257,21 @@ export const onRequestPost = async (context: any) => {
       payload?.judgeModels || env.MODEL_REVIEW_JUDGE_MODELS || env.CLOUDFLARE_REVIEW_JUDGE_MODELS,
       DEFAULT_MODEL_REVIEW_JUDGE_MODELS
     );
+    const translationConcurrency = parseConcurrencyLimit(
+      payload?.translationConcurrency ||
+        env.MODEL_REVIEW_TRANSLATION_CONCURRENCY ||
+        env.CLOUDFLARE_REVIEW_TRANSLATION_CONCURRENCY,
+      2
+    );
+    const judgeConcurrency = parseConcurrencyLimit(
+      payload?.judgeConcurrency ||
+        env.MODEL_REVIEW_JUDGE_CONCURRENCY ||
+        env.CLOUDFLARE_REVIEW_JUDGE_CONCURRENCY,
+      1
+    );
 
     const aliases = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-    const candidates: ModelReviewCandidate[] = await Promise.all(translationModels.map(async (model, index) => {
+    const candidates: ModelReviewCandidate[] = await runWithConcurrency(translationModels, translationConcurrency, async (model, index) => {
       const started = Date.now();
       const alias = `Candidate ${aliases[index] || index + 1}`;
       try {
@@ -259,7 +297,7 @@ export const onRequestPost = async (context: any) => {
           elapsedMs: Date.now() - started
         };
       }
-    }));
+    });
 
     const successfulCandidates = candidates.filter((candidate) => candidate.translations.length);
     if (!successfulCandidates.length) {
@@ -267,7 +305,7 @@ export const onRequestPost = async (context: any) => {
     }
 
     const aliasToModel = new Map(candidates.map((candidate) => [candidate.alias, candidate.model]));
-    const judges: ModelReviewJudgeResult[] = await Promise.all(judgeModels.map(async (model) => {
+    const judges: ModelReviewJudgeResult[] = await runWithConcurrency(judgeModels, judgeConcurrency, async (model) => {
       try {
         const content = await callModel({
           env,
@@ -288,7 +326,7 @@ export const onRequestPost = async (context: any) => {
           error: error instanceof Error ? error.message : String(error)
         };
       }
-    }));
+    });
 
     const ranking = buildModelReviewRanking(candidates, judges);
     return jsonResponse({
@@ -299,6 +337,10 @@ export const onRequestPost = async (context: any) => {
       engines: Array.from(
         new Set([...translationModels, ...judgeModels].map((model) => parseRoutedModel(model).engine))
       ),
+      concurrency: {
+        translation: translationConcurrency,
+        judge: judgeConcurrency
+      },
       samples,
       candidates,
       judges,

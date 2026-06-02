@@ -142,6 +142,14 @@ export class TranslationHub {
       message.includes("invalid payload") ||
       message.includes("invalid record data") ||
       message.includes("proxy translate network error") ||
+      message.includes("proxy translate error 500") ||
+      message.includes("deepseek error 429") ||
+      message.includes("deepseek error 503") ||
+      message.includes("rate limit") ||
+      message.includes("server overloaded") ||
+      message.includes("overloaded") ||
+      message.includes("timed out") ||
+      message.includes("timeout") ||
       message.includes("failed to fetch") ||
       message.includes("fetch failed") ||
       message.includes("networkerror")

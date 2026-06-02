@@ -43,6 +43,15 @@ export const isChineseTarget = (targetLang?: TargetLanguage) =>
   isTraditionalChineseTaiwanTarget(targetLang);
 
 export const getTargetLocaleInstruction = (targetLang: TargetLanguage) => {
+  const normalized = String(targetLang || "").toLowerCase();
+  if (normalized.includes("french")) {
+    return `- Use standard French orthography with required accents and ligatures where appropriate, especially medical/common terms such as hémoglobine, anémie, hémolyse, réticulocytes, sphérocytes, élevé, présence, réaction, léger and modéré.
+- Do not output ASCII-only French for words that require accents.`;
+  }
+  if (normalized.includes("portuguese")) {
+    return `- Use standard Portuguese orthography with required diacritics where appropriate, especially medical/common terms such as possível, diminuição, reação, infecção and referência.
+- Do not output ASCII-only Portuguese for words that require diacritics.`;
+  }
   if (!isTraditionalChineseTaiwanTarget(targetLang)) return "";
   return `- Target locale is Traditional Chinese for Taiwan. Use natural Taiwanese Traditional Chinese medical/technical wording, not Simplified Chinese converted character-by-character.
 - Use Taiwan-preferred wording where natural, e.g. 檢驗, 品質, 資訊, 啟用, 列印, 檢體, 血液常規/血球計數 as context requires.

@@ -52,6 +52,17 @@ export const parseRoutedModel = (rawModel: string): RoutedModel => {
 };
 
 export const extractChatText = (result: any) => {
+  const directContent = result?.content;
+  if (Array.isArray(directContent)) {
+    const text = directContent
+      .map((chunk: any) => chunk?.text ?? chunk?.content ?? "")
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (text) return text;
+  }
+  if (typeof directContent === "string") return directContent.trim();
+
   let content = result?.choices?.[0]?.message?.content;
   if (Array.isArray(content)) {
     content = content.map((chunk: any) => chunk?.text ?? chunk?.content ?? "").join("\n");
@@ -73,6 +84,54 @@ export const extractChatText = (result: any) => {
     .trim();
 };
 
+const isThirdPartyCloudflareModel = (model: string) => /^[a-z0-9-]+\//i.test(String(model || ""));
+const isOpenAiCloudflareModel = (model: string) => /^openai\//i.test(String(model || ""));
+const isAnthropicCloudflareModel = (model: string) => /^anthropic\//i.test(String(model || ""));
+
+const buildCloudflareAiInput = ({
+  model,
+  system,
+  user,
+  maxTokens,
+  json
+}: {
+  model: string;
+  system: string;
+  user: string;
+  maxTokens: number;
+  json: boolean;
+}) => {
+  const anthropic = isAnthropicCloudflareModel(model);
+  const input: Record<string, unknown> = {
+    messages: anthropic
+      ? [{ role: "user", content: user }]
+      : [
+          { role: "system", content: system },
+          { role: "user", content: user }
+        ]
+  };
+
+  if (anthropic) {
+    input.system = system;
+  }
+
+  if (isOpenAiCloudflareModel(model)) {
+    input.max_completion_tokens = maxTokens;
+  } else {
+    input.max_tokens = maxTokens;
+  }
+
+  if (!isOpenAiCloudflareModel(model) && !anthropic) {
+    input.temperature = 0;
+  }
+
+  if (json && !isThirdPartyCloudflareModel(model)) {
+    input.response_format = { type: "json_object" };
+  }
+
+  return input;
+};
+
 export const callCloudflareAiChat = async ({
   ai,
   gatewayId,
@@ -92,15 +151,7 @@ export const callCloudflareAiChat = async ({
 }) => {
   const result = await ai.run(
     model,
-    {
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user }
-      ],
-      temperature: 0,
-      max_tokens: maxTokens,
-      ...(json ? { response_format: { type: "json_object" } } : {})
-    },
+    buildCloudflareAiInput({ model, system, user, maxTokens, json }),
     {
       gateway: { id: gatewayId }
     }

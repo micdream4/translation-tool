@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.105
+
+- 修复 Multi-AI Review 在 Cloudflare provider 模型上长时间 Running 后 `Failed to fetch` 的核心兼容问题：Cloudflare Gemini / OpenAI / Anthropic 不再共用同一套 OpenAI-style 请求参数。
+- `functions/_shared/llmProviders.ts` 对 Cloudflare third-party provider 分流：Gemini 去掉强制 `response_format`；OpenAI GPT-5.4 使用 `max_completion_tokens`；Anthropic Claude 4.6 使用顶层 `system` 字段和 `max_tokens`。
+- 扩展 Cloudflare AI 返回解析，支持 Anthropic 顶层 `content[]` 响应，避免成功返回后被误判为空内容。
+- 使用临时 Worker 直连 Cloudflare AI binding 验证 3 个 Cloudflare 模型：`google/gemini-3-flash`、`openai/gpt-5.4`、`anthropic/claude-sonnet-4.6` 修复后均可返回 JSON 文本。
+- 新增回归测试锁定 Cloudflare provider schema，防止再次把 `response_format` / `max_tokens` / `role: system` 错发给不兼容的 provider。
+- 版本号更新为 `v0.0.105`。
+
 ## v0.0.104
 
 - 统一翻译批次耗时日志：确认 DOCX 正式翻译已有每批 `用时`，PDF 正式翻译和 PDF 重译也已有 `用时`；补齐 Excel 正式翻译、`Retry Missing Cells`、keyed retry 的模型调用耗时日志。

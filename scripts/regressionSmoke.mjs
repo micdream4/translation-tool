@@ -1533,8 +1533,71 @@ test("API translate auto uses Cloudflare AI Gateway Gemini before OpenRouter", a
     assert.equal(aiCalls.length, 1);
     assert.equal(aiCalls[0].model, "google/gemini-3-flash");
     assert.equal(aiCalls[0].input.max_tokens, 2048);
+    assert.equal(aiCalls[0].input.response_format, undefined);
     assert.deepEqual(aiCalls[0].options, { gateway: { id: "default" } });
   });
+});
+
+test("Cloudflare AI provider calls use provider-compatible schemas", async () => {
+  const { callCloudflareAiChat } = await bundleTsModule(
+    path.join(repoRoot, "functions/_shared/llmProviders.ts")
+  );
+  const calls = [];
+  const ai = {
+    run: async (model, input, options) => {
+      calls.push({ model, input, options });
+      if (String(model).startsWith("anthropic/")) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "{\"records\":[{\"id\":\"seg-1\",\"content\":\"Anthropic ok\"}]}"
+            }
+          ]
+        };
+      }
+      return {
+        choices: [
+          {
+            message: {
+              content: "{\"records\":[{\"id\":\"seg-1\",\"content\":\"Provider ok\"}]}"
+            }
+          }
+        ]
+      };
+    }
+  };
+
+  const base = {
+    ai,
+    gatewayId: "default",
+    system: "Return JSON only.",
+    user: "Translate 白细胞降低.",
+    maxTokens: 1234,
+    json: true
+  };
+  const geminiText = await callCloudflareAiChat({ ...base, model: "google/gemini-3-flash" });
+  const openAiText = await callCloudflareAiChat({ ...base, model: "openai/gpt-5.4" });
+  const anthropicText = await callCloudflareAiChat({
+    ...base,
+    model: "anthropic/claude-sonnet-4.6"
+  });
+
+  assert.match(geminiText, /Provider ok/);
+  assert.match(openAiText, /Provider ok/);
+  assert.match(anthropicText, /Anthropic ok/);
+  assert.equal(calls[0].input.max_tokens, 1234);
+  assert.equal(calls[0].input.temperature, 0);
+  assert.equal(calls[0].input.response_format, undefined);
+  assert.equal(calls[1].input.max_tokens, undefined);
+  assert.equal(calls[1].input.max_completion_tokens, 1234);
+  assert.equal(calls[1].input.temperature, undefined);
+  assert.equal(calls[1].input.response_format, undefined);
+  assert.equal(calls[2].input.system, "Return JSON only.");
+  assert.deepEqual(calls[2].input.messages, [{ role: "user", content: "Translate 白细胞降低." }]);
+  assert.equal(calls[2].input.max_tokens, 1234);
+  assert.equal(calls[2].input.temperature, undefined);
+  assert.equal(calls[2].input.response_format, undefined);
 });
 
 test("API translate auto falls back to OpenRouter when Cloudflare AI fails", async () => {

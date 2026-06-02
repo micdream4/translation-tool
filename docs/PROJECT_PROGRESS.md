@@ -1,5 +1,16 @@
 # 项目进度
 
+## v0.0.106
+
+- 确认真实 Excel 法语输出 `Peut suggerer la presence... medicaments` 属于法语正字法错误，不是格式显示问题；标准交付应使用 `suggérer`、`présence`、`médicaments` 等带重音词形。
+- 扩展 French target language profile：新增 `suggerer -> suggérer`、`deficit -> déficit` 风险词，Quality Check 可继续拦截这类 ASCII-only 法语医学/报告文本。
+- `utils/postprocess.ts` 新增法语重音确定性修复，翻译后通用后处理会把已知安全词形自动修正为标准法语正字法，Excel/DOCX/PDF/字符串资源路径统一受益。
+- 针对本次 9 个 Excel 的真实表头场景，新增 `名称/几率/分析` 到 French/Russian/Portuguese 的短词精确映射，降低宽表短表头漏翻风险。
+- 修正拉丁文本标点后处理在句尾追加尾随空格的问题，避免导出单元格出现多余空格。
+- 回归测试新增真实法语句子，覆盖“QA 能识别风险”和“后处理能自动修复”两层。
+- 更新本地 issue 包 `local-data/issues/2026-06-02-excel-french-diacritics-inconsistent/`，记录真实复现、归因和沉淀资产。
+- 版本号更新为 `v0.0.106`。
+
 ## v0.0.105
 
 - 修复 Multi-AI Review 在 Cloudflare provider 模型上长时间 Running 后 `Failed to fetch` 的核心兼容问题：Cloudflare Gemini / OpenAI / Anthropic 不再共用同一套 OpenAI-style 请求参数。

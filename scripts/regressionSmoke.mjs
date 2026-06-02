@@ -1400,6 +1400,31 @@ test("Russian and French profiles flag high-confidence source-language residue",
     collectFrenchDiacriticRisks("Hemoglobine elevee avec anemie legere.", "French").map((item) => item.preferred),
     ["hémoglobine", "élevée", "anémie", "légère"]
   );
+  assert.equal(
+    hasFrenchDiacriticRisk(
+      "Peut suggerer la presence d'une infection virale, d'un deficit immunitaire ou de l'effet de certains medicaments.",
+      "French"
+    ),
+    true
+  );
+  assert.deepEqual(
+    collectFrenchDiacriticRisks(
+      "Peut suggerer la presence d'une infection virale, d'un deficit immunitaire ou de l'effet de certains medicaments.",
+      "French"
+    ).map((item) => item.preferred),
+    ["suggérer", "présence", "déficit", "médicaments"]
+  );
+  assert.equal(
+    polishTranslation(
+      "提示可能存在病毒感染、免疫缺陷或某些药物影响",
+      "Peut suggerer la presence d'une infection virale, d'un deficit immunitaire ou de l'effet de certains medicaments.",
+      "French"
+    ),
+    "Peut suggérer la présence d'une infection virale, d'un déficit immunitaire ou de l'effet de certains médicaments."
+  );
+  assert.equal(polishTranslation("名称", "名称", "French"), "Nom");
+  assert.equal(polishTranslation("几率", "几率", "Russian"), "Вероятность");
+  assert.equal(polishTranslation("分析", "分析", "Portuguese"), "Análise");
   assert.match(getTargetLocaleInstruction("French"), /hémoglobine/);
   assert.equal(getTargetLanguageProfile("Traditional Chinese (Taiwan)")?.preferredLocale, "zh-TW");
 

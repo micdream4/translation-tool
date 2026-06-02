@@ -1,4 +1,5 @@
 import { enforceGlossary } from "./glossary";
+import { collectFrenchDiacriticRisks } from "./languageProfiles";
 import { enforceSeedTerminology } from "./seedTerminology";
 import type { TargetLanguage } from "../types";
 
@@ -170,6 +171,23 @@ const RUSSIAN_MODEL_ARTIFACT_FIXES: Array<[RegExp, string]> = [
   [/\s*\(ce\)/g, ""],
   [/([\u0400-\u04FF])\s+ce\b/g, "$1"]
 ];
+const EXACT_SHORT_SOURCE_TRANSLATIONS: Record<string, Record<string, string>> = {
+  french: {
+    名称: "Nom",
+    几率: "Probabilité",
+    分析: "Analyse"
+  },
+  russian: {
+    名称: "Название",
+    几率: "Вероятность",
+    分析: "Анализ"
+  },
+  portuguese: {
+    名称: "Nome",
+    几率: "Probabilidade",
+    分析: "Análise"
+  }
+};
 const ANALYZER_PREFIX_WORDS = [
   "after",
   "and",
@@ -271,8 +289,8 @@ const fixSegmentSpacing = (segment: string) => {
     return `${initial}.g.`;
   });
   result = result.replace(/\s+([,.;:!?])/g, "$1");
-  result = result.replace(/([,.;!?])(?![\s"')\]\}\d])/g, "$1 ");
-  result = result.replace(/:(?!\/\/)(?![\s"')\]\}])/g, ": ");
+  result = result.replace(/([,.;!?])(?=[^\s"')\]\}\d])/g, "$1 ");
+  result = result.replace(/:(?!\/\/)(?=[^\s"')\]\}])/g, ": ");
   result = result.replace(/([.!?])([A-Z])/g, "$1 $2");
   result = result.replace(/([a-z])([A-Z][a-z])/g, "$1 $2");
   result = result.replace(/([0-9])([A-Za-z])/g, "$1 $2");
@@ -432,6 +450,45 @@ const fixRussianEnglishResidue = (translated: string, targetLang?: TargetLanguag
   return output;
 };
 
+const normalizeTargetKey = (targetLang?: TargetLanguage) => {
+  const normalized = String(targetLang || "").toLowerCase();
+  if (normalized.includes("french")) return "french";
+  if (normalized.includes("russian")) return "russian";
+  if (normalized.includes("portuguese")) return "portuguese";
+  return "";
+};
+
+const getExactShortSourceTranslation = (original: string, targetLang?: TargetLanguage) => {
+  const targetKey = normalizeTargetKey(targetLang);
+  if (!targetKey) return "";
+  const source = String(original || "").trim();
+  return EXACT_SHORT_SOURCE_TRANSLATIONS[targetKey]?.[source] || "";
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const matchTokenCase = (token: string, preferred: string) => {
+  if (!token) return preferred;
+  if (token === token.toUpperCase()) return preferred.toUpperCase();
+  if (token[0] === token[0].toUpperCase()) {
+    return `${preferred[0]?.toUpperCase() || ""}${preferred.slice(1)}`;
+  }
+  return preferred;
+};
+
+const fixFrenchDiacritics = (translated: string, targetLang?: TargetLanguage) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
+  let output = translated;
+  collectFrenchDiacriticRisks(output, targetLang).forEach(({ token, preferred }) => {
+    if (!token || !preferred) return;
+    output = output.replace(
+      new RegExp(`\\b${escapeRegExp(token)}\\b`, "g"),
+      (match) => matchTokenCase(match, preferred)
+    );
+  });
+  return output;
+};
+
 const fixBracketArtifacts = (text: string) => {
   if (!text) return text;
   let output = text;
@@ -449,6 +506,8 @@ export const polishTranslation = (
   targetLang?: TargetLanguage
 ) => {
   if (typeof translated !== "string") return translated;
+  const exactShortTranslation = getExactShortSourceTranslation(original || "", targetLang);
+  if (exactShortTranslation) return exactShortTranslation;
   let refined = fixSpacingArtifacts(translated);
   refined = fixBracketArtifacts(refined);
   refined = fixEnglishGlueArtifacts(original || "", refined, targetLang);
@@ -456,5 +515,6 @@ export const polishTranslation = (
   refined = enforceGlossary(original || "", refined, targetLang);
   refined = enforceSeedTerminology(original || "", refined, targetLang);
   refined = adjustLongFormStatus(refined);
+  refined = fixFrenchDiacritics(refined, targetLang);
   return refined;
 };

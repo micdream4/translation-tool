@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.108
+
+- 批量翻译真实 Excel 法语文件 `红细胞和血红蛋白-SRBC.xlsx` 时发现 `大细胞性贫血` 被术语库覆盖为无重音 `Anemie macrocytaire`，导致后处理修复后仍被 `normalizeTerminology` 拉回错误词形。
+- 修复 `language-packs/base/glossary_seed.csv` 中 `大细胞性贫血` 多语言术语草稿：French 改为 `Anémie macrocytaire`，Portuguese/Spanish 改为 `Anemia macrocítica`，German 改为 `Makrozytäre Anämie`。
+- 重新生成 `utils/generatedTerminology.ts`，确保线上精确术语覆盖使用带重音的标准词形。
+- 回归测试新增术语覆盖断言，确认 `polishTranslation("大细胞性贫血", ..., "French")` 输出 `Anémie macrocytaire`，Portuguese 输出 `Anemia macrocítica`。
+- 更新本地 issue 包 `local-data/issues/2026-06-02-excel-french-diacritics-inconsistent/`，将该问题归类为术语资产错误。
+- 版本号更新为 `v0.0.108`。
+
 ## v0.0.107
 
 - 批量翻译真实 Excel 法语文件 `白细胞增高-AWBC.xlsx` 时，Quality Check 发现模型 retry 后仍残留中文 `复合`，例如 `étiologie复合`、`réaction复合`。

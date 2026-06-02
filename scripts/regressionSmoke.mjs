@@ -1425,6 +1425,9 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(polishTranslation("名称", "名称", "French"), "Nom");
   assert.equal(polishTranslation("几率", "几率", "Russian"), "Вероятность");
   assert.equal(polishTranslation("分析", "分析", "Portuguese"), "Análise");
+  assert.equal(polishTranslation("序号", "序号", "French"), "N°");
+  assert.equal(polishTranslation("序号", "序号", "Russian"), "№");
+  assert.equal(polishTranslation("序号", "序号", "Portuguese"), "N.º");
   assert.equal(polishTranslation("大细胞性贫血", "Anemie macrocytaire", "French"), "Anémie macrocytaire");
   assert.equal(polishTranslation("大细胞性贫血", "Anemia macrocitica", "Portuguese"), "Anemia macrocítica");
   const frenchCompoundRepair = polishTranslation(

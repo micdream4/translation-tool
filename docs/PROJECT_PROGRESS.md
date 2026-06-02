@@ -1,5 +1,16 @@
 # 项目进度
 
+## v0.0.109
+
+- 完成 `local-data/inbox/` 中 9 个新增 Excel 文件的法语批量翻译，输出目录为 `local-data/done/2026-06-02-deepseek-v4-flash-excel/`。
+- 独立 QA sweep 发现 5 个历史输出的 `id` 列被旧批处理结果污染，模型曾将 UUID/ID 插入空格；已建立本地 issue 包 `local-data/issues/2026-06-02-excel-french-id-serial-qa-failures/`。
+- 修复当前 9 个法语输出：从原件回写锁定 ID/UUID/identifier 字段，并重新后处理短标签与术语，最终独立 QA 结果为 9/9 OK、未翻译 0、法语重音风险 0、保护字段 mismatch 0。
+- `utils/postprocess.ts` 新增 `序号` 的 French/Russian/Portuguese 确定译文：`N°`、`№`、`N.º`，覆盖 Excel 多行表头被解析进数据区后的中文短标签残留。
+- 本地批处理脚本增加已有输出 QA 策略：文件存在时先检查 sheet/行数、ID mismatch、中文残留、非目标语言残留、法语重音风险，只有通过才 skip，否则重做。
+- 回归 smoke 新增 `序号` 三语后处理断言，防止短标签再次残留中文。
+- 更新 `docs/context-handoff.md`，记录当前法语批处理状态、输出目录和已部署问题修复。
+- 版本号更新为 `v0.0.109`。
+
 ## v0.0.108
 
 - 批量翻译真实 Excel 法语文件 `红细胞和血红蛋白-SRBC.xlsx` 时发现 `大细胞性贫血` 被术语库覆盖为无重音 `Anemie macrocytaire`，导致后处理修复后仍被 `normalizeTerminology` 拉回错误词形。

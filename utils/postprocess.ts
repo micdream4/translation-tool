@@ -180,17 +180,20 @@ const EXACT_SHORT_SOURCE_TRANSLATIONS: Record<string, Record<string, string>> = 
   french: {
     名称: "Nom",
     几率: "Probabilité",
-    分析: "Analyse"
+    分析: "Analyse",
+    序号: "N°"
   },
   russian: {
     名称: "Название",
     几率: "Вероятность",
-    分析: "Анализ"
+    分析: "Анализ",
+    序号: "№"
   },
   portuguese: {
     名称: "Nome",
     几率: "Probabilidade",
-    分析: "Análise"
+    分析: "Análise",
+    序号: "N.º"
   }
 };
 const ANALYZER_PREFIX_WORDS = [

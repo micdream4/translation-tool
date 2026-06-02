@@ -34,6 +34,10 @@ export type {
 const CHINESE_REGEX = /[\u4e00-\u9fff]/;
 export const PLACEHOLDER_REGEX =
   /(?:_+\s*(?:TKN|ID|FMT|TAG)(?:\s*[_ ]\s*\d+)?\s*_+|(?:TKN|ID|FMT|TAG)\s*[_ ]\s*\d+\s*_*)/i;
+const MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX =
+  /\b(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)\s+\d+_+\b/i;
+const MEDICAL_CODE_HASH_ARTIFACT_REGEX =
+  /\b(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)_+\b/i;
 const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
@@ -261,7 +265,11 @@ export const runQualityChecksOnUnits = (
       });
     }
 
-    if (PLACEHOLDER_REGEX.test(unit.translatedText)) {
+    if (
+      PLACEHOLDER_REGEX.test(unit.translatedText) ||
+      MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX.test(unit.translatedText) ||
+      MEDICAL_CODE_HASH_ARTIFACT_REGEX.test(unit.translatedText)
+    ) {
       totals.placeholderCells += 1;
       placeholderRows.add(unit.rowIndex);
       issues.placeholders.push({

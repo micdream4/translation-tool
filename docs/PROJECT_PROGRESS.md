@@ -1,5 +1,18 @@
 # 项目进度
 
+## v0.0.110
+
+- 完成 `local-data/inbox/` 中 9 个新增 Excel 文件的法语交付版重写，最终输出目录仍为 `local-data/done/2026-06-02-deepseek-v4-flash-excel/`。
+- 法语 9 个输出改用原始 xlsx 作为底版进行 XML patch 回写，保留单元格样式、空白样式、公式、sheet 和行列坐标；最终独立扫描结果为 `cjkCells=0`、`placeholderCells=0`、`protectedMismatches=0`、`styleMismatches=0`、`formulaMismatches=0`。
+- 新增 `buildStylePreservingExcelBuffer` / `exportToExcelPreservingStyles`，网页 Excel 下载有原始文件上下文时不再重建 workbook，而是在原始 xlsx 包内替换同坐标单元格值；导出日志会提示已保留原格式。
+- `quality/checks.ts` 扩展医学代码 placeholder 污染检测，覆盖 `WBC 1__`、`LYM 0__`、`NSH__` 等模型破坏形态，Excel/DOCX/PDF 共用 Quality Core 同步受益。
+- `utils/postprocess.ts` 扩展医学代码修复：按源文后缀出现次数恢复 `EOS#` / `MON#`，避免过度把同段裸指标 `MON↑` 改成 `MON#↑`；同时修复 `B12/ ou` 和法语 `plus d'un mois` 数字格式。
+- `utils/languageProfiles.ts` 继续扩展法语重音 profile，新增 `diminues -> diminués`、`suggerent -> suggèrent` 等真实抽样发现词形。
+- 本地综合审计脚本改为坐标对齐，不再因可见表头被翻译成 `N°/Résumé...` 而误判结构错位；最终综合审计结果为 `inputFiles=9`、`outputFiles=9`、`hardFailureCount=0`、`warningCount=0`。
+- 新建本地 issue 包 `local-data/issues/2026-06-02-excel-format-style-preservation-loss/`，并更新 `local-data/issues/2026-06-02-excel-french-medical-code-placeholder-diacritics/`。
+- 回归测试新增样式属性保留、医学代码伪 placeholder、医学代码后缀计数修复、法语重音、B12 斜杠和数字月份格式断言。
+- 版本号更新为 `v0.0.110`。
+
 ## v0.0.109
 
 - 完成 `local-data/inbox/` 中 9 个新增 Excel 文件的法语批量翻译，输出目录为 `local-data/done/2026-06-02-deepseek-v4-flash-excel/`。

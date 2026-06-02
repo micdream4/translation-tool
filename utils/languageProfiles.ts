@@ -88,10 +88,62 @@ export const FRENCH_ENGLISH_RESIDUE_PHRASES = [
 export const FRENCH_DIACRITIC_RISK_WORDS = [
   { plain: 'hemoglobine', preferred: 'hémoglobine' },
   { plain: 'anemie', preferred: 'anémie' },
+  { plain: 'anemique', preferred: 'anémique' },
+  { plain: 'anemiques', preferred: 'anémiques' },
+  { plain: 'evaluation', preferred: 'évaluation' },
+  { plain: 'evalue', preferred: 'évalue' },
+  { plain: 'combinee', preferred: 'combinée' },
+  { plain: 'necessaire', preferred: 'nécessaire' },
+  { plain: 'hematologique', preferred: 'hématologique' },
+  { plain: 'hematologiques', preferred: 'hématologiques' },
+  { plain: 'hematopoiese', preferred: 'hématopoïèse' },
+  { plain: 'leucemie', preferred: 'leucémie' },
+  { plain: 'myelodysplasique', preferred: 'myélodysplasique' },
+  { plain: 'myeloide', preferred: 'myéloïde' },
+  { plain: 'myeloides', preferred: 'myéloïdes' },
   { plain: 'hemolytique', preferred: 'hémolytique' },
   { plain: 'hemolyse', preferred: 'hémolyse' },
   { plain: 'reticulocytes', preferred: 'réticulocytes' },
   { plain: 'spherocytes', preferred: 'sphérocytes' },
+  { plain: 'alteration', preferred: 'altération' },
+  { plain: 'peripherique', preferred: 'périphérique' },
+  { plain: 'peripheriques', preferred: 'périphériques' },
+  { plain: 'frequent', preferred: 'fréquent' },
+  { plain: 'frequente', preferred: 'fréquente' },
+  { plain: 'frequents', preferred: 'fréquents' },
+  { plain: 'frequentes', preferred: 'fréquentes' },
+  { plain: 'neutropenie', preferred: 'neutropénie' },
+  { plain: 'medullaire', preferred: 'médullaire' },
+  { plain: 'medullaires', preferred: 'médullaires' },
+  { plain: 'toxicite', preferred: 'toxicité' },
+  { plain: 'liberation', preferred: 'libération' },
+  { plain: 'lignee', preferred: 'lignée' },
+  { plain: 'lignees', preferred: 'lignées' },
+  { plain: 'recuperation', preferred: 'récupération' },
+  { plain: 'reactive', preferred: 'réactive' },
+  { plain: 'mononucleose', preferred: 'mononucléose' },
+  { plain: 'hepatite', preferred: 'hépatite' },
+  { plain: 'cytomegalovirus', preferred: 'cytomégalovirus' },
+  { plain: 'reactions', preferred: 'réactions' },
+  { plain: 'medicamenteuse', preferred: 'médicamenteuse' },
+  { plain: 'medicamenteuses', preferred: 'médicamenteuses' },
+  { plain: 'peut-etre', preferred: 'peut-être' },
+  { plain: 'complementaire', preferred: 'complémentaire' },
+  { plain: 'symptomes', preferred: 'symptômes' },
+  { plain: 'myelogramme', preferred: 'myélogramme' },
+  { plain: 'etiologie', preferred: 'étiologie' },
+  { plain: 'myelofibrose', preferred: 'myélofibrose' },
+  { plain: 'serique', preferred: 'sérique' },
+  { plain: 'hemopathie', preferred: 'hémopathie' },
+  { plain: 'resultat', preferred: 'résultat' },
+  { plain: 'resultats', preferred: 'résultats' },
+  { plain: 'systeme', preferred: 'système' },
+  { plain: 'reference', preferred: 'référence' },
+  { plain: 'inferieur', preferred: 'inférieur' },
+  { plain: 'inferieure', preferred: 'inférieure' },
+  { plain: 'superieur', preferred: 'supérieur' },
+  { plain: 'superieure', preferred: 'supérieure' },
+  { plain: 'reactionnelle', preferred: 'réactionnelle' },
   { plain: 'defaut', preferred: 'défaut' },
   { plain: 'deficit', preferred: 'déficit' },
   { plain: 'medicaments', preferred: 'médicaments' },
@@ -99,15 +151,23 @@ export const FRENCH_DIACRITIC_RISK_WORDS = [
   { plain: 'presence', preferred: 'présence' },
   { plain: 'reaction', preferred: 'réaction' },
   { plain: 'suggerer', preferred: 'suggérer' },
+  { plain: 'suggerent', preferred: 'suggèrent' },
   { plain: 'eleve', preferred: 'élevé' },
   { plain: 'elevee', preferred: 'élevée' },
+  { plain: 'diminues', preferred: 'diminués' },
+  { plain: 'diminuee', preferred: 'diminuée' },
+  { plain: 'diminuees', preferred: 'diminuées' },
   { plain: 'elevation', preferred: 'élévation' },
   { plain: 'synthese', preferred: 'synthèse' },
   { plain: 'reserves', preferred: 'réserves' },
   { plain: 'suggere', preferred: 'suggère' },
   { plain: 'leger', preferred: 'léger' },
   { plain: 'legere', preferred: 'légère' },
-  { plain: 'modere', preferred: 'modéré' }
+  { plain: 'modere', preferred: 'modéré' },
+  { plain: 'moderee', preferred: 'modérée' },
+  { plain: 'severe', preferred: 'sévère' },
+  { plain: 'severes', preferred: 'sévères' },
+  { plain: 'tres', preferred: 'très' }
 ];
 
 const FRENCH_DIACRITIC_RISK_MAP = new Map(
@@ -244,10 +304,15 @@ export const collectFrenchDiacriticRisks = (text: string, targetLang?: TargetLan
   const tokens = String(text || '').match(/\b[A-Za-zÀ-ÖØ-öø-ÿœŒ][A-Za-zÀ-ÖØ-öø-ÿœŒ'-]{2,}\b/g) || [];
   const risks: Array<{ token: string; preferred: string }> = [];
   tokens.forEach((token) => {
-    if (/[À-ÖØ-öø-ÿœŒ]/.test(token)) return;
-    const risk = FRENCH_DIACRITIC_RISK_MAP.get(normalizeLatinToken(token));
-    if (!risk) return;
-    risks.push({ token, preferred: risk.preferred });
+    const candidates = Array.from(new Set([token, ...token.split(/['’]/g)])).filter(
+      (item) => item.length >= 3
+    );
+    candidates.forEach((candidate) => {
+      if (/[À-ÖØ-öø-ÿœŒ]/.test(candidate)) return;
+      const risk = FRENCH_DIACRITIC_RISK_MAP.get(normalizeLatinToken(candidate));
+      if (!risk) return;
+      risks.push({ token: candidate, preferred: risk.preferred });
+    });
   });
   return risks;
 };

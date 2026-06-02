@@ -6,7 +6,7 @@ import LogConsole from './components/LogConsole';
 import QualityReportPanel from './components/QualityReportPanel';
 import { useAuth } from './hooks/useAuth';
 import { useQualityWorkflow } from './hooks/useQualityWorkflow';
-import { parseExcelFile, exportToExcel } from './utils/excel';
+import { parseExcelFile, exportToExcelPreservingStyles } from './utils/excel';
 import type { ExcelContext } from './utils/excel';
 import {
   parseDocxFile,
@@ -3874,7 +3874,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (translationStatus === 'running') {
       addLog('当前仍在翻译中，请先暂停或等待完成再导出。');
       return;
@@ -3939,11 +3939,18 @@ const App: React.FC = () => {
     const outputRows = processedData.map((row, idx) =>
       applyPostprocessRow(data[idx], row, targetLang)
     );
-    const stats = exportToExcel(outputRows, filename, excelContext || undefined, {
-      overwriteFormulas: true
-    });
-    if (stats?.overwrittenFormulas) {
-      addLog(`已覆盖 ${stats.overwrittenFormulas} 个公式单元格以写入翻译结果。`);
+    try {
+      const stats = await exportToExcelPreservingStyles(outputRows, filename, excelContext || undefined, {
+        overwriteFormulas: true
+      });
+      if (stats.stylePreserved) {
+        addLog('Excel export: 已基于原始工作簿写回译文并保留原格式。');
+      }
+      if (stats?.overwrittenFormulas) {
+        addLog(`已覆盖 ${stats.overwrittenFormulas} 个公式单元格以写入翻译结果。`);
+      }
+    } catch (error) {
+      addLog(`Excel export failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

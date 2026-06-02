@@ -10,6 +10,7 @@ import fontkit from "@pdf-lib/fontkit";
 import * as esbuild from "esbuild";
 import ts from "typescript";
 import * as XLSX from "xlsx";
+import JSZip from "jszip";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
@@ -132,7 +133,7 @@ const withMockedFetch = async (handler) => {
 };
 
 test("Excel parser flattens multiple sheets and export writes each row back to its source sheet", async () => {
-  const { parseExcelWorkbook, exportToExcel } = await transpileTsModule(
+  const { parseExcelWorkbook, exportToExcel, buildStylePreservingExcelBuffer } = await transpileTsModule(
     path.join(repoRoot, "utils/excel.ts")
   );
   const workbook = XLSX.utils.book_new();
@@ -177,6 +178,37 @@ test("Excel parser flattens multiple sheets and export writes each row back to i
   assert.equal(exported.Sheets["Sheet A"].B3.v, "红细胞 translated");
   assert.equal(exported.Sheets["Sheet B"].B2.v, "血小板 translated");
   fs.rmSync(outPath, { force: true });
+
+  const styleWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    styleWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ["ID", "Text"],
+      [1, "白细胞"],
+      [2, "红细胞"]
+    ]),
+    "Sheet A"
+  );
+  const sourceBytes = XLSX.write(styleWorkbook, { type: "buffer", bookType: "xlsx" });
+  const sourceZip = await JSZip.loadAsync(sourceBytes);
+  const sheetXmlPath = "xl/worksheets/sheet1.xml";
+  const sourceSheetXml = await sourceZip.file(sheetXmlPath).async("string");
+  sourceZip.file(sheetXmlPath, sourceSheetXml.replace(/<c r="B2"/, '<c r="B2" s="7"'));
+  const styledBytes = await sourceZip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  const styledWorkbook = XLSX.read(styledBytes, { type: "array", cellStyles: true });
+  const styled = parseExcelWorkbook(styledWorkbook);
+  styled.context.sourceArrayBuffer = styledBytes.buffer.slice(
+    styledBytes.byteOffset,
+    styledBytes.byteOffset + styledBytes.byteLength
+  );
+  const preserved = await buildStylePreservingExcelBuffer(
+    styled.records.map((row) => ({ ...row, Text: `${row.Text} translated` })),
+    styled.context,
+    { overwriteFormulas: true }
+  );
+  const preservedZip = await JSZip.loadAsync(preserved.bytes);
+  const preservedSheetXml = await preservedZip.file(sheetXmlPath).async("string");
+  assert.match(preservedSheetXml, /<c r="B2" s="7" t="inlineStr"><is><t>白细胞 translated<\/t><\/is><\/c>/);
 });
 
 test("frontend upload copy stays aligned with supported formats", () => {
@@ -1442,6 +1474,87 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(
     detectUntranslatedCells([{ content: frenchCompoundRepair }], "French").length,
     0
+  );
+  const medicalCodeArtifactRepair = polishTranslation(
+    "EOS#升高提示过敏或寄生虫感染。ALY#升高提示病毒感染。",
+    "WBC 1__ augmenté suggère une allergie ou une infection parasitaire. WBC 0__ augmenté suggère une infection virale.",
+    "French"
+  );
+  assert.equal(
+    medicalCodeArtifactRepair,
+    "EOS# augmenté suggère une allergie ou une infection parasitaire. ALY# augmenté suggère une infection virale."
+  );
+  assert.equal(
+    polishTranslation(
+      "NEU、NST#、NSG#、NSH#均升高",
+      "NEU, NST#, NSG#, NSH__ sont simultanément élevés.",
+      "French"
+    ),
+    "NEU, NST#, NSG#, NSH# sont simultanément élevés."
+  );
+  assert.equal(
+    polishTranslation(
+      "MON#升高提示慢性炎症，EOS#未见异常。",
+      "L'augmentation de MON suggère une inflammation chronique, tandis que EOS ne présente pas d'anomalie.",
+      "French"
+    ),
+    "L'augmentation de MON# suggère une inflammation chronique, tandis que EOS# ne présente pas d'anomalie."
+  );
+  assert.equal(
+    polishTranslation(
+      "MON#升高提示慢性炎症，这种组合（WBC↓、NEU↓、MON↑）常见于病毒感染。",
+      "L'augmentation de MON suggère une inflammation chronique. Cette combinaison (WBC↓, NEU↓, MON↑) est fréquente dans les infections virales.",
+      "French"
+    ),
+    "L'augmentation de MON# suggère une inflammation chronique. Cette combinaison (WBC↓, NEU↓, MON↑) est fréquente dans les infections virales."
+  );
+  assert.equal(
+    runQualityChecks(
+      [{ note: "EOS#升高提示过敏或寄生虫感染。ALY#升高提示病毒感染。" }],
+      [{ note: "WBC 1__ augmenté suggère une allergie ou une infection parasitaire." }],
+      { targetLang: "French" }
+    ).totals.placeholderCells,
+    1
+  );
+  assert.equal(
+    runQualityChecks(
+      [{ note: "NSH#升高提示晚期中性粒细胞比例增加。" }],
+      [{ note: "NSH__ élevé suggère une augmentation de la proportion de neutrophiles matures." }],
+      { targetLang: "French" }
+    ).totals.placeholderCells,
+    1
+  );
+  assert.equal(
+    polishTranslation(
+      "需要进一步评估",
+      "Une evaluation complementaire est necessaire pour la leucemie, l'anemie et la toxicite medicamenteuse.",
+      "French"
+    ),
+    "Une évaluation complémentaire est nécessaire pour la leucémie, l'anémie et la toxicité médicamenteuse."
+  );
+  assert.equal(
+    polishTranslation(
+      "WBC 与 NEU 降低提示骨髓生成中性粒细胞的功能受损。",
+      "WBC et NEU diminues suggerent une altération de la production de neutrophiles par la moelle osseuse.",
+      "French"
+    ),
+    "WBC et NEU diminués suggèrent une altération de la production de neutrophiles par la moelle osseuse."
+  );
+  assert.equal(
+    polishTranslation(
+      "巨幼细胞性贫血（维生素B12/叶酸缺乏）",
+      "Anémie mégaloblastique (carence en vitamine B12/ ou en acide folique)",
+      "French"
+    ),
+    "Anémie mégaloblastique (carence en vitamine B12 ou en acide folique)"
+  );
+  assert.equal(
+    polishTranslation(
+      "超过正常参考范围持续＞1 个月需高度警惕血液病",
+      "Un dépassement de l'intervalle de référence normal pendant plus d'un mois nécessite une vigilance élevée pour une hémopathie.",
+      "French"
+    ),
+    "Un dépassement de l'intervalle de référence normal pendant plus de 1 mois nécessite une vigilance élevée pour une hémopathie."
   );
   assert.match(getTargetLocaleInstruction("French"), /hémoglobine/);
   assert.equal(getTargetLanguageProfile("Traditional Chinese (Taiwan)")?.preferredLocale, "zh-TW");

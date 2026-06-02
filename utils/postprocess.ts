@@ -176,24 +176,52 @@ const FRENCH_CHINESE_RESIDUE_FIXES: Array<[RegExp, string]> = [
   [/复合([A-Za-zÀ-ÖØ-öø-ÿœŒ])/g, "complexe $1"],
   [/复合/g, "complexe"]
 ];
+const MEDICAL_CODE_REGEX =
+  /(?<![A-Za-z0-9])(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)(?:[#%])?(?![A-Za-z0-9])/g;
+const MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX =
+  /\b(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)\s+\d+_+\b/g;
+const BROKEN_HASH_CODE_REGEX =
+  /\b(WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)_+\b/g;
+const VITAMIN_B12_REGEX = /\bB\s+12\b/g;
 const EXACT_SHORT_SOURCE_TRANSLATIONS: Record<string, Record<string, string>> = {
   french: {
     名称: "Nom",
     几率: "Probabilité",
     分析: "Analyse",
-    序号: "N°"
+    序号: "N°",
+    解读: "Interprétation",
+    总结1: "Résumé 1",
+    总结2: "Résumé 2",
+    总结3: "Résumé 3",
+    可能疾病1: "Maladie possible 1",
+    可能疾病2: "Maladie possible 2",
+    可能疾病3: "Maladie possible 3"
   },
   russian: {
     名称: "Название",
     几率: "Вероятность",
     分析: "Анализ",
-    序号: "№"
+    序号: "№",
+    解读: "Интерпретация",
+    总结1: "Резюме 1",
+    总结2: "Резюме 2",
+    总结3: "Резюме 3",
+    可能疾病1: "Возможное заболевание 1",
+    可能疾病2: "Возможное заболевание 2",
+    可能疾病3: "Возможное заболевание 3"
   },
   portuguese: {
     名称: "Nome",
     几率: "Probabilidade",
     分析: "Análise",
-    序号: "N.º"
+    序号: "N.º",
+    解读: "Interpretação",
+    总结1: "Resumo 1",
+    总结2: "Resumo 2",
+    总结3: "Resumo 3",
+    可能疾病1: "Doença possível 1",
+    可能疾病2: "Doença possível 2",
+    可能疾病3: "Doença possível 3"
   }
 };
 const ANALYZER_PREFIX_WORDS = [
@@ -506,6 +534,96 @@ const fixFrenchChineseResidue = (translated: string, targetLang?: TargetLanguage
   return output;
 };
 
+const restoreFrenchNumericMonth = (
+  original: string,
+  translated: string,
+  targetLang?: TargetLanguage
+) => {
+  if (!original || !translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
+  if (!/[＞>]\s*1\s*个月|1\s*个月/.test(original)) return translated;
+  return translated.replace(/\bplus d['’]un mois\b/gi, "plus de 1 mois");
+};
+
+const restoreMedicalCodePlaceholderArtifacts = (original: string, translated: string) => {
+  if (
+    !translated ||
+    (!MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX.test(translated) && !BROKEN_HASH_CODE_REGEX.test(translated))
+  ) {
+    MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX.lastIndex = 0;
+    BROKEN_HASH_CODE_REGEX.lastIndex = 0;
+    return translated;
+  }
+  MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX.lastIndex = 0;
+  BROKEN_HASH_CODE_REGEX.lastIndex = 0;
+  const normalizeCode = (value: string) => value.replace(/[#%]+$/g, "");
+  const sourceCodesAll = Array.from(String(original || "").matchAll(MEDICAL_CODE_REGEX), (match) => match[0]);
+  const preferredSourceCodeByBase = new Map<string, string>();
+  sourceCodesAll.forEach((code) => {
+    const base = normalizeCode(code);
+    if (!preferredSourceCodeByBase.has(base) || /[#%]$/.test(code)) {
+      preferredSourceCodeByBase.set(base, code);
+    }
+  });
+  let output = translated.replace(BROKEN_HASH_CODE_REGEX, (match, code) => {
+    return preferredSourceCodeByBase.get(code) || match.replace(/_+$/g, "#");
+  });
+  const targetWithoutArtifacts = output
+    .replace(MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX, " ")
+    .replace(BROKEN_HASH_CODE_REGEX, " ");
+  const targetCodes = new Set(
+    Array.from(targetWithoutArtifacts.matchAll(MEDICAL_CODE_REGEX), (match) => normalizeCode(match[0]))
+  );
+  const sourceCodes = sourceCodesAll.filter((code) => !targetCodes.has(normalizeCode(code)));
+  if (!sourceCodes.length) return output;
+  let cursor = 0;
+  return output.replace(MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX, () => sourceCodes[cursor++] || sourceCodes[sourceCodes.length - 1]);
+};
+
+const restoreMedicalCodeSuffixes = (original: string, translated: string) => {
+  if (!original || !translated) return translated;
+  const preferredSourceCodeByBase = new Map<string, string>();
+  const sourceSuffixCountByBase = new Map<string, number>();
+  Array.from(String(original || "").matchAll(MEDICAL_CODE_REGEX), (match) => match[0]).forEach((code) => {
+    if (!/[#%]$/.test(code)) return;
+    const base = code.replace(/[#%]+$/g, "");
+    sourceSuffixCountByBase.set(base, (sourceSuffixCountByBase.get(base) || 0) + 1);
+    if (!preferredSourceCodeByBase.has(base)) preferredSourceCodeByBase.set(base, code);
+  });
+  if (!preferredSourceCodeByBase.size) return translated;
+  let output = translated;
+  preferredSourceCodeByBase.forEach((preferred, base) => {
+    const targetSuffixPattern = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(base)}[#%](?![A-Za-z0-9])`, "g");
+    const sourceSuffixCount = sourceSuffixCountByBase.get(base) || 0;
+    const targetSuffixCount = Array.from(output.matchAll(targetSuffixPattern)).length;
+
+    if (targetSuffixCount < sourceSuffixCount) {
+      let missing = sourceSuffixCount - targetSuffixCount;
+      const barePattern = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(base)}(?![#%A-Za-z0-9])`, "g");
+      output = output.replace(barePattern, (match) => {
+        if (missing <= 0) return match;
+        missing -= 1;
+        return preferred;
+      });
+    }
+
+    if (targetSuffixCount > sourceSuffixCount) {
+      let seen = 0;
+      output = output.replace(targetSuffixPattern, (match) => {
+        seen += 1;
+        return seen > sourceSuffixCount ? base : match;
+      });
+    }
+  });
+  return output;
+};
+
+const fixProtectedMedicalTokenSpacing = (translated: string) =>
+  String(translated || "")
+    .replace(VITAMIN_B12_REGEX, "B12")
+    .replace(/\bB12\/\s+ou\b/gi, "B12 ou")
+    .replace(/B12\s*\/\s*\//g, "B12/")
+    .replace(/\bvitamine\s+RBC\s+0_+\b/gi, "vitamine B12");
+
 const fixBracketArtifacts = (text: string) => {
   if (!text) return text;
   let output = text;
@@ -529,9 +647,13 @@ export const polishTranslation = (
   refined = fixBracketArtifacts(refined);
   refined = fixEnglishGlueArtifacts(original || "", refined, targetLang);
   refined = fixRussianEnglishResidue(refined, targetLang);
+  refined = restoreMedicalCodePlaceholderArtifacts(original || "", refined);
+  refined = restoreMedicalCodeSuffixes(original || "", refined);
+  refined = fixProtectedMedicalTokenSpacing(refined);
   refined = enforceGlossary(original || "", refined, targetLang);
   refined = enforceSeedTerminology(original || "", refined, targetLang);
   refined = adjustLongFormStatus(refined);
+  refined = restoreFrenchNumericMonth(original || "", refined, targetLang);
   refined = fixFrenchDiacritics(refined, targetLang);
   refined = fixFrenchChineseResidue(refined, targetLang);
   return refined;

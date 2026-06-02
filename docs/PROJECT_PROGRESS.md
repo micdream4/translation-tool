@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.103
+
+- 根据生产 Excel 宽表单超时复盘，确认 DeepSeek v4 Flash 的 30 秒 timeout 是早期保守代理默认值，并非基于当前 5 行 / 宽列批次实测得出。
+- 将 DeepSeek Direct 普通模型 timeout 从 30 秒提升到 90 秒，覆盖 `deepseek-v4-flash` 等非 Pro DeepSeek 官方直连模型；DeepSeek v4 Pro 继续保持 120 秒，DeepSeek Direct 配置上限保持 180 秒。
+- OpenRouter timeout 仍保持默认 30 秒 / 配置上限 55 秒，避免第三方聚合路由在 fallback 链中长期占用；Cloudflare AI binding 路径仍不设置应用层 fetch timeout。
+- 更新 `wrangler.toml` 和 Cloudflare Pages 部署文档中的 `DEEPSEEK_REQUEST_TIMEOUT_MS=90000`。
+- 回归测试继续锁定 DeepSeek Flash / Pro 与 OpenRouter 的 timeout 策略分离。
+- 版本号更新为 `v0.0.103`。
+
 ## v0.0.102
 
 - 针对生产截图中的 DeepSeek Direct v4 Pro Excel 超时，修正 `/api/translate` 的模型级 timeout：DeepSeek v4 Pro 默认从 55 秒提升到 120 秒，并允许通过 `DEEPSEEK_PRO_REQUEST_TIMEOUT_MS` 配置到最高 180 秒。

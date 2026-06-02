@@ -33,7 +33,7 @@ Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[va
 - `CLOUDFLARE_REVIEW_TRANSLATION_MODELS=cloudflare-ai:google/gemini-3-flash,deepseek:deepseek-v4-flash,deepseek:deepseek-v4-pro,cloudflare-ai:openai/gpt-5.4,cloudflare-ai:anthropic/claude-sonnet-4.6`
 - `CLOUDFLARE_REVIEW_JUDGE_MODELS=cloudflare-ai:openai/gpt-5.4,cloudflare-ai:anthropic/claude-sonnet-4.6,deepseek:deepseek-v4-pro`
 - `DEEPSEEK_MODELS=deepseek-v4-flash,deepseek-v4-pro`
-- `DEEPSEEK_REQUEST_TIMEOUT_MS=30000`
+- `DEEPSEEK_REQUEST_TIMEOUT_MS=90000`
 - `OPENROUTER_MODELS=` (empty by default; use only as explicit last fallback)
 - `REQUIRE_CF_ACCESS_EMAIL=true`
 

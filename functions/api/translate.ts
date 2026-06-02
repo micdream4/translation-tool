@@ -20,7 +20,7 @@ const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 30000;
-const DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 55000;
+const DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 120000;
 const DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS = 16384;
 const DEFAULT_DEEPSEEK_PRO_MAX_OUTPUT_TOKENS = 24576;
 const DEFAULT_DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro";
@@ -73,7 +73,7 @@ const parseDeepSeekTimeoutMs = (env: Record<string, unknown>, model = "") => {
       ? DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS
       : DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS;
   }
-  return Math.min(55000, Math.max(5000, Math.round(raw)));
+  return Math.min(180000, Math.max(5000, Math.round(raw)));
 };
 
 const parseDeepSeekMaxOutputTokens = (env: Record<string, unknown>, model = "") => {

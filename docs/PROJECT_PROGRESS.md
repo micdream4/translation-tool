@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.102
+
+- 针对生产截图中的 DeepSeek Direct v4 Pro Excel 超时，修正 `/api/translate` 的模型级 timeout：DeepSeek v4 Pro 默认从 55 秒提升到 120 秒，并允许通过 `DEEPSEEK_PRO_REQUEST_TIMEOUT_MS` 配置到最高 180 秒。
+- 修正 timeout clamp 归属：OpenRouter 保持原策略（默认 30 秒，配置上限 55 秒），DeepSeek v4 Pro 独立使用更长上限，避免宽 Excel 批次继续在 55 秒被前端代理主动 abort。
+- `wrangler.toml` 将 `DEEPSEEK_PRO_REQUEST_TIMEOUT_MS` 更新为 `120000`；DeepSeek Flash 仍使用 `DEEPSEEK_REQUEST_TIMEOUT_MS = 30000`，Cloudflare AI 路径不设置应用层 fetch timeout。
+- 回归测试增加 `/api/translate` timeout 策略源码断言，锁定 OpenRouter 与 DeepSeek Pro 不再共用同一个 55 秒上限。
+- 更新本地 issue 包 `local-data/issues/2026-06-02-excel-deepseek-pro-concurrency-batch-failure/`，记录 `白细胞降低-AWBC.xlsx` 法语翻译 Batch 1/20 在 55 秒超时的生产复现。
+- 版本号更新为 `v0.0.102`。
+
 ## v0.0.101
 
 - DeepSeek Direct v4 Pro 策略收敛：Excel 保持与其他模型一致的 5 行顺序批次；遇到 DeepSeek `429`、`503`、`timeout`、`server overloaded` 会由 `TranslationHub` 自动拆批重试，避免整批直接跳过。

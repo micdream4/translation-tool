@@ -208,10 +208,14 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(wranglerSource, /CLOUDFLARE_AI_PRIMARY_MODELS = "google\/gemini-3-flash"/);
   assert.match(wranglerSource, /CLOUDFLARE_AI_FALLBACK_MODELS = "openai\/gpt-5\.4,anthropic\/claude-sonnet-4\.6"/);
   assert.match(wranglerSource, /DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro"/);
-  assert.match(wranglerSource, /DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = "55000"/);
+  assert.match(wranglerSource, /DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = "120000"/);
   assert.match(wranglerSource, /DEEPSEEK_PRO_MAX_OUTPUT_TOKENS = "24576"/);
   assert.match(wranglerSource, /MODEL_REVIEW_TRANSLATION_CONCURRENCY = "2"/);
   assert.match(wranglerSource, /MODEL_REVIEW_JUDGE_CONCURRENCY = "1"/);
+  assert.match(
+    fs.readFileSync(path.join(repoRoot, "functions/api/translate.ts"), "utf8"),
+    /DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 120000[\s\S]*parseOpenRouterTimeoutMs[\s\S]*Math\.min\(55000[\s\S]*parseDeepSeekTimeoutMs[\s\S]*Math\.min\(180000/
+  );
   assert.match(wranglerSource, /CLOUDFLARE_REVIEW_TRANSLATION_MODELS = "cloudflare-ai:google\/gemini-3-flash,deepseek:deepseek-v4-flash,deepseek:deepseek-v4-pro,cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6"/);
   assert.match(wranglerSource, /CLOUDFLARE_REVIEW_JUDGE_MODELS = "cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6,deepseek:deepseek-v4-pro"/);
   assert.doesNotMatch(wranglerSource, /ALLOWED_USER_EMAILS|ALLOWED_EMAILS/);

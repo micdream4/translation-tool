@@ -350,6 +350,9 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(appSource, /getDocumentBatchPolicy/);
   assert.match(pdfWorkflowSource, /applyLatestModelCooldowns\?\.\(`PDF Batch/);
   assert.match(pdfWorkflowSource, /batchCharLimit/);
+  assert.match(pdfWorkflowSource, /modelLabel\?: string/);
+  assert.match(pdfWorkflowSource, /PDF Batch \$\{batchNum\} 使用引擎:[\s\S]*模型: \$\{modelLabel \|\| "unknown"\}[\s\S]*用时/);
+  assert.match(appSource, /modelLabel: currentModelDisplayLabel/);
 });
 
 test("adaptive document batching respects item and character limits", async () => {
@@ -1859,6 +1862,11 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /getSpreadsheetBatchSize/);
   assert.match(appSource, /const getSpreadsheetBatchSize = \(\) => BATCH_SIZE/);
   assert.match(appSource, /getDocumentBatchPolicy/);
+  assert.match(appSource, /Docx Batch \$\{batchNum\} 使用引擎: \$\{translationHub\.getLastEngine\(\)\}，模型: \$\{currentModelDisplayLabel\}，用时/);
+  assert.match(appSource, /Batch \$\{batchNum\} 使用引擎: \$\{translationHub\.getLastEngine\(\)\}，模型: \$\{currentModelDisplayLabel\}，用时/);
+  assert.match(appSource, /Translation warning: 批次 \$\{batchNum\} 行 \$\{rowLabel\} 失败，用时/);
+  assert.match(appSource, /Retry Missing Cells: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
+  assert.match(appSource, /\$\{label\}: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
   assert.match(appSource, /isDeepSeekDirectProModel\(translationModelPreference\)/);
   assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS = \[[\s\S]*google\/gemini-3-flash[\s\S]*openai\/gpt-5\.4[\s\S]*anthropic\/claude-sonnet-4\.6/);
   assert.match(appSource, /const DEFAULT_OPENROUTER_MODELS: string\[\] = \[\]/);

@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.104
+
+- 统一翻译批次耗时日志：确认 DOCX 正式翻译已有每批 `用时`，PDF 正式翻译和 PDF 重译也已有 `用时`；补齐 Excel 正式翻译、`Retry Missing Cells`、keyed retry 的模型调用耗时日志。
+- Excel 正式翻译每个实际模型调用批次现在输出：使用引擎、当前 Translation Model 显示名、调用用时；失败日志也输出失败前等待时间。
+- Excel 重试路径现在对每个 fallback 尝试输出成功/失败用时，并在手工选择模型时显示具体模型名，Auto 时显示当前尝试的 engine。
+- DOCX/PDF 批次耗时日志补充当前 Translation Model 显示名，便于横向比较 DeepSeek v4 Flash、DeepSeek v4 Pro、Cloudflare AI、OpenRouter 等不同模型延时。
+- 新增本地 issue 包 `local-data/issues/2026-06-02-excel-pdf-model-latency-log-parity/`，并在回归测试中锁定 Excel / DOCX / PDF 日志口径。
+- 版本号更新为 `v0.0.104`。
+
 ## v0.0.103
 
 - 根据生产 Excel 宽表单超时复盘，确认 DeepSeek v4 Flash 的 30 秒 timeout 是早期保守代理默认值，并非基于当前 5 行 / 宽列批次实测得出。

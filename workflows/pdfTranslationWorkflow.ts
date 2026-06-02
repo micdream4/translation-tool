@@ -33,6 +33,7 @@ export interface PdfTranslationWorkflowOptions {
   placeholderStore: Map<string, Record<string, string>>;
   pauseRequestedRef: { current: boolean };
   addLog: (message: string) => void;
+  modelLabel?: string;
   shouldTranslateText: (text: string) => boolean;
   dedupeLeadingRepeat: (source: string, translated: string) => string;
   getTranslationOptions: () => TranslationRequest["options"];
@@ -67,6 +68,7 @@ export const runPdfTranslationWorkflow = async ({
   placeholderStore,
   pauseRequestedRef,
   addLog,
+  modelLabel,
   shouldTranslateText,
   dedupeLeadingRepeat,
   getTranslationOptions,
@@ -186,7 +188,7 @@ export const runPdfTranslationWorkflow = async ({
             });
             applyLatestModelCooldowns?.(`PDF Batch ${batchNum}`);
             addLog(
-              `PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，用时 ${formatElapsedSeconds(
+              `PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${modelLabel || "unknown"}，用时 ${formatElapsedSeconds(
                 Date.now() - batchStartedAt
               )}`
             );
@@ -197,7 +199,7 @@ export const runPdfTranslationWorkflow = async ({
           applyLatestModelCooldowns?.(`PDF Batch ${batchNum}`);
           const errMsg = err instanceof Error ? err.message : String(err);
           addLog(
-            `PDF Batch ${batchNum} 翻译失败，用时 ${formatElapsedSeconds(
+            `PDF Batch ${batchNum} 翻译失败，模型: ${modelLabel || "unknown"}，用时 ${formatElapsedSeconds(
               Date.now() - batchStartedAt
             )}：${errMsg}`
           );

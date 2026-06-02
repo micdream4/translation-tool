@@ -711,6 +711,32 @@ const App: React.FC = () => {
     return engines.length > 0 ? engines : ['openrouter'];
   };
 
+  const getRetryAttemptModelLabel = (model: TranslationEngine) => {
+    if (translationModelPreference !== AUTO_OPENROUTER_MODEL) {
+      if (
+        model === 'cloudflare-ai' &&
+        isCloudflareAiModelValue(translationModelPreference)
+      ) {
+        return getTranslationModelLabel(translationModelPreference);
+      }
+      if (model === 'deepseek' && isDeepSeekDirectModel(translationModelPreference)) {
+        return getTranslationModelLabel(translationModelPreference);
+      }
+      if (
+        model === 'openrouter' &&
+        !isCloudflareAiModelValue(translationModelPreference) &&
+        !isDeepSeekDirectModel(translationModelPreference)
+      ) {
+        return getTranslationModelLabel(translationModelPreference);
+      }
+    }
+    if (model === 'cloudflare-ai') return 'Cloudflare AI';
+    if (model === 'deepseek') return 'DeepSeek Direct';
+    if (model === 'openrouter') return 'OpenRouter';
+    if (model === 'gemini') return 'Gemini';
+    return model;
+  };
+
   const getTranslationOptions = () => {
     if (translationModelPreference === AUTO_OPENROUTER_MODEL) {
       return {
@@ -2068,7 +2094,7 @@ const App: React.FC = () => {
               });
               applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
               addLog(
-                `Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，用时 ${formatElapsedSeconds(
+                `Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
                   Date.now() - batchStartedAt
                 )}`
               );
@@ -2079,7 +2105,7 @@ const App: React.FC = () => {
             applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(
-              `Docx Batch ${batchNum} 翻译失败，用时 ${formatElapsedSeconds(
+              `Docx Batch ${batchNum} 翻译失败，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
                 Date.now() - batchStartedAt
               )}：${errMsg}`
             );
@@ -2187,6 +2213,7 @@ const App: React.FC = () => {
       placeholderStore: docxPlaceholderStore.current,
       pauseRequestedRef,
       addLog,
+      modelLabel: currentModelDisplayLabel,
       shouldTranslateText: shouldTranslateDocxText,
       dedupeLeadingRepeat,
       getTranslationOptions: getDocumentQualityTranslationOptions,
@@ -2329,14 +2356,14 @@ const App: React.FC = () => {
             applyLatestOpenRouterModelCooldowns(`Docx Retry Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(
-              `Docx Retry Batch ${batchNum} 失败，用时 ${formatElapsedSeconds(
+              `Docx Retry Batch ${batchNum} 失败，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
                 Date.now() - batchStartedAt
               )}：${errMsg}`
             );
             continue;
           }
           addLog(
-            `Docx Retry Batch ${batchNum} 完成，用时 ${formatElapsedSeconds(
+            `Docx Retry Batch ${batchNum} 完成，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
               Date.now() - batchStartedAt
             )}`
           );
@@ -2530,14 +2557,14 @@ const App: React.FC = () => {
             applyLatestOpenRouterModelCooldowns(`PDF Retry Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(
-              `PDF Retry Batch ${batchNum} 失败，用时 ${formatElapsedSeconds(
+              `PDF Retry Batch ${batchNum} 失败，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
                 Date.now() - batchStartedAt
               )}：${errMsg}`
             );
             continue;
           }
           addLog(
-            `PDF Retry Batch ${batchNum} 完成，用时 ${formatElapsedSeconds(Date.now() - batchStartedAt)}`
+            `PDF Retry Batch ${batchNum} 完成，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(Date.now() - batchStartedAt)}`
           );
 
           chunk.forEach((segment, index) => {
@@ -3150,20 +3177,30 @@ const App: React.FC = () => {
             }
           });
 
+          let modelCallStartedAt = 0;
           try {
             if (callRows.length > 0) {
+              modelCallStartedAt = Date.now();
               translatedBatch = await translationHub.translateBatch({
                 records: callRows.map((item) => item.sanitizedRow),
                 targetLang,
                 options: getTranslationOptions()
               });
-              addLog(`Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}`);
+              addLog(
+                `Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
+                  Date.now() - modelCallStartedAt
+                )}`
+              );
             } else {
               addLog(`Batch ${batchNum}: 全部命中本地翻译记忆或无需模型翻译。`);
             }
           } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
-            addLog(`Translation warning: 批次 ${batchNum} 行 ${rowLabel} 失败 (${errMsg})，将跳过该批继续。`);
+            addLog(
+              `Translation warning: 批次 ${batchNum} 行 ${rowLabel} 失败，用时 ${formatElapsedSeconds(
+                Date.now() - modelCallStartedAt
+              )} (${errMsg})，将跳过该批继续。`
+            );
             pendingIndices.forEach(idx => writeFailedRows.add(idx));
             const missingSnapshot = Array.from(missingRows).sort((a, b) => a - b);
             const writeFailedSnapshot = Array.from(writeFailedRows).sort((a, b) => a - b);
@@ -3453,6 +3490,8 @@ const App: React.FC = () => {
 
       let translatedBatch: POCTRecord[] | null = null;
       for (const model of fallbackPriority) {
+        const attemptLabel = getRetryAttemptModelLabel(model);
+        const attemptStartedAt = Date.now();
         try {
           translatedBatch = await translationHub.translateBatch({
             records: chunk.map(item => item.sanitizedRow),
@@ -3471,10 +3510,18 @@ const App: React.FC = () => {
                   : undefined
             }
           });
-          addLog(`Retry Missing Cells: Batch ${batchNum} 使用 ${model} 成功。`);
+          addLog(
+            `Retry Missing Cells: Batch ${batchNum} 使用 ${attemptLabel} 成功，用时 ${formatElapsedSeconds(
+              Date.now() - attemptStartedAt
+            )}。`
+          );
           break;
         } catch (err) {
-          addLog(`Retry Missing Cells: Batch ${batchNum} ${model} 失败 - ${err instanceof Error ? err.message : String(err)}`);
+          addLog(
+            `Retry Missing Cells: Batch ${batchNum} ${attemptLabel} 失败，用时 ${formatElapsedSeconds(
+              Date.now() - attemptStartedAt
+            )} - ${err instanceof Error ? err.message : String(err)}`
+          );
         }
       }
 
@@ -3661,6 +3708,8 @@ const App: React.FC = () => {
 
       let translatedBatch: POCTRecord[] | null = null;
       for (const model of fallbackPriority) {
+        const attemptLabel = getRetryAttemptModelLabel(model);
+        const attemptStartedAt = Date.now();
         try {
           translatedBatch = await translationHub.translateBatch({
             records: chunk.map(item => item.sanitizedRow),
@@ -3679,10 +3728,18 @@ const App: React.FC = () => {
                   : undefined
             }
           });
-          addLog(`${label}: Batch ${batchNum} 使用 ${model} 成功。`);
+          addLog(
+            `${label}: Batch ${batchNum} 使用 ${attemptLabel} 成功，用时 ${formatElapsedSeconds(
+              Date.now() - attemptStartedAt
+            )}。`
+          );
           break;
         } catch (err) {
-          addLog(`${label}: Batch ${batchNum} ${model} 失败 - ${err instanceof Error ? err.message : String(err)}`);
+          addLog(
+            `${label}: Batch ${batchNum} ${attemptLabel} 失败，用时 ${formatElapsedSeconds(
+              Date.now() - attemptStartedAt
+            )} - ${err instanceof Error ? err.message : String(err)}`
+          );
         }
       }
 

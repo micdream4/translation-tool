@@ -170,15 +170,215 @@ export const FRENCH_DIACRITIC_RISK_WORDS = [
   { plain: 'tres', preferred: 'très' }
 ];
 
-const FRENCH_DIACRITIC_RISK_MAP = new Map(
-  FRENCH_DIACRITIC_RISK_WORDS.map((item) => [normalizeLatinToken(item.plain), item])
-);
+export const PORTUGUESE_DIACRITIC_RISK_WORDS = [
+  { plain: 'acido', preferred: 'ácido' },
+  { plain: 'agudissima', preferred: 'agudíssima' },
+  { plain: 'acao', preferred: 'ação' },
+  { plain: 'alem', preferred: 'além' },
+  { plain: 'alergica', preferred: 'alérgica' },
+  { plain: 'alergicas', preferred: 'alérgicas' },
+  { plain: 'alergico', preferred: 'alérgico' },
+  { plain: 'alergicos', preferred: 'alérgicos' },
+  { plain: 'alteracao', preferred: 'alteração' },
+  { plain: 'alteracoes', preferred: 'alterações' },
+  { plain: 'antimetabolito', preferred: 'antimetabólito' },
+  { plain: 'antimetabolitos', preferred: 'antimetabólitos' },
+  { plain: 'apresentacao', preferred: 'apresentação' },
+  { plain: 'atipico', preferred: 'atípico' },
+  { plain: 'atipicos', preferred: 'atípicos' },
+  { plain: 'ativacao', preferred: 'ativação' },
+  { plain: 'avaliacao', preferred: 'avaliação' },
+  { plain: 'bacteria', preferred: 'bactéria' },
+  { plain: 'bacterias', preferred: 'bactérias' },
+  { plain: 'basofilo', preferred: 'basófilo' },
+  { plain: 'basofilos', preferred: 'basófilos' },
+  { plain: 'celula', preferred: 'célula' },
+  { plain: 'celulas', preferred: 'células' },
+  { plain: 'caracteristica', preferred: 'característica' },
+  { plain: 'caracteristicas', preferred: 'características' },
+  { plain: 'citologica', preferred: 'citológica' },
+  { plain: 'citologicas', preferred: 'citológicas' },
+  { plain: 'clinica', preferred: 'clínica' },
+  { plain: 'clinicas', preferred: 'clínicas' },
+  { plain: 'clinico', preferred: 'clínico' },
+  { plain: 'clinicos', preferred: 'clínicos' },
+  { plain: 'combinacao', preferred: 'combinação' },
+  { plain: 'compensatoria', preferred: 'compensatória' },
+  { plain: 'condicao', preferred: 'condição' },
+  { plain: 'condicoes', preferred: 'condições' },
+  { plain: 'consideracao', preferred: 'consideração' },
+  { plain: 'consideracoes', preferred: 'considerações' },
+  { plain: 'correlacao', preferred: 'correlação' },
+  { plain: 'cronica', preferred: 'crônica' },
+  { plain: 'cronicas', preferred: 'crônicas' },
+  { plain: 'cronico', preferred: 'crônico' },
+  { plain: 'cronicos', preferred: 'crônicos' },
+  { plain: 'deficiencia', preferred: 'deficiência' },
+  { plain: 'destruicao', preferred: 'destruição' },
+  { plain: 'diagnostico', preferred: 'diagnóstico' },
+  { plain: 'diminuicao', preferred: 'diminuição' },
+  { plain: 'diminuida', preferred: 'diminuída' },
+  { plain: 'diminuido', preferred: 'diminuído' },
+  { plain: 'diminuídas', preferred: 'diminuídas' },
+  { plain: 'diminuídos', preferred: 'diminuídos' },
+  { plain: 'disfuncao', preferred: 'disfunção' },
+  { plain: 'desregulacao', preferred: 'desregulação' },
+  { plain: 'disturbio', preferred: 'distúrbio' },
+  { plain: 'disturbios', preferred: 'distúrbios' },
+  { plain: 'doenca', preferred: 'doença' },
+  { plain: 'doencas', preferred: 'doenças' },
+  { plain: 'elevacao', preferred: 'elevação' },
+  { plain: 'eosinofilo', preferred: 'eosinófilo' },
+  { plain: 'eosinofilos', preferred: 'eosinófilos' },
+  { plain: 'eritrocito', preferred: 'eritrócito' },
+  { plain: 'eritrocitos', preferred: 'eritrócitos' },
+  { plain: 'estao', preferred: 'estão' },
+  { plain: 'estimulo', preferred: 'estímulo' },
+  { plain: 'etiologica', preferred: 'etiológica' },
+  { plain: 'etiologicas', preferred: 'etiológicas' },
+  { plain: 'etiologico', preferred: 'etiológico' },
+  { plain: 'etiologicos', preferred: 'etiológicos' },
+  { plain: 'farmaco', preferred: 'fármaco' },
+  { plain: 'farmacos', preferred: 'fármacos' },
+  { plain: 'fenomeno', preferred: 'fenômeno' },
+  { plain: 'folico', preferred: 'fólico' },
+  { plain: 'granulocito', preferred: 'granulócito' },
+  { plain: 'granulocitos', preferred: 'granulócitos' },
+  { plain: 'hematologica', preferred: 'hematológica' },
+  { plain: 'hematologicas', preferred: 'hematológicas' },
+  { plain: 'hematologico', preferred: 'hematológico' },
+  { plain: 'hematologicos', preferred: 'hematológicos' },
+  { plain: 'hematopoietica', preferred: 'hematopoética' },
+  { plain: 'hemolitica', preferred: 'hemolítica' },
+  { plain: 'hemolise', preferred: 'hemólise' },
+  { plain: 'hipocromica', preferred: 'hipocrômica' },
+  { plain: 'hipocromicas', preferred: 'hipocrômicas' },
+  { plain: 'hipocromico', preferred: 'hipocrômico' },
+  { plain: 'hipocromicos', preferred: 'hipocrômicos' },
+  { plain: 'hipofuncao', preferred: 'hipofunção' },
+  { plain: 'historia', preferred: 'história' },
+  { plain: 'imunologica', preferred: 'imunológica' },
+  { plain: 'imunologicas', preferred: 'imunológicas' },
+  { plain: 'imunologico', preferred: 'imunológico' },
+  { plain: 'imunologicos', preferred: 'imunológicos' },
+  { plain: 'imunossupressao', preferred: 'imunossupressão' },
+  { plain: 'indicacao', preferred: 'indicação' },
+  { plain: 'indicacoes', preferred: 'indicações' },
+  { plain: 'infeccao', preferred: 'infecção' },
+  { plain: 'infeccoes', preferred: 'infecções' },
+  { plain: 'inflamacao', preferred: 'inflamação' },
+  { plain: 'inflamatoria', preferred: 'inflamatória' },
+  { plain: 'inflamatorias', preferred: 'inflamatórias' },
+  { plain: 'inflamatorio', preferred: 'inflamatório' },
+  { plain: 'inflamatorios', preferred: 'inflamatórios' },
+  { plain: 'intoxicacao', preferred: 'intoxicação' },
+  { plain: 'lesao', preferred: 'lesão' },
+  { plain: 'leucocitaria', preferred: 'leucocitária' },
+  { plain: 'leucocitarias', preferred: 'leucocitárias' },
+  { plain: 'leucocitario', preferred: 'leucocitário' },
+  { plain: 'leucocitarios', preferred: 'leucocitários' },
+  { plain: 'leucocito', preferred: 'leucócito' },
+  { plain: 'leucocitos', preferred: 'leucócitos' },
+  { plain: 'liberacao', preferred: 'liberação' },
+  { plain: 'linfocito', preferred: 'linfócito' },
+  { plain: 'linfocitos', preferred: 'linfócitos' },
+  { plain: 'linfocitica', preferred: 'linfocítica' },
+  { plain: 'macrocitica', preferred: 'macrocítica' },
+  { plain: 'macrociticas', preferred: 'macrocíticas' },
+  { plain: 'macrocitico', preferred: 'macrocítico' },
+  { plain: 'macrociticos', preferred: 'macrocíticos' },
+  { plain: 'manifestacao', preferred: 'manifestação' },
+  { plain: 'medula ossea', preferred: 'medula óssea' },
+  { plain: 'media', preferred: 'média' },
+  { plain: 'medio', preferred: 'médio' },
+  { plain: 'megaloblastica', preferred: 'megaloblástica' },
+  { plain: 'metamielocito', preferred: 'metamielócito' },
+  { plain: 'metamielocitos', preferred: 'metamielócitos' },
+  { plain: 'microcitica', preferred: 'microcítica' },
+  { plain: 'microciticas', preferred: 'microcíticas' },
+  { plain: 'microcitico', preferred: 'microcítico' },
+  { plain: 'microciticos', preferred: 'microcíticos' },
+  { plain: 'mielodisplasica', preferred: 'mielodisplásica' },
+  { plain: 'mielodisplasicas', preferred: 'mielodisplásicas' },
+  { plain: 'mielodisplasico', preferred: 'mielodisplásico' },
+  { plain: 'mielodisplasicos', preferred: 'mielodisplásicos' },
+  { plain: 'mielocito', preferred: 'mielócito' },
+  { plain: 'mielocitos', preferred: 'mielócitos' },
+  { plain: 'monocito', preferred: 'monócito' },
+  { plain: 'monocitos', preferred: 'monócitos' },
+  { plain: 'multiplos', preferred: 'múltiplos' },
+  { plain: 'nao', preferred: 'não' },
+  { plain: 'necessaria', preferred: 'necessária' },
+  { plain: 'necessarias', preferred: 'necessárias' },
+  { plain: 'necessario', preferred: 'necessário' },
+  { plain: 'necessarios', preferred: 'necessários' },
+  { plain: 'neutrofilica', preferred: 'neutrofílica' },
+  { plain: 'neutrofilo', preferred: 'neutrófilo' },
+  { plain: 'neutrofilos', preferred: 'neutrófilos' },
+  { plain: 'numero', preferred: 'número' },
+  { plain: 'operatorio', preferred: 'operatório' },
+  { plain: 'ossea', preferred: 'óssea' },
+  { plain: 'parametro', preferred: 'parâmetro' },
+  { plain: 'parametros', preferred: 'parâmetros' },
+  { plain: 'parasitarias', preferred: 'parasitárias' },
+  { plain: 'participacao', preferred: 'participação' },
+  { plain: 'patologica', preferred: 'patológica' },
+  { plain: 'patologicas', preferred: 'patológicas' },
+  { plain: 'patologico', preferred: 'patológico' },
+  { plain: 'patologicos', preferred: 'patológicos' },
+  { plain: 'periferico', preferred: 'periférico' },
+  { plain: 'possivel', preferred: 'possível' },
+  { plain: 'possiveis', preferred: 'possíveis' },
+  { plain: 'populacao', preferred: 'população' },
+  { plain: 'presenca', preferred: 'presença' },
+  { plain: 'producao', preferred: 'produção' },
+  { plain: 'promielocito', preferred: 'promielócito' },
+  { plain: 'promielocitos', preferred: 'promielócitos' },
+  { plain: 'reacao', preferred: 'reação' },
+  { plain: 'reacoes', preferred: 'reações' },
+  { plain: 'recuperacao', preferred: 'recuperação' },
+  { plain: 'regulacao', preferred: 'regulação' },
+  { plain: 'resistencia', preferred: 'resistência' },
+  { plain: 'reticulocito', preferred: 'reticulócito' },
+  { plain: 'reticulocitos', preferred: 'reticulócitos' },
+  { plain: 'revisao', preferred: 'revisão' },
+  { plain: 'sao', preferred: 'são' },
+  { plain: 'sanguinea', preferred: 'sanguínea' },
+  { plain: 'sanguineas', preferred: 'sanguíneas' },
+  { plain: 'sanguineo', preferred: 'sanguíneo' },
+  { plain: 'sanguineos', preferred: 'sanguíneos' },
+  { plain: 'serie', preferred: 'série' },
+  { plain: 'sifilis', preferred: 'sífilis' },
+  { plain: 'simultaneo', preferred: 'simultâneo' },
+  { plain: 'simultaneos', preferred: 'simultâneos' },
+  { plain: 'simultanea', preferred: 'simultânea' },
+  { plain: 'simultaneas', preferred: 'simultâneas' },
+  { plain: 'sindrome', preferred: 'síndrome' },
+  { plain: 'sintese', preferred: 'síntese' },
+  { plain: 'sistemica', preferred: 'sistêmica' },
+  { plain: 'supressao', preferred: 'supressão' },
+  { plain: 'tambem', preferred: 'também' },
+  { plain: 'toxicologica', preferred: 'toxicológica' },
+  { plain: 'toxica', preferred: 'tóxica' },
+  { plain: 'toxicas', preferred: 'tóxicas' },
+  { plain: 'transitorio', preferred: 'transitório' },
+  { plain: 'virus', preferred: 'vírus' }
+];
+
+const getDiacriticRiskMap = (targetLang?: TargetLanguage) => {
+  const profile = getTargetLanguageProfile(targetLang);
+  if (!profile?.diacriticRiskWords?.length) return null;
+  return new Map(profile.diacriticRiskWords.map((item) => [normalizeLatinToken(item.plain), item]));
+};
 
 export const isRussianTarget = (targetLang?: TargetLanguage) =>
   String(targetLang || '').toLowerCase().includes('russian');
 
 export const isFrenchTarget = (targetLang?: TargetLanguage) =>
   String(targetLang || '').toLowerCase().includes('french');
+
+export const isPortugueseTarget = (targetLang?: TargetLanguage) =>
+  String(targetLang || '').toLowerCase().includes('portuguese');
 
 export const isRussianDisallowedLatinResidue = (token: string) =>
   RUSSIAN_DISALLOWED_LATIN_RESIDUE_SET.has(normalizeLatinToken(token));
@@ -225,11 +425,12 @@ export const TARGET_LANGUAGE_PROFILES: Record<string, TargetLanguageProfile> = {
   portuguese: {
     target: 'Portuguese',
     script: 'latin',
+    diacriticRiskWords: [...PORTUGUESE_DIACRITIC_RISK_WORDS],
     commonFunctionWords: ['o', 'a', 'os', 'as', 'de', 'em', 'com', 'para'],
     distinctiveCharacters: /[ãõçáéíóúàâêô]/i,
     notes: [
       'Preserve compact number/unit formatting.',
-      'Use diacritics as a positive signal but not as a hard requirement.'
+      'Use standard Portuguese orthography with diacritics for medical/common terms.'
     ]
   },
   german: {
@@ -299,8 +500,9 @@ export const hasProfileEnglishResidue = (text: string, targetLang?: TargetLangua
   return tokens.some((token) => isProfileEnglishResidueToken(token, targetLang));
 };
 
-export const collectFrenchDiacriticRisks = (text: string, targetLang?: TargetLanguage) => {
-  if (!isFrenchTarget(targetLang)) return [];
+export const collectTargetDiacriticRisks = (text: string, targetLang?: TargetLanguage) => {
+  const riskMap = getDiacriticRiskMap(targetLang);
+  if (!riskMap) return [];
   const tokens = String(text || '').match(/\b[A-Za-zÀ-ÖØ-öø-ÿœŒ][A-Za-zÀ-ÖØ-öø-ÿœŒ'-]{2,}\b/g) || [];
   const risks: Array<{ token: string; preferred: string }> = [];
   tokens.forEach((token) => {
@@ -309,7 +511,7 @@ export const collectFrenchDiacriticRisks = (text: string, targetLang?: TargetLan
     );
     candidates.forEach((candidate) => {
       if (/[À-ÖØ-öø-ÿœŒ]/.test(candidate)) return;
-      const risk = FRENCH_DIACRITIC_RISK_MAP.get(normalizeLatinToken(candidate));
+      const risk = riskMap.get(normalizeLatinToken(candidate));
       if (!risk) return;
       risks.push({ token: candidate, preferred: risk.preferred });
     });
@@ -317,5 +519,21 @@ export const collectFrenchDiacriticRisks = (text: string, targetLang?: TargetLan
   return risks;
 };
 
+export const collectFrenchDiacriticRisks = (text: string, targetLang?: TargetLanguage) => {
+  if (!isFrenchTarget(targetLang)) return [];
+  return collectTargetDiacriticRisks(text, targetLang);
+};
+
+export const collectPortugueseDiacriticRisks = (text: string, targetLang?: TargetLanguage) => {
+  if (!isPortugueseTarget(targetLang)) return [];
+  return collectTargetDiacriticRisks(text, targetLang);
+};
+
 export const hasFrenchDiacriticRisk = (text: string, targetLang?: TargetLanguage) =>
   collectFrenchDiacriticRisks(text, targetLang).length > 0;
+
+export const hasPortugueseDiacriticRisk = (text: string, targetLang?: TargetLanguage) =>
+  collectPortugueseDiacriticRisks(text, targetLang).length > 0;
+
+export const hasTargetDiacriticRisk = (text: string, targetLang?: TargetLanguage) =>
+  collectTargetDiacriticRisks(text, targetLang).length > 0;

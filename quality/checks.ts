@@ -38,6 +38,8 @@ const MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX =
   /\b(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)\s+\d+_+\b/i;
 const MEDICAL_CODE_HASH_ARTIFACT_REGEX =
   /\b(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)_+\b/i;
+const MEDICAL_CODE_REGEX =
+  /(?<![A-Za-z0-9])(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)(?:[#%])?(?![A-Za-z0-9])/g;
 const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
@@ -57,8 +59,22 @@ const DIGIT_BOUNDARY_GLUE_REGEX =
 const LOWER_COMPOUND_GLUE_REGEX =
   /\b(?:connectthe|intothe|displaywbc|usesledlight|providesusbinterface|withtcp\/ipprotocol|withgb\/t|andgb\/t|thedcpower|cbcdetection|cbctest|pltthe|aianalysis|retand|supplyrequirements|compositiondescription|routineimaging|fluorescenceimage|andperformmaintenance|powerswitchto|tostart|is1year|enter\d+(?:[-/.]\d+)*digits|than\d+digits)\b/i;
 const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
+const PRESERVED_INTERNAL_STATUS_CODE_REGEX =
+  /^(?:rbc|hgb|mcv|mch|mchc|ret|wbc|neu|lym|mon|eos|bas|aly|nsh|nst|srbc|awbc|malaria)-(?:up|down|normal|solo|combo|mixed)(?:-[a-z0-9]+)*$/i;
 
 const stripUrls = (value: string) => String(value || '').replace(URL_REGEX, ' ').replace(/ {2,}/g, ' ');
+
+const collectProtectedMedicalCodes = (value: string) => {
+  MEDICAL_CODE_REGEX.lastIndex = 0;
+  return Array.from(new Set(Array.from(String(value || '').matchAll(MEDICAL_CODE_REGEX), (match) => match[0])));
+};
+
+const getMissingProtectedMedicalCodes = (originalText: string, translatedText: string) => {
+  const sourceCodes = collectProtectedMedicalCodes(originalText);
+  if (!sourceCodes.length) return [];
+  const targetCodes = collectProtectedMedicalCodes(translatedText);
+  return sourceCodes.filter((code) => !targetCodes.includes(code));
+};
 
 const shouldLockCell = (key: string, value: unknown) => {
   if (typeof value !== 'string') return false;
@@ -162,6 +178,9 @@ const shouldCheckTargetLanguage = (unit: QualityUnit) => {
   const translatedText = unit.translatedText.trim();
   if (!translatedText) return false;
   if (shouldLockCell(unit.columnKey, unit.originalValue)) return false;
+  if (translatedText === unit.originalText.trim() && PRESERVED_INTERNAL_STATUS_CODE_REGEX.test(translatedText)) {
+    return false;
+  }
   const unprotectedText = stripTargetLanguageNoise(translatedText, unit.originalText);
   if (!unprotectedText) return false;
   return !isLikelyIdentifier(unprotectedText);
@@ -268,7 +287,8 @@ export const runQualityChecksOnUnits = (
     if (
       PLACEHOLDER_REGEX.test(unit.translatedText) ||
       MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX.test(unit.translatedText) ||
-      MEDICAL_CODE_HASH_ARTIFACT_REGEX.test(unit.translatedText)
+      MEDICAL_CODE_HASH_ARTIFACT_REGEX.test(unit.translatedText) ||
+      getMissingProtectedMedicalCodes(unit.originalText, unit.translatedText).length > 0
     ) {
       totals.placeholderCells += 1;
       placeholderRows.add(unit.rowIndex);

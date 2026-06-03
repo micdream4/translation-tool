@@ -1326,18 +1326,21 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   assert.match(modelReviewSource, /penalize Simplified Chinese characters/);
 });
 
-test("Russian and French profiles flag high-confidence source-language residue", async () => {
+test("Russian, French, and Portuguese profiles flag high-confidence source-language residue", async () => {
   const { isLikelyTargetLanguage, detectUntranslatedCells } = await bundleTsModule(
     path.join(repoRoot, "utils/language.ts")
   );
   const { polishTranslation } = await bundleTsModule(path.join(repoRoot, "utils/postprocess.ts"));
   const {
+    collectPortugueseDiacriticRisks,
     collectFrenchDiacriticRisks,
     TARGET_LANGUAGE_PROFILES,
     getRussianResidueProfile,
     getTargetLanguageProfile,
     hasProfileEnglishResidue,
     hasFrenchDiacriticRisk,
+    hasPortugueseDiacriticRisk,
+    hasTargetDiacriticRisk,
     isProfileEnglishResidueToken,
     isRussianDisallowedLatinResidue
   } = await bundleTsModule(
@@ -1364,6 +1367,24 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(isLikelyTargetLanguage("35 fL~53 fL", "Russian"), true);
   assert.equal(
     isLikelyTargetLanguage(
+      "Необходима дальнейшая оценка с учетом других лабораторных показателей, например Hb, PLT, CRP и ESR.",
+      "Russian"
+    ),
+    true
+  );
+  assert.equal(
+    isLikelyTargetLanguage("EOS# повышено, что указывает на усиление иммунного ответа Th2-типа.", "Russian"),
+    true
+  );
+  assert.equal(isLikelyTargetLanguage("Положительная Ph-хромосома отсутствует.", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("rbc-up-solo", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("malaria-up-solo", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Серповидноклеточная болезнь, например HbSS/HbSC.", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Инфекция Plasmodium подтверждена PCR.", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("Электрофорез гемоглобина/HPLC/генетическое тестирование.", "Russian"), true);
+  assert.equal(isLikelyTargetLanguage("White blood cell", "Russian"), false);
+  assert.equal(
+    isLikelyTargetLanguage(
       "Адрес производителя: комната 103 и 104, здание № 13, Country Garden Wisdom Garden, улица Xueshi, район Yuelu, Changsha, Hunan, КНР",
       "Russian"
     ),
@@ -1383,6 +1404,100 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.equal(
     polishTranslation("", "Отображение времени в формате 24-hour (при отключении отображается в формате 12-hour).", "Russian").trim(),
     "Отображение времени в 24-часовом формате (при отключении отображается в 12-часовом формате)."
+  );
+  assert.equal(
+    polishTranslation("", "EOS# повышено, что указывает на усиление иммунного ответа Th 2-типа.", "Russian").trim(),
+    "EOS# повышено, что указывает на усиление иммунного ответа Th2-типа."
+  );
+  const russianCjkRepair = polishTranslation(
+    "",
+    "Другие иммунные клетки без明显 отклонений; это нехарактерно для单纯ной бактериальной инфекции; требуется结合 с мазком крови и клинической ситуацией; может叠加 с воспалительной реакцией; 同时伴有 увеличение атипичных лимфоцитов; 请结合 результаты.",
+    "Russian"
+  );
+  assert.doesNotMatch(russianCjkRepair, /[\u4e00-\u9fff]/);
+  assert.match(russianCjkRepair, /без явных отклонений/);
+  assert.match(russianCjkRepair, /нехарактерно для изолированной бактериальной инфекции/);
+  assert.match(russianCjkRepair, /требуется оценка с учетом мазка крови и клинической ситуации/);
+  assert.match(russianCjkRepair, /может сочетаться с воспалительной реакцией/);
+  const russianTraditionalCjkRepair = polishTranslation(
+    "",
+    "Это указывает на наличие не單純 бактериальной инфекции и снижение способности иммунной системы清除 патогены.",
+    "Russian"
+  );
+  assert.doesNotMatch(russianTraditionalCjkRepair, /[\u4e00-\u9fff]/);
+  assert.match(russianTraditionalCjkRepair, /не изолированной бактериальной инфекции/);
+  assert.match(russianTraditionalCjkRepair, /способности иммунной системы элиминировать патогены/);
+  assert.equal(
+    polishTranslation("", "возможно вызванную дефицитом витамина RBC 0__ или фолиевой кислоты.", "Russian").trim(),
+    "возможно вызванную дефицитом витамина B12 или фолиевой кислоты."
+  );
+  assert.equal(
+    polishTranslation("维生素B12/叶酸缺乏", "дефицит витамина B12/ или фолиевой кислоты", "Russian").trim(),
+    "дефицит витамина B12 или фолиевой кислоты"
+  );
+  assert.equal(
+    polishTranslation("维生素B6缺乏", "дефицит витамина B 6", "Russian").trim(),
+    "дефицит витамина B6"
+  );
+  assert.equal(
+    polishTranslation("疟疾（Plasmodium infection）", "Малярия (Plasmodium infection)", "Russian").trim(),
+    "Малярия (инфекция Plasmodium)"
+  );
+  assert.equal(
+    polishTranslation(
+      "或做血红蛋白电泳/HPLC/基因检测",
+      "провести электрофорез гемоглобина/ВЭЖХ/генетическое тестирование",
+      "Russian"
+    ).trim(),
+    "провести электрофорез гемоглобина/HPLC/генетическое тестирование"
+  );
+  assert.equal(
+    polishTranslation(
+      "血红蛋白＞30g/L，但＜60g/L时，判断为重度贫血",
+      "При уровне гемоглобина >30 г/л, но <60 г/л диагностируется тяжелая анемия",
+      "Russian"
+    ).trim(),
+    "При уровне гемоглобина >30 g/L, но <60 g/L диагностируется тяжелая анемия"
+  );
+  assert.equal(
+    polishTranslation("MCV<80 fL属于小细胞性贫血", "MCV <80 фл относится к микроцитарной анемии", "Russian").trim(),
+    "MCV <80 fL относится к микроцитарной анемии"
+  );
+  assert.equal(
+    polishTranslation("提示骨髓造血功能可能减低", "提示骨髓造血功能可能减低", "Russian").trim(),
+    "Указывает на возможное снижение кроветворной функции костного мозга"
+  );
+  assert.equal(
+    polishTranslation(
+      "当前尚未见明显提示病毒性感染、过敏或寄生虫感染的细胞学特征",
+      "В настоящее время не наблюдаетсяявно的 цитологических признаков вирусной инфекции.",
+      "Russian"
+    ).trim(),
+    "В настоящее время не наблюдается явных цитологических признаков вирусной инфекции."
+  );
+  assert.equal(
+    polishTranslation(
+      "RET# 和 RET% 均升高",
+      "Повышение RET# и процента RET# указывает на компенсаторную гиперплазию костного мозга",
+      "Russian"
+    ).trim(),
+    "Повышение RET# и RET% указывает на компенсаторную гиперплазию костного мозга"
+  );
+  assert.equal(
+    polishTranslation(
+      "WBC正常，但NEU减少、LYM和NST#、NSH#升高",
+      "в то время как повышение лимфоцитов и незрелых гранулоцитов указывает на компенсаторную реакцию",
+      "Russian"
+    ).trim(),
+    "в то время как повышение LYM и незрелых гранулоцитов указывает на компенсаторную реакцию"
+  );
+  assert.equal(
+    polishTranslation(
+      "中性粒细胞（NEU）多分叶核细胞（NSH#）升高",
+      "Повышение нейтрофилов с гиперсегментацией ядра (NSH#) указывает на повышенную потребность",
+      "Russian"
+    ).trim(),
+    "Повышение нейтрофилов (NEU) с гиперсегментацией ядра (NSH#) указывает на повышенную потребность"
   );
   assert.equal(
     polishTranslation("", "Это не только повыceет эффективность, но и сниceет ошибки в спиlisку.", "Russian").trim(),
@@ -1418,7 +1533,9 @@ test("Russian and French profiles flag high-confidence source-language residue",
   assert.ok(TARGET_LANGUAGE_PROFILES.french.commonFunctionWords.includes("avec"));
   assert.ok(TARGET_LANGUAGE_PROFILES.french.englishResidueWords.includes("quickly"));
   assert.ok(TARGET_LANGUAGE_PROFILES.french.diacriticRiskWords.some((item) => item.plain === "hemoglobine"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.portuguese.diacriticRiskWords.some((item) => item.plain === "infeccao"));
   assert.equal(getTargetLanguageProfile("French")?.target, "French");
+  assert.equal(getTargetLanguageProfile("Portuguese")?.target, "Portuguese");
   assert.equal(isLikelyTargetLanguage("Remplissage de l'échantillon", "French"), true);
   assert.equal(isLikelyTargetLanguage("Hemoglobine elevee avec anemie legere.", "French"), false);
   assert.equal(isLikelyTargetLanguage("Hémoglobine élevée avec anémie légère.", "French"), true);
@@ -1453,6 +1570,61 @@ test("Russian and French profiles flag high-confidence source-language residue",
       "French"
     ),
     "Peut suggérer la présence d'une infection virale, d'un déficit immunitaire ou de l'effet de certains médicaments."
+  );
+  assert.equal(hasPortugueseDiacriticRisk("Multiplos indicadores sanguineos com presenca de infeccao, elevacao de leucocitos e disturbio alergico.", "Portuguese"), true);
+  assert.equal(hasTargetDiacriticRisk("Multiplos indicadores sanguineos com presenca de infeccao, elevacao de leucocitos e disturbio alergico.", "Portuguese"), true);
+  assert.deepEqual(
+    collectPortugueseDiacriticRisks("Multiplos indicadores sanguineos com presenca de infeccao, elevacao de leucocitos e disturbio alergico.", "Portuguese").map((item) => item.preferred),
+    ["múltiplos", "sanguíneos", "presença", "infecção", "elevação", "leucócitos", "distúrbio", "alérgico"]
+  );
+  assert.equal(isLikelyTargetLanguage("Multiplos indicadores sanguineos com presenca de infeccao.", "Portuguese"), false);
+  assert.equal(
+    polishTranslation(
+      "NSH#升高，维生素B12缺乏，提示感染或炎症反应。",
+      "NSH% elevado, deficiencia de vitamina RBC 0__, com presenca de infeccao e reacao inflamatoria.",
+      "Portuguese"
+    ),
+    "NSH# elevado, deficiência de vitamina B12, com presença de infecção e reação inflamatória."
+  );
+  assert.equal(
+    polishTranslation(
+      "具体请结合临床表现综合分析！",
+      "Por favor, análise de forma abrangente com base na apresentacao clínica!",
+      "Portuguese"
+    ),
+    "Por favor, analise de forma abrangente com base na apresentação clínica!"
+  );
+  assert.equal(
+    polishTranslation(
+      "AWBC为异常白细胞计数，升高常见于感染。",
+      "AWBC e uma contagem anormal de leucocitos; elevacao e comum em infeccao, e necessario avaliar farmacos e exames etiologicos.",
+      "Portuguese"
+    ),
+    "AWBC é uma contagem anormal de leucócitos; elevação é comum em infecção, é necessário avaliar fármacos e exames etiológicos."
+  );
+  assert.equal(
+    polishTranslation(
+      "WBC升高主要由NEU升高驱动，LYM升高提示反应。",
+      "WBC elevado e impulsionado por NEU, enquanto LYM também esta elevado.",
+      "Portuguese"
+    ),
+    "WBC elevado é impulsionado por NEU, enquanto LYM também está elevado."
+  );
+  assert.equal(
+    polishTranslation(
+      "MCV降低见于小细胞性贫血。",
+      "Volume corpuscular medio diminuido e visto em anemias microciticas.",
+      "Portuguese"
+    ),
+    "Volume corpuscular médio diminuído é visto em anemias microcíticas."
+  );
+  assert.equal(
+    polishTranslation(
+      "结合临床表现综合分析。",
+      "Análise em conjunto com as manifestações clínicas!",
+      "Portuguese"
+    ),
+    "Analise em conjunto com as manifestações clínicas!"
   );
   assert.equal(polishTranslation("名称", "名称", "French"), "Nom");
   assert.equal(polishTranslation("几率", "几率", "Russian"), "Вероятность");
@@ -1521,6 +1693,14 @@ test("Russian and French profiles flag high-confidence source-language residue",
       [{ note: "NSH#升高提示晚期中性粒细胞比例增加。" }],
       [{ note: "NSH__ élevé suggère une augmentation de la proportion de neutrophiles matures." }],
       { targetLang: "French" }
+    ).totals.placeholderCells,
+    1
+  );
+  assert.equal(
+    runQualityChecks(
+      [{ note: "NSH#升高提示晚期中性粒细胞比例增加。" }],
+      [{ note: "NSH% elevado sugere aumento da proporção de neutrófilos maduros." }],
+      { targetLang: "Portuguese" }
     ).totals.placeholderCells,
     1
   );

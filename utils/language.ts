@@ -2,6 +2,7 @@ import { POCTRecord, TargetLanguage } from "../types";
 import {
   hasFrenchDiacriticRisk,
   hasProfileEnglishResidue,
+  hasTargetDiacriticRisk,
   isRussianDisallowedLatinResidue
 } from "./languageProfiles";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
@@ -28,6 +29,8 @@ const TECHNICAL_LATIN_TEXT_REGEX = /^[A-Za-z0-9#%^+_.:/()[\]\-\s]+$/;
 const TECHNICAL_SHORT_MARKER_REGEX = /^[A-Za-z]{1,8}[#%]$/;
 const TECHNICAL_RATIO_TOKEN_REGEX = /^[A-Za-z]{1,8}(?:\/[A-Za-z0-9#%]+)+$/;
 const TECHNICAL_UNDERSCORE_TOKEN_REGEX = /^[A-Z]{2,12}_\d{2,}$/;
+const INTERNAL_STATUS_CODE_REGEX =
+  /^(?:rbc|hgb|mcv|mch|mchc|ret|wbc|neu|lym|mon|eos|bas|aly|nsh|nst|srbc|awbc|malaria)-(?:up|down|normal|solo|combo|mixed)(?:-[a-z0-9]+)*$/i;
 const DOT_COMPACT_NUMBER_REGEX = /^\d+(?:\.\d+)+[A-Za-z0-9/]*$/;
 const ROMAN_REAGENT_CODE_REGEX = /^[A-Z]-[IVXLCDM]{1,8}$/;
 const NUMERIC_UNIT_TEXT_REGEX = /^[\s\d.,×xX^+\-~–—/()％%μµA-Za-z]+$/;
@@ -260,23 +263,67 @@ const LANGUAGE_DIACRITICS: Record<
 const ALLOWED_NON_LATIN_TARGET_LATIN_TOKENS = new Set([
   "ai",
   "api",
+  "alb",
+  "aly",
+  "awbc",
+  "bas",
+  "baso",
+  "cmv",
+  "crp",
   "csv",
   "dna",
   "doc",
   "docx",
+  "ebv",
+  "eos",
+  "eosino",
+  "esr",
+  "hba1c",
+  "hb",
+  "hbsc",
+  "hbss",
+  "hct",
+  "hgb",
+  "hiv",
+  "hplc",
   "html",
   "id",
   "ivd",
   "json",
   "lcd",
   "led",
+  "lym",
+  "mch",
+  "mchc",
+  "mcv",
+  "mds",
+  "mon",
+  "mono",
+  "mp",
+  "mpv",
+  "neu",
+  "nsh",
+  "nst",
+  "pct",
+  "pdw",
+  "ph",
+  "plasmodium",
+  "plt",
   "pdf",
   "poct",
   "qc",
   "rna",
+  "rbc",
+  "rdw",
+  "sle",
+  "srbc",
+  "th",
+  "th1",
+  "th2",
   "ui",
   "url",
   "usb",
+  "wbc",
   "xml",
   "zip",
   "ac",
@@ -420,6 +467,7 @@ const isAllowedLatinTokenInNonLatinTarget = (token: string) => {
   if (DOT_COMPACT_NUMBER_REGEX.test(token)) return true;
   if (/^[A-Z]{2,8}s?$/.test(token)) return true;
   if (/^(?=.*\d)[A-Za-z0-9-]{2,}$/.test(token)) return true;
+  if (INTERNAL_STATUS_CODE_REGEX.test(token)) return true;
   if (/^[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*$/.test(token)) return true;
   return false;
 };
@@ -437,6 +485,7 @@ const isAllowedTechnicalLatinText = (text: string) => {
   if (!stripped) return true;
   if (isAllowedNumericUnitText(stripped)) return true;
   if (TECHNICAL_SHORT_MARKER_REGEX.test(stripped)) return true;
+  if (INTERNAL_STATUS_CODE_REGEX.test(stripped)) return true;
   if (!TECHNICAL_LATIN_TEXT_REGEX.test(stripped)) return false;
   const tokens = stripped.match(LATIN_TOKEN_REGEX) || [];
   if (!tokens.length) return true;
@@ -458,6 +507,7 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   if (!trimmed) return true;
   if (SYMBOL_ONLY_REGEX.test(trimmed)) return true;
   if (CODE_WITH_ARROW_REGEX.test(trimmed)) return true;
+  if (INTERNAL_STATUS_CODE_REGEX.test(trimmed)) return true;
   if (!LATIN_WORD_REGEX.test(trimmed) && !CJK_REGEX.test(trimmed) && !CYRILLIC_REGEX.test(trimmed)) {
     return true;
   }
@@ -486,6 +536,9 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
     return false;
   }
   if (targetCode === "fr" && hasFrenchDiacriticRisk(trimmed, targetLang)) {
+    return false;
+  }
+  if (targetCode !== "en" && hasTargetDiacriticRisk(trimmed, targetLang)) {
     return false;
   }
 

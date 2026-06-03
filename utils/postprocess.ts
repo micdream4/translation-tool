@@ -1,5 +1,5 @@
 import { enforceGlossary } from "./glossary";
-import { collectFrenchDiacriticRisks } from "./languageProfiles";
+import { collectTargetDiacriticRisks } from "./languageProfiles";
 import { enforceSeedTerminology } from "./seedTerminology";
 import type { TargetLanguage } from "../types";
 
@@ -113,7 +113,50 @@ const RUSSIAN_RESIDUE_FIXES: Array<[RegExp, string]> = [
   [/\bestablish\b/gi, "установить"],
   [/\bref(?=[\u0400-\u04FF])/gi, ""],
   [/\bWhite Blood Cell Count\b/g, "Количество лейкоцитов"],
+  [/\bSickle cell disease\b/gi, "серповидноклеточная болезнь"],
+  [/\bPlasmodium infection\b/gi, "инфекция Plasmodium"],
   [/\bСрок\s+service\s+службы\b/gi, "Срок службы"]
+];
+const RUSSIAN_CHINESE_RESIDUE_FIXES: Array<[RegExp, string]> = [
+  [/без\s*明显(?:ных?)?\s+отклонений/gi, "без явных отклонений"],
+  [/без\s*明显(?:ных?)?\s+признаков/gi, "без явных признаков"],
+  [/без\s*明显ной\s+аллергии/gi, "без явной аллергии"],
+  [/нехарактерно для\s*单纯ной/gi, "нехарактерно для изолированной"],
+  [/нехарактерно для\s*單純ной/gi, "нехарактерно для изолированной"],
+  [/не поддерживают\s*单纯ную/gi, "не поддерживают изолированную"],
+  [/не поддерживают\s*單純ную/gi, "не поддерживают изолированную"],
+  [/не\s*單純\s+бактериальной/gi, "не изолированной бактериальной"],
+  [/а не\s*单纯\s+нейтрофильной/gi, "а не изолированной нейтрофильной"],
+  [/а не\s*單純\s+нейтрофильной/gi, "а не изолированной нейтрофильной"],
+  [/способности иммунной системы\s*清除\s+патогены/gi, "способности иммунной системы элиминировать патогены"],
+  [/не\s+наблюдаетсяявно的\s+цитологических признаков/gi, "не наблюдается явных цитологических признаков"],
+  [/может\s*叠加\s+с/gi, "может сочетаться с"],
+  [/требуется\s*结合\s+с\s+мазком крови и клинической ситуацией/gi, "требуется оценка с учетом мазка крови и клинической ситуации"],
+  [/требуется\s*结合\s+с\s+мазком крови или дополнительными исследованиями/gi, "требуется сопоставить с мазком крови или дополнительными исследованиями"],
+  [/требуется\s*结合\s+с\s+инфекцией\/воспалением или гематологическими нарушениями/gi, "требуется оценка с учетом инфекции/воспаления или гематологических нарушений"],
+  [/同时伴有\s+увеличение/gi, "одновременно сопровождается увеличением"],
+  [/请结合/gi, "следует учитывать"],
+  [/明显ное\s+повышение/gi, "выраженное повышение"],
+  [/明显ную\s+активацию/gi, "выраженную активацию"],
+  [/明显\s+активация/gi, "выраженная активация"],
+  [/明显\s+бактериальную/gi, "явную бактериальную"],
+  [/без\s*明显/gi, "без явных"],
+  [/明显ных/gi, "явных"],
+  [/明显ной/gi, "явной"],
+  [/明显ную/gi, "выраженную"],
+  [/明显ное/gi, "выраженное"],
+  [/明显/gi, "явно"],
+  [/явно的/gi, "явных"],
+  [/单纯ной/gi, "изолированной"],
+  [/单纯ную/gi, "изолированную"],
+  [/单纯/gi, "изолированной"],
+  [/單純ной/gi, "изолированной"],
+  [/單純ную/gi, "изолированную"],
+  [/單純/gi, "изолированной"],
+  [/清除/gi, "элиминировать"],
+  [/结合/gi, "с учетом"],
+  [/叠加/gi, "сочетание"],
+  [/同时伴有/gi, "одновременно сопровождается"]
 ];
 const RUSSIAN_MODEL_ARTIFACT_FIXES: Array<[RegExp, string]> = [
   [/повыceет/g, "повышает"],
@@ -208,7 +251,8 @@ const EXACT_SHORT_SOURCE_TRANSLATIONS: Record<string, Record<string, string>> = 
     总结3: "Резюме 3",
     可能疾病1: "Возможное заболевание 1",
     可能疾病2: "Возможное заболевание 2",
-    可能疾病3: "Возможное заболевание 3"
+    可能疾病3: "Возможное заболевание 3",
+    提示骨髓造血功能可能减低: "Указывает на возможное снижение кроветворной функции костного мозга"
   },
   portuguese: {
     名称: "Nome",
@@ -486,6 +530,16 @@ const fixRussianEnglishResidue = (translated: string, targetLang?: TargetLanguag
   return output;
 };
 
+const fixRussianChineseResidue = (translated: string, targetLang?: TargetLanguage) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("russian")) return translated;
+  if (!/[\u4e00-\u9fff]/.test(translated)) return translated;
+  let output = translated;
+  RUSSIAN_CHINESE_RESIDUE_FIXES.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
+  return output;
+};
+
 const normalizeTargetKey = (targetLang?: TargetLanguage) => {
   const normalized = String(targetLang || "").toLowerCase();
   if (normalized.includes("french")) return "french";
@@ -512,10 +566,10 @@ const matchTokenCase = (token: string, preferred: string) => {
   return preferred;
 };
 
-const fixFrenchDiacritics = (translated: string, targetLang?: TargetLanguage) => {
-  if (!translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
+const fixTargetDiacritics = (translated: string, targetLang?: TargetLanguage) => {
+  if (!translated) return translated;
   let output = translated;
-  collectFrenchDiacriticRisks(output, targetLang).forEach(({ token, preferred }) => {
+  collectTargetDiacriticRisks(output, targetLang).forEach(({ token, preferred }) => {
     if (!token || !preferred) return;
     output = output.replace(
       new RegExp(`\\b${escapeRegExp(token)}\\b`, "g"),
@@ -531,6 +585,25 @@ const fixFrenchChineseResidue = (translated: string, targetLang?: TargetLanguage
   FRENCH_CHINESE_RESIDUE_FIXES.forEach(([pattern, replacement]) => {
     output = output.replace(pattern, replacement);
   });
+  return output;
+};
+
+const fixPortugueseGrammarArtifacts = (translated: string, targetLang?: TargetLanguage) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("portuguese")) return translated;
+  let output = translated;
+  output = output.replace(/\bPor favor,?\s+análise\b/gi, "Por favor, analise");
+  output = output.replace(/\bpor favor,?\s+análise\b/g, "por favor analise");
+  output = output.replace(/(^|[.!?]\s+)Análise(?=\s+em conjunto\b)/g, "$1Analise");
+  output = output.replace(/(^|[.!?]\s+)análise(?=\s+em conjunto\b)/g, "$1analise");
+  output = output.replace(/\bpós[-\s]+operatório\b/gi, "pós-operatório");
+  output = output.replace(/\ba esquerda\b/gi, "à esquerda");
+  output = output.replace(/\ba direita\b/gi, "à direita");
+  output = output.replace(/\besta\s+(elevad[oa]s?|comprometid[oa]s?|associad[oa]s?|relacionad[oa]s?|presente|ausente|em\b)/gi, "está $1");
+  output = output.replace(/\b(AWBC|WBC|RBC|HGB|NEU|LYM|MON|EOS|BAS|ALY|NST#?|NSG#?|NSH#?|RET#?|RET%|PLT)([^.;,\n]{0,80}?)\s+e\s+(uma?|a|o|comum|observad[oa]s?|predominante|impulsionad[oa]s?|consistente|compat[íi]vel|caracter[íi]stic[oa]s?|a\s+manifestação|uma\s+manifestação)\b/g, "$1$2 é $3");
+  output = output.replace(/\b((?:O|A|Os|As)\s+[^.;,\n]{1,100}?)\s+e\s+(comum|observad[oa]s?|predominante|impulsionad[oa]s?|consistente|compat[íi]vel|caracter[íi]stic[oa]s?|a\s+manifestação|uma\s+manifestação)\b/gi, "$1 é $2");
+  output = output.replace(/\b(elevação|diminuição|infecção|inflamação|reação|anemia|neutropenia|leucopenia|basofilia|eosinofilia|linfocitose|monocitose|distúrbio)([^.;,\n]{0,80}?)\s+e\s+(comum|observad[oa]s?|predominante|impulsionad[oa]s?|consistente|compat[íi]vel|caracter[íi]stic[oa]s?|a\s+manifestação|uma\s+manifestação)\b/gi, "$1$2 é $3");
+  output = output.replace(/\be\s+(necessári[oa]s?|normal|comum|visto|vista|observad[oa]s?|compat[íi]vel|predominante)\b/gi, "é $1");
+  output = output.replace(/\b(alterações|indicadores|parâmetros|resultados)([^.;,\n]{0,80}?)\s+tem\s+(correlação|relação|significado|origem)\b/gi, "$1$2 têm $3");
   return output;
 };
 
@@ -583,16 +656,23 @@ const restoreMedicalCodeSuffixes = (original: string, translated: string) => {
   if (!original || !translated) return translated;
   const preferredSourceCodeByBase = new Map<string, string>();
   const sourceSuffixCountByBase = new Map<string, number>();
+  const sourceSuffixFormsByBase = new Map<string, Set<string>>();
   Array.from(String(original || "").matchAll(MEDICAL_CODE_REGEX), (match) => match[0]).forEach((code) => {
     if (!/[#%]$/.test(code)) return;
     const base = code.replace(/[#%]+$/g, "");
     sourceSuffixCountByBase.set(base, (sourceSuffixCountByBase.get(base) || 0) + 1);
+    if (!sourceSuffixFormsByBase.has(base)) sourceSuffixFormsByBase.set(base, new Set());
+    sourceSuffixFormsByBase.get(base)?.add(code);
     if (!preferredSourceCodeByBase.has(base)) preferredSourceCodeByBase.set(base, code);
   });
   if (!preferredSourceCodeByBase.size) return translated;
   let output = translated;
   preferredSourceCodeByBase.forEach((preferred, base) => {
     const targetSuffixPattern = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(base)}[#%](?![A-Za-z0-9])`, "g");
+    const sourceSuffixForms = sourceSuffixFormsByBase.get(base) || new Set<string>();
+    if (sourceSuffixForms.size === 1) {
+      output = output.replace(targetSuffixPattern, preferred);
+    }
     const sourceSuffixCount = sourceSuffixCountByBase.get(base) || 0;
     const targetSuffixCount = Array.from(output.matchAll(targetSuffixPattern)).length;
 
@@ -617,12 +697,65 @@ const restoreMedicalCodeSuffixes = (original: string, translated: string) => {
   return output;
 };
 
+const restoreSourceUnitNotation = (original: string, translated: string) => {
+  if (!original || !translated) return translated;
+  let output = translated;
+  const source = String(original);
+  if (source.includes("g/L")) {
+    output = output.replace(/(\d+(?:[.,]\d+)?\s*)г\s*\/\s*л/gi, "$1g/L");
+  }
+  if (source.includes("fL")) {
+    output = output.replace(/(\d+(?:[.,]\d+)?\s*)фл/gi, "$1fL");
+  }
+  if (source.includes("pg")) {
+    output = output.replace(/(\d+(?:[.,]\d+)?\s*)пг/gi, "$1pg");
+  }
+  if (source.includes("mmol/L")) {
+    output = output.replace(/(\d+(?:[.,]\d+)?\s*)ммоль\s*\/\s*л/gi, "$1mmol/L");
+  }
+  if (source.includes("10^9/L")) {
+    output = output.replace(/(\d+(?:[.,]\d+)?\s*)10\^9\s*\/\s*л/gi, "$110^9/L");
+  }
+  if (source.includes("10^12/L")) {
+    output = output.replace(/(\d+(?:[.,]\d+)?\s*)10\^12\s*\/\s*л/gi, "$110^12/L");
+  }
+  return output;
+};
+
+const restoreSourceMedicalCodeMentions = (original: string, translated: string) => {
+  if (!original || !translated) return translated;
+  let output = translated;
+  const source = String(original);
+  if (source.includes("RET%")) {
+    output = output.replace(/процент[а]?\s+RET#/gi, "RET%");
+  }
+  if (source.includes("LYM")) {
+    output = output.replace(/повышение лимфоцитов и незрелых гранулоцитов/gi, "повышение LYM и незрелых гранулоцитов");
+  }
+  if (source.includes("NEU")) {
+    output = output.replace(
+      /Повышение нейтрофилов с гиперсегментацией ядра \(NSH#\)/g,
+      "Повышение нейтрофилов (NEU) с гиперсегментацией ядра (NSH#)"
+    );
+  }
+  if (source.includes("HPLC")) {
+    output = output.replace(/ВЭЖХ/g, "HPLC");
+  }
+  return output;
+};
+
 const fixProtectedMedicalTokenSpacing = (translated: string) =>
   String(translated || "")
     .replace(VITAMIN_B12_REGEX, "B12")
+    .replace(/\bTh\s+([12])(?=\b|[-\s]?типа\b)/g, "Th$1")
+    .replace(/\bB\s+6\b/g, "B6")
     .replace(/\bB12\/\s+ou\b/gi, "B12 ou")
+    .replace(/\bB12\/\s+или/gi, "B12 или")
     .replace(/B12\s*\/\s*\//g, "B12/")
-    .replace(/\bvitamine\s+RBC\s+0_+\b/gi, "vitamine B12");
+    .replace(/витамина\s+RBC\s+0_+\b/gi, "витамина B12")
+    .replace(/витамин\s+RBC\s+0_+\b/gi, "витамин B12")
+    .replace(/\bvitamine\s+RBC\s+0_+\b/gi, "vitamine B12")
+    .replace(/\bvitamina\s+RBC\s+0_+\b/gi, "vitamina B12");
 
 const fixBracketArtifacts = (text: string) => {
   if (!text) return text;
@@ -647,14 +780,18 @@ export const polishTranslation = (
   refined = fixBracketArtifacts(refined);
   refined = fixEnglishGlueArtifacts(original || "", refined, targetLang);
   refined = fixRussianEnglishResidue(refined, targetLang);
+  refined = fixRussianChineseResidue(refined, targetLang);
   refined = restoreMedicalCodePlaceholderArtifacts(original || "", refined);
   refined = restoreMedicalCodeSuffixes(original || "", refined);
+  refined = restoreSourceUnitNotation(original || "", refined);
+  refined = restoreSourceMedicalCodeMentions(original || "", refined);
   refined = fixProtectedMedicalTokenSpacing(refined);
   refined = enforceGlossary(original || "", refined, targetLang);
   refined = enforceSeedTerminology(original || "", refined, targetLang);
   refined = adjustLongFormStatus(refined);
   refined = restoreFrenchNumericMonth(original || "", refined, targetLang);
-  refined = fixFrenchDiacritics(refined, targetLang);
+  refined = fixTargetDiacritics(refined, targetLang);
   refined = fixFrenchChineseResidue(refined, targetLang);
+  refined = fixPortugueseGrammarArtifacts(refined, targetLang);
   return refined;
 };

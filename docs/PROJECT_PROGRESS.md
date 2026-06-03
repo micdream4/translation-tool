@@ -1,5 +1,20 @@
 # 项目进度
 
+## v0.0.111
+
+- 完成 `local-data/inbox/` 中 9 个新增 Excel 文件的三语交付：法语、俄语、葡语各 9 个输出，统一输出到 `local-data/done/2026-06-02-deepseek-v4-flash-excel/`。
+- 三语最终综合审计均通过：French / Russian / Portuguese 均为 `inputFiles=9`、`outputFiles=9`、`hardFailureCount=0`、`warningCount=0`。
+- 俄语批处理期间修复多类真实文件问题：医学缩写 profile 允许项、俄语残留中文后处理、`B12` placeholder 污染恢复、单位表示恢复、`HPLC` 保护、内部状态码不误报；均沉淀为回归断言和本地 issue 包。
+- 葡语批处理期间修复 `vitamina RBC 0__ -> vitamina B12`、`NSH# -> NSH%` 医学代码后缀漂移、`1～2 周 -> 1-2 semanas` 数字范围误报，以及葡语重音/正字法和模板语法问题。
+- `utils/languageProfiles.ts` 增加葡语高置信医学正字法 profile，覆盖 `infecção`、`reação`、`leucócitos`、`distúrbio`、`elevação`、`fármacos`、`microcíticas` 等真实文件高频风险。
+- `utils/postprocess.ts` 增加葡语上下文语法 artifact 修复，覆盖 `Por favor, análise`、句首 `Análise em conjunto`、`e comum/e necessário/e observado`、`esta elevado`、`à direita/à esquerda` 等不能全局替换的上下文场景。
+- `quality/checks.ts` 将源文医学代码精确缺失纳入占位符/代码保护类问题，能拦截 `NSH#` 被模型改成 `NSH%` 这类同 base 不同后缀问题。
+- 本轮使用只读 multi-agent 复核葡语 9 个输出；agent 未发现结构、占位符、代码、ID、数字单位类硬问题，但补捉到葡语正字法/语法风险；已修复并二次扫描清零。
+- 新建/更新本地 issue 包，包括俄语医学缩写、中文残留、B12 placeholder、单位保护、内部状态码/短句，以及葡语 code/accent/placeholder 问题。
+- 最终葡语独立扫描结果：文件数量、sheet 名、维度、合并区域、列宽/行高、公式、样式、非字符串值、锁定 ID 字段、中文残留、占位符、医学代码、单位、数字、B12/HPLC 均为 0 问题；针对 multi-agent 点名的葡语正字法风险扫描也为 0 命中。
+- 回归 smoke 扩展到 Russian / French / Portuguese profile，覆盖俄语医学代码/单位/B12/HPLC 修复、法语重音、葡语正字法、医学代码后缀保护和模板语法 artifact。
+- 版本号更新为 `v0.0.111`。
+
 ## v0.0.110
 
 - 完成 `local-data/inbox/` 中 9 个新增 Excel 文件的法语交付版重写，最终输出目录仍为 `local-data/done/2026-06-02-deepseek-v4-flash-excel/`。

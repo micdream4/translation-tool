@@ -35,7 +35,7 @@
 
 ## 项目当前状态
 
-当前版本：`v0.0.110`。
+当前版本：`v0.0.111`。
 
 稳定地址：
 
@@ -46,14 +46,14 @@ https://translation-tool-917.pages.dev
 最近一次确认部署：
 
 ```text
-v0.0.110 待本轮 push & deploy 后在最终答复中确认。
+v0.0.111 待本轮 push & deploy 后在最终答复中确认。
 ```
 
-## 2026-06-02 当前 Excel 法语批处理交接
+## 2026-06-03 当前 Excel 三语批处理交接
 
-当前目标：先把 `local-data/inbox/` 中 9 个新增 Excel 文件全部翻译成法语，完成后做独立 QA 扫描；如果中途发现系统性问题，必须建立 `local-data/issues/` 本地 issue 包，沉淀为 profile、术语、回归测试或 QA 规则，并在修复后 push & deploy。
+当前目标：把 `local-data/inbox/` 中 9 个新增 Excel 文件全部翻译成法语、俄语、葡语，完成后做基于原文档的综合 QA、独立结构扫描和抽查；如果中途发现系统性问题，必须建立 `local-data/issues/` 本地 issue 包，沉淀为 profile、术语、回归测试或 QA 规则，并在修复后 push & deploy。
 
-当前状态：法语 9/9 已完成，已用原始 xlsx 底版保格式重写，并通过坐标综合审计与独立扫描；下一步可基于主流程继续俄语/葡语，并把旁路 QA 拆给只读 agent。
+当前状态：法语、俄语、葡语均 9/9 已完成，已用原始 xlsx 底版保格式重写，并通过坐标综合审计与独立扫描；葡语额外经过只读 multi-agent 抽查，发现的正字法/语法问题已修复并复扫清零。
 
 输入文件共 9 个：
 
@@ -81,29 +81,29 @@ local-data/done/2026-06-02-deepseek-v4-flash-excel/
 local-data/batch-runs/2026-06-02-deepseek-v4-flash-excel/translate-inbox-excel-deepseek.mjs
 ```
 
-当前运行命令：
+本轮批处理主命令示例：
 
 ```bash
 node local-data/batch-runs/2026-06-02-deepseek-v4-flash-excel/translate-inbox-excel-deepseek.mjs --targets=French --batch-size=5 --retry-passes=1
 ```
 
-已完成并通过独立 QA sweep 的法语输出 9 个：
+已完成并通过 QA 的输出：French 9 个、Russian 9 个、Portuguese 9 个。文件名前缀分别为：
 
 ```text
-Translated_French_BA212+AI解读-二次审核-白细胞增高-20251226.xlsx
-Translated_French_BA212+AI解读-二次审核-白细胞正常-20251226.xlsx
-Translated_French_BA212+AI解读-二次审核-白细胞降低-20251226.xlsx
-Translated_French_BA212+AI解读-二次审核-红细胞与血红蛋白-20251226.xlsx
-Translated_French_独立组合更新-20260330.xlsx
-Translated_French_白细胞增高-AWBC.xlsx
-Translated_French_白细胞正常-AWBC.xlsx
-Translated_French_白细胞降低-AWBC.xlsx
-Translated_French_红细胞和血红蛋白-SRBC.xlsx
+Translated_French_*.xlsx
+Translated_Russian_*.xlsx
+Translated_Portuguese_*.xlsx
 ```
 
-最终坐标综合审计：`inputFiles=9`、`outputFiles=9`、`hardFailureCount=0`、`warningCount=0`。
+最终坐标综合审计：
 
-最终独立扫描：`cjkCells=0`、`placeholderCells=0`、`protectedMismatches=0`、`styleMismatches=0`、`formulaMismatches=0`。
+```text
+French: inputFiles=9, outputFiles=9, hardFailureCount=0, warningCount=0
+Russian: inputFiles=9, outputFiles=9, hardFailureCount=0, warningCount=0
+Portuguese: inputFiles=9, outputFiles=9, hardFailureCount=0, warningCount=0
+```
+
+最终独立扫描要点：三语输出均保留原 workbook 结构；葡语最终扫描中文残留、占位符、医学代码、单位、数字、B12/HPLC、公式、样式、行高列宽、合并区域、锁定 ID 字段均为 0 问题。
 
 本轮已修复并部署的线上问题：
 
@@ -112,12 +112,15 @@ Translated_French_红细胞和血红蛋白-SRBC.xlsx
 3. v0.0.108 / `166c13d`：修复术语 seed 中 `大细胞性贫血` 法语 `Anemie macrocytaire` 缺重音问题，重新生成 `utils/generatedTerminology.ts`，新增法语/葡语术语重音回归断言。
 4. v0.0.109：修复法语输出 QA sweep 发现的历史 `id` 列污染和 `序号` 中文短标签残留；新增 `序号` 三语确定译文和回归断言，本地批处理已改为 skip 前先 QA。
 5. v0.0.110：修复 Excel 导出样式丢失，新增基于原始 xlsx 的 XML patch 保格式导出；扩展医学代码伪 placeholder 检测、后缀计数修复、法语重音 profile、B12 斜杠和数字月份格式规则；9 个法语输出最终 QA 全 0。
+6. v0.0.111：完成 9 个 Excel 的俄语和葡语输出，并复核法语；扩展俄语/葡语 profile、后处理和 QA 规则，修复 `vitamina RBC 0__`、`NSH# -> NSH%`、俄语 CJK 残留、单位/HPLC 保护、葡语重音和 `Por favor, análise` 等真实文件问题；三语综合审计全 0。
 
 质量注意事项：
 
 1. 缺少法语标准重音属于翻译质量错误，不应交付；例如 `Anemie` 应为 `Anémie`，`suggerer` 应为 `suggérer`。
-2. Excel 回写必须继续保护 UUID、ID、代码、公式、sheet 数、行列位置和原格式；不要让多个进程同时写同一输出文件。
-3. 用户提到多 agent 后，可以在法语完成后拆成“主翻译进程串行写 Excel”和“旁路 QA agent 只读扫描输出”的并行方式，避免写冲突。
+2. 缺少葡语标准重音也属于翻译质量错误，不应交付；例如 `leucocitos` 应为 `leucócitos`，`elevacao` 应为 `elevação`。
+3. `analise/análise`、`e/é`、`esta/está` 属于上下文相关词，不能全局替换，只能在明确医学报告模板或谓语上下文中修复。
+4. Excel 回写必须继续保护 UUID、ID、代码、公式、sheet 数、行列位置和原格式；不要让多个进程同时写同一输出文件。
+5. 多 agent 适合做只读 QA 和语言抽查，不要让多个 agent 同时写同一批 Excel 输出。
 
 最近已完成：
 

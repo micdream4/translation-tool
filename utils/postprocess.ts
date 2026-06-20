@@ -219,6 +219,22 @@ const FRENCH_CHINESE_RESIDUE_FIXES: Array<[RegExp, string]> = [
   [/复合([A-Za-zÀ-ÖØ-öø-ÿœŒ])/g, "complexe $1"],
   [/复合/g, "complexe"]
 ];
+const FRENCH_GRAMMAR_ARTIFACT_FIXES: Array<[RegExp, string]> = [
+  [/\binfection a (cytomégalovirus|toxoplasme)\b/gi, "infection à $1"],
+  [/\binfection a EB virus\b/gi, "infection par le virus EB"],
+  [/\bréaction a une infection\b/gi, "réaction à une infection"],
+  [/\bdue a une infection\b/gi, "due à une infection"],
+  [/\bdue a (un|une|des?|l')\b/gi, "due à $1"],
+  [/\bdû a (un|une|des?|l')\b/gi, "dû à $1"],
+  [/\bdues a (un|une|des?|l')\b/gi, "dues à $1"],
+  [/\bcommencé a accélérer\b/gi, "commencé à accélérer"],
+  [/\bréaction compensatoire a l'anémie\b/gi, "réaction compensatoire à l'anémie"],
+  [/\baider a déterminer\b/gi, "aider à déterminer"],
+  [/\bl'organisme a combattre\b/gi, "l'organisme à combattre"],
+  [/\bneutrophiles a noyau\b/gi, "neutrophiles à noyau"],
+  [/\ba noyau en batonnet\b/gi, "à noyau en bâtonnet"],
+  [/\bà noyau en batonnet\b/gi, "à noyau en bâtonnet"]
+];
 const MEDICAL_CODE_REGEX =
   /(?<![A-Za-z0-9])(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)(?:[#%])?(?![A-Za-z0-9])/g;
 const MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX =
@@ -266,6 +282,19 @@ const EXACT_SHORT_SOURCE_TRANSLATIONS: Record<string, Record<string, string>> = 
     可能疾病1: "Doença possível 1",
     可能疾病2: "Doença possível 2",
     可能疾病3: "Doença possível 3"
+  },
+  italian: {
+    名称: "Nome",
+    几率: "Probabilità",
+    分析: "Analisi",
+    序号: "N.",
+    解读: "Interpretazione",
+    总结1: "Sintesi 1",
+    总结2: "Sintesi 2",
+    总结3: "Sintesi 3",
+    可能疾病1: "Possibile malattia 1",
+    可能疾病2: "Possibile malattia 2",
+    可能疾病3: "Possibile malattia 3"
   }
 };
 const ANALYZER_PREFIX_WORDS = [
@@ -545,6 +574,7 @@ const normalizeTargetKey = (targetLang?: TargetLanguage) => {
   if (normalized.includes("french")) return "french";
   if (normalized.includes("russian")) return "russian";
   if (normalized.includes("portuguese")) return "portuguese";
+  if (normalized.includes("italian")) return "italian";
   return "";
 };
 
@@ -588,6 +618,44 @@ const fixFrenchChineseResidue = (translated: string, targetLang?: TargetLanguage
   return output;
 };
 
+const fixFrenchGrammarArtifacts = (translated: string, targetLang?: TargetLanguage) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
+  let output = translated;
+  FRENCH_GRAMMAR_ARTIFACT_FIXES.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
+  return output;
+};
+
+const PORTUGUESE_BR_LOCALE_FIXES: Array<[RegExp, string]> = [
+  [/\binfeção\b/gi, "infecção"],
+  [/\binfeções\b/gi, "infecções"],
+  [/\binfeciosa\b/gi, "infecciosa"],
+  [/\binfeciosas\b/gi, "infecciosas"],
+  [/\binfecioso\b/gi, "infeccioso"],
+  [/\binfeciosos\b/gi, "infecciosos"],
+  [/\bsistémica\b/gi, "sistêmica"],
+  [/\bsistémicas\b/gi, "sistêmicas"],
+  [/\bsistémico\b/gi, "sistêmico"],
+  [/\bsistémicos\b/gi, "sistêmicos"],
+  [/\bdetetada\b/gi, "detectada"],
+  [/\bdetetado\b/gi, "detectado"],
+  [/\bparotidite\s+epid[ée]mica\b/gi, "caxumba"]
+];
+
+const fixPortugueseBrazilianLocaleArtifacts = (
+  translated: string,
+  targetLang?: TargetLanguage
+) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("portuguese")) return translated;
+  let output = translated;
+  output = output.replace(/\bDetetou-se\b/g, "Detectou-se").replace(/\bdetetou-se\b/g, "detectou-se");
+  PORTUGUESE_BR_LOCALE_FIXES.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
+  return output;
+};
+
 const fixPortugueseGrammarArtifacts = (translated: string, targetLang?: TargetLanguage) => {
   if (!translated || !String(targetLang || "").toLowerCase().includes("portuguese")) return translated;
   let output = translated;
@@ -598,13 +666,67 @@ const fixPortugueseGrammarArtifacts = (translated: string, targetLang?: TargetLa
   output = output.replace(/\bpós[-\s]+operatório\b/gi, "pós-operatório");
   output = output.replace(/\ba esquerda\b/gi, "à esquerda");
   output = output.replace(/\ba direita\b/gi, "à direita");
-  output = output.replace(/\besta\s+(elevad[oa]s?|comprometid[oa]s?|associad[oa]s?|relacionad[oa]s?|presente|ausente|em\b)/gi, "está $1");
+  output = output.replace(/\bdesvio nuclear para à direita\b/gi, "desvio nuclear à direita");
+  output = output.replace(/\bdesvio para à direita\b/gi, "desvio à direita");
+  output = output.replace(/\bpara à direita\b/gi, "para a direita");
+  output = output.replace(/\bp[oó]s[-\s]+infecção\b/gi, "pós-infecção");
+  output = output.replace(/\bpos[-\s]+infec[cç][aã]o\b/gi, "pós-infecção");
+  output = output.replace(/\bpos[-\s]+trauma\b/gi, "pós-trauma");
+  output = output.replace(/\bma\s+absorção\b/gi, "má absorção");
+  output = output.replace(/\b(o número de eritrócitos\s*\(RBC\))\s+é\s+(a hemoglobina\s*\(HGB\)\s+est[ãa]o)\b/gi, "$1 e $2");
+  output = output.replace(
+    /\besta\s+(atualmente|respondendo|reagindo|fazendo|aumentando|diminu[ií]d[oa]s?|elevad[oa]s?|comprometid[oa]s?|associad[oa]s?|relacionad[oa]s?|presente|ausente|normal|em\b|frequentemente|aumentad[oa]s?|ativad[oa]s?|reduzid[oa]s?|suprimid[oa]s?|compat[íi]vel|envolvid[oa]s?)/gi,
+    "está $1"
+  );
+  output = output.replace(
+    /\bestao\s+(atualmente|respondendo|reagindo|fazendo|aumentando|diminu[ií]d[oa]s?|elevad[oa]s?|comprometid[oa]s?|associad[oa]s?|relacionad[oa]s?|presentes|ausentes|normais|em\b|frequentemente|aumentad[oa]s?|ativad[oa]s?|reduzid[oa]s?|suprimid[oa]s?|compat[íi]veis|envolvid[oa]s?)/gi,
+    "estão $1"
+  );
+  output = output.replace(
+    /\b(levando|leva|levou)\s+a\s+Anemia\b/g,
+    "$1 à anemia"
+  );
+  output = output.replace(
+    /\b(levando|leva|levou)\s+a\s+(diminuição|redução|alteração|reação|infecção|inflamação|anemia)\b/gi,
+    "$1 à $2"
+  );
+  output = output.replace(
+    /\b(devido|associad[oa]s?|relacionad[oa]s?|secundári[oa]s?|resposta)\s+a\s+(infecção|inflamação|reação|alteração|condição|situação|diminuição|redução|anemia)\b/gi,
+    "$1 à $2"
+  );
+  output = output.replace(/\bem resposta a\s+(infecção|inflamação|reação)\b/gi, "em resposta à $1");
   output = output.replace(/\b(AWBC|WBC|RBC|HGB|NEU|LYM|MON|EOS|BAS|ALY|NST#?|NSG#?|NSH#?|RET#?|RET%|PLT)([^.;,\n]{0,80}?)\s+e\s+(uma?|a|o|comum|observad[oa]s?|predominante|impulsionad[oa]s?|consistente|compat[íi]vel|caracter[íi]stic[oa]s?|a\s+manifestação|uma\s+manifestação)\b/g, "$1$2 é $3");
   output = output.replace(/\b((?:O|A|Os|As)\s+[^.;,\n]{1,100}?)\s+e\s+(comum|observad[oa]s?|predominante|impulsionad[oa]s?|consistente|compat[íi]vel|caracter[íi]stic[oa]s?|a\s+manifestação|uma\s+manifestação)\b/gi, "$1 é $2");
   output = output.replace(/\b(elevação|diminuição|infecção|inflamação|reação|anemia|neutropenia|leucopenia|basofilia|eosinofilia|linfocitose|monocitose|distúrbio)([^.;,\n]{0,80}?)\s+e\s+(comum|observad[oa]s?|predominante|impulsionad[oa]s?|consistente|compat[íi]vel|caracter[íi]stic[oa]s?|a\s+manifestação|uma\s+manifestação)\b/gi, "$1$2 é $3");
-  output = output.replace(/\be\s+(necessári[oa]s?|normal|comum|visto|vista|observad[oa]s?|compat[íi]vel|predominante)\b/gi, "é $1");
+  output = output.replace(/\bo que\s+e\s+/gi, "o que é ");
+  output = output.replace(/\bque\s+e\s+(?:do tipo|uma?|o|a)\b/gi, (match) =>
+    match.replace(/\be\b/i, "é")
+  );
+  output = output.replace(
+    /\b(tipo de anemia|estado anêmico|padrão anêmico|sistema hematopoético[^.;,\n]{0,60}|indicadores? eritrocitários[^.;,\n]{0,60}|neutrofilia|anemia|esse tipo de anemia|essa combinação|este conjunto)\s+e\s+(mais\s+comum|consistente|compat[íi]vel|macroc[íi]tic[ao]s?|microc[íi]tic[ao]s?|hipocr[oô]mic[ao]s?|regenerativ[ao]s?|uma\s+resposta|um\s+processo|distúrbio)\b/gi,
+    "$1 é $2"
+  );
+  output = output.replace(
+    /\be\s+(altamente|mais\s+prov[áa]vel|mais\s+comum|cr[oô]nic[ao]s?|agud[ao]s?|insuficiente|do\s+tipo|uma?\s+manifestação|uma\s+resposta|um\s+processo|distúrbio|devid[ao]s?|necessári[oa]s?|normal|comum|visto|vista|observ[áa]vel|observad[oa]s?|compat[íi]vel|predominante|macroc[íi]tic[ao]s?|microc[íi]tic[ao]s?|hipocr[oô]mic[ao]s?|regenerativ[ao]s?|t[íi]pic[oa]s?)\b/gi,
+    "é $1"
+  );
   output = output.replace(/\b(alterações|indicadores|parâmetros|resultados)([^.;,\n]{0,80}?)\s+tem\s+(correlação|relação|significado|origem)\b/gi, "$1$2 têm $3");
   return output;
+};
+
+const fixItalianMedicalCodeOmissions = (
+  original: string,
+  translated: string,
+  targetLang?: TargetLanguage
+) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("italian")) return translated;
+  if (!/\bNEU\b/.test(original) || !/(^|[^A-Za-z0-9])NSH#(?![A-Za-z0-9])/.test(original) || /\bNEU\b/.test(translated)) {
+    return translated;
+  }
+  return translated.replace(
+    /\b(L['’]aumento\s+dei\s+)neutrofili\s+polisegmentati\s*\(NSH#\)/i,
+    "$1neutrofili (NEU) e dei neutrofili polisegmentati (NSH#)"
+  );
 };
 
 const restoreFrenchNumericMonth = (
@@ -792,6 +914,9 @@ export const polishTranslation = (
   refined = restoreFrenchNumericMonth(original || "", refined, targetLang);
   refined = fixTargetDiacritics(refined, targetLang);
   refined = fixFrenchChineseResidue(refined, targetLang);
+  refined = fixFrenchGrammarArtifacts(refined, targetLang);
+  refined = fixPortugueseBrazilianLocaleArtifacts(refined, targetLang);
   refined = fixPortugueseGrammarArtifacts(refined, targetLang);
+  refined = fixItalianMedicalCodeOmissions(original || "", refined, targetLang);
   return refined;
 };

@@ -1326,7 +1326,7 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   assert.match(modelReviewSource, /penalize Simplified Chinese characters/);
 });
 
-test("Russian, French, and Portuguese profiles flag high-confidence source-language residue", async () => {
+test("Russian, French, Portuguese, and Italian profiles flag high-confidence source-language residue", async () => {
   const { isLikelyTargetLanguage, detectUntranslatedCells } = await bundleTsModule(
     path.join(repoRoot, "utils/language.ts")
   );
@@ -1334,6 +1334,7 @@ test("Russian, French, and Portuguese profiles flag high-confidence source-langu
   const {
     collectPortugueseDiacriticRisks,
     collectFrenchDiacriticRisks,
+    collectTargetDiacriticRisks,
     TARGET_LANGUAGE_PROFILES,
     getRussianResidueProfile,
     getTargetLanguageProfile,
@@ -1534,14 +1535,67 @@ test("Russian, French, and Portuguese profiles flag high-confidence source-langu
   assert.ok(TARGET_LANGUAGE_PROFILES.french.englishResidueWords.includes("quickly"));
   assert.ok(TARGET_LANGUAGE_PROFILES.french.diacriticRiskWords.some((item) => item.plain === "hemoglobine"));
   assert.ok(TARGET_LANGUAGE_PROFILES.portuguese.diacriticRiskWords.some((item) => item.plain === "infeccao"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.italian.diacriticRiskWords.some((item) => item.plain === "puo"));
   assert.equal(getTargetLanguageProfile("French")?.target, "French");
+  assert.equal(getTargetLanguageProfile("Italian")?.target, "Italian");
   assert.equal(getTargetLanguageProfile("Portuguese")?.target, "Portuguese");
+  assert.equal(getTargetLanguageProfile("Portuguese")?.preferredLocale, "pt-BR");
+  assert.match(getTargetLocaleInstruction("Italian"), /standard Italian/);
+  assert.match(getTargetLocaleInstruction("Italian"), /è/);
+  assert.match(getTargetLocaleInstruction("Portuguese"), /Brazilian Portuguese/);
+  assert.match(getTargetLocaleInstruction("Portuguese"), /infecção/);
+  assert.match(getTargetLocaleInstruction("Portuguese"), /infeção/);
   assert.equal(isLikelyTargetLanguage("Remplissage de l'échantillon", "French"), true);
   assert.equal(isLikelyTargetLanguage("Hemoglobine elevee avec anemie legere.", "French"), false);
   assert.equal(isLikelyTargetLanguage("Hémoglobine élevée avec anémie légère.", "French"), true);
   assert.equal(isLikelyTargetLanguage("Quickly squeeze", "French"), false);
   assert.equal(isLikelyTargetLanguage("The blue button is lifted", "French"), false);
   assert.equal(isLikelyTargetLanguage("Insérez le flacon quadruple dans l'injecteur d'échantillon.", "French"), true);
+  assert.equal(
+    isLikelyTargetLanguage(
+      "La leucopenia (WBC ridotto) riflette spesso una disfunzione del midollo osseo o un aumento della distruzione periferica.",
+      "Italian"
+    ),
+    true
+  );
+  assert.equal(
+    detectUntranslatedCells(
+      [
+        {
+          content:
+            "I risultati dell'esame mostrano un aumento dei monociti (MON), dei neutrofili immaturi (NST) e dei linfociti atipici (ALY), suggerendo che l'organismo potrebbe trovarsi in uno stato infiammatorio acuto o cronico."
+        },
+        {
+          content:
+            "In sintesi, i risultati dell'esame mostrano un aumento dei neutrofili (NEU), dei monociti (MON#), dei neutrofili immaturi (NSH#) e delle cellule non classificate (ALY#)."
+        }
+      ],
+      "Italian"
+    ).length,
+    0
+  );
+  assert.deepEqual(
+    collectTargetDiacriticRisks("Puo indicare un processo piu attivo perche l'organismo reagisce cosi.", "Italian").map(
+      (item) => item.preferred
+    ),
+    ["può", "più", "perché", "così"]
+  );
+  assert.equal(
+    polishTranslation(
+      "提示可能存在更活跃的反应。",
+      "Puo indicare un processo piu attivo perche l'organismo reagisce cosi.",
+      "Italian"
+    ),
+    "Può indicare un processo più attivo perché l'organismo reagisce così."
+  );
+  assert.equal(
+    polishTranslation(
+      "中性粒细胞（NEU）多分叶核细胞（NSH#）升高，提示骨髓对中性粒细胞的需求增加。",
+      "L'aumento dei neutrofili polisegmentati (NSH#) suggerisce un aumento del fabbisogno di neutrofili da parte del midollo osseo.",
+      "Italian"
+    ),
+    "L'aumento dei neutrofili (NEU) e dei neutrofili polisegmentati (NSH#) suggerisce un aumento del fabbisogno di neutrofili da parte del midollo osseo."
+  );
   assert.equal(isProfileEnglishResidueToken("squeeze", "French"), true);
   assert.equal(hasProfileEnglishResidue("The blue button is lifted", "French"), true);
   assert.equal(hasFrenchDiacriticRisk("Hemoglobine elevee avec anemie legere.", "French"), true);
@@ -1626,12 +1680,85 @@ test("Russian, French, and Portuguese profiles flag high-confidence source-langu
     ),
     "Analise em conjunto com as manifestações clínicas!"
   );
+  assert.equal(
+    polishTranslation(
+      "葡语应使用巴葡。",
+      "Detetou-se infeção viral infeciosa com parotidite epidémica e achados sistémicos.",
+      "Portuguese"
+    ),
+    "Detectou-se infecção viral infecciosa com caxumba e achados sistêmicos."
+  );
+  assert.equal(
+    polishTranslation(
+      "炎症恢复期出现一过性核右移，属于正常现象。",
+      "No periodo de recuperação inflamatória ocorre desvio nuclear para à direita transitório, sendo normal.",
+      "Portuguese"
+    ),
+    "No período de recuperação inflamatória ocorre desvio nuclear à direita transitório, sendo normal."
+  );
+  assert.equal(
+    polishTranslation(
+      "综合各项指标变化，提示患者可能存在大细胞性贫血。",
+      "Este conjunto de anormalidades e altamente consistente; o que e uma manifestação tipica. O organismo esta respondendo a infeccao.",
+      "Portuguese"
+    ),
+    "Este conjunto de anormalidades é altamente consistente; o que é uma manifestação típica. O organismo está respondendo a infecção."
+  );
+  assert.equal(
+    polishTranslation(
+      "巴葡报告重音和动词修复。",
+      "O tipo de anemia e macrocitica; a neutrofilia e uma resposta rapida. A anemia e um processo cronico. O organismo esta reagindo. O quadro inclui ma absorcao, anemia aplastica, estado anemico, historia dietetica e aspiracao de medula ossea.",
+      "Portuguese"
+    ),
+    "O tipo de anemia é macrocítica; a neutrofilia é uma resposta rápida. A anemia é um processo crônico. O organismo está reagindo. O quadro inclui má absorção, anemia aplástica, estado anêmico, história dietética e aspiração de medula óssea."
+  );
+  assert.equal(
+    polishTranslation(
+      "巴葡报告补充重音和介词修复。",
+      "O organismo esta atualmente em uma situacao clinica pos-infeccao, levando a diminuicao da capacidade. Populacoes leucocitarias anormais e alteracoes hematicas podem ocorrer em situacoes de estresse continuo.",
+      "Portuguese"
+    ),
+    "O organismo está atualmente em uma situação clínica pós-infecção, levando à diminuição da capacidade. Populações leucocitárias anormais e alterações hemáticas podem ocorrer em situações de estresse contínuo."
+  );
+  assert.equal(
+    polishTranslation(
+      "巴葡 anemia 介词修复，但 continua 是动词不加重音。",
+      "O quadro continua estavel, levando a Anemia microcitica.",
+      "Portuguese"
+    ),
+    "O quadro continua estável, levando à anemia microcítica."
+  );
+  assert.deepEqual(
+    collectPortugueseDiacriticRisks(
+      "Funcao hematopoetica reduzida com citomegalovirus, manifestacoes clinicas, historico medico, mobilizacao e reducao.",
+      "Portuguese"
+    ).map((item) => item.preferred),
+    ["função", "hematopoética", "citomegalovírus", "manifestações", "clínicas", "histórico", "médico", "mobilização", "redução"]
+  );
+  assert.deepEqual(
+    collectPortugueseDiacriticRisks(
+      "Desnutricao com absorcao reduzida, anemia aplastica, estado anemico, historia dietetica, aspiracao de medula ossea, esfregaco sanguineo, exame fisico, confirmacao, classificacao e subpopulacao linfocitaria.",
+      "Portuguese"
+    ).map((item) => item.preferred).sort(),
+    ["absorção", "anêmico", "aplástica", "aspiração", "classificação", "confirmação", "desnutrição", "dietética", "esfregaço", "físico", "história", "linfocitária", "óssea", "sanguíneo", "subpopulação"].sort()
+  );
+  assert.deepEqual(
+    collectPortugueseDiacriticRisks(
+      "Situacao clinica com populacoes leucocitarias, eliminacao de parasitas, alteracoes hematicas, pos-infeccao e estresse continuo.",
+      "Portuguese"
+    ).map((item) => item.preferred).sort(),
+    ["alterações", "clínica", "contínuo", "eliminação", "hemáticas", "leucocitárias", "populações", "situação"].sort()
+  );
   assert.equal(polishTranslation("名称", "名称", "French"), "Nom");
   assert.equal(polishTranslation("几率", "几率", "Russian"), "Вероятность");
   assert.equal(polishTranslation("分析", "分析", "Portuguese"), "Análise");
+  assert.equal(polishTranslation("名称", "名称", "Italian"), "Nome");
+  assert.equal(polishTranslation("几率", "几率", "Italian"), "Probabilità");
+  assert.equal(polishTranslation("分析", "分析", "Italian"), "Analisi");
   assert.equal(polishTranslation("序号", "序号", "French"), "N°");
   assert.equal(polishTranslation("序号", "序号", "Russian"), "№");
   assert.equal(polishTranslation("序号", "序号", "Portuguese"), "N.º");
+  assert.equal(polishTranslation("序号", "序号", "Italian"), "N.");
   assert.equal(polishTranslation("大细胞性贫血", "Anemie macrocytaire", "French"), "Anémie macrocytaire");
   assert.equal(polishTranslation("大细胞性贫血", "Anemia macrocitica", "Portuguese"), "Anemia macrocítica");
   const frenchCompoundRepair = polishTranslation(
@@ -1719,6 +1846,30 @@ test("Russian, French, and Portuguese profiles flag high-confidence source-langu
       "French"
     ),
     "WBC et NEU diminués suggèrent une altération de la production de neutrophiles par la moelle osseuse."
+  );
+  assert.equal(
+    polishTranslation(
+      "中性粒细胞减少常见于病毒感染，导致机体抗感染能力下降。",
+      "La neutropénie est frequente dans les infections virales, les effets medicamenteux, entrainant une diminution de la capacite de l'organisme a combattre les infections.",
+      "French"
+    ),
+    "La neutropénie est fréquente dans les infections virales, les effets médicamenteux, entraînant une diminution de la capacité de l'organisme à combattre les infections."
+  );
+  assert.equal(
+    polishTranslation(
+      "巨细胞病毒感染、弓形虫感染。",
+      "infection a cytomégalovirus et infection a toxoplasme.",
+      "French"
+    ),
+    "infection à cytomégalovirus et infection à toxoplasme."
+  );
+  assert.equal(
+    polishTranslation(
+      "营养性巨幼细胞性贫血。",
+      "l'anemic megaloblastique nutritionnelle avec deviation nucleaire.",
+      "French"
+    ),
+    "l'anémie mégaloblastique nutritionnelle avec déviation nucléaire."
   );
   assert.equal(
     polishTranslation(

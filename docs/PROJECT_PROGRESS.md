@@ -1,5 +1,17 @@
 # 项目进度
 
+## v0.0.112
+
+- 对 9 份中文 Excel 的 French / Russian / Portuguese 输出做了更广泛的语义、地道性和报告展示质量抽查；新增本地 issue 包 `local-data/issues/2026-06-03-excel-trilingual-semantic-quality-audit/`，保留审计脚本、报告、抽样样本和高风险明细。
+- 用户确认 Portuguese 目标 locale 为巴西葡语（pt-BR）；Portuguese prompt、语言 profile 和后处理已明确 pt-BR，修复 `infeção/infeciosa/sistémico/parotidite epidémica` 等欧葡混用，以及 `funcao/reducao/citomegalovirus/anemico/classificacao/confirmacao` 等医学报告重音问题。
+- `utils/postprocess.ts` 新增窄范围 pt-BR 语法修复，覆盖 `esta/estao`、`e/é`、`ma absorção`、`para à direita` 等真实输出 artifact；`scripts/regressionSmoke.mjs` 已沉淀对应回归断言。
+- 已用保留样式回写脚本重写 9 份 `Translated_Portuguese_*.xlsx`，重新审计结果为 `structuralIssueCount=0`、`Portuguese riskPairCount=0`、`Russian riskPairCount=0`。
+- 随后按用户要求只完成 French 收尾：扩展 French 医学报告正字法 profile 和窄范围后处理，修复 `necessitant/evaluer/parametres/medicamenteux/entrainant/anemic megaloblastique/infection a cytomégalovirus` 等真实输出问题；重写 9 份 `Translated_French_*.xlsx` 后硬 QA 为 `okFiles=9/9`、`untranslatedCells=0`、`protectedMismatches=0`、`physicalMissingTargets=0`、`physicalResidualCjkTargets=0`，语义审计风险从 `295` 降到 `34` 个低置信候选，后续留待人工复审。
+- 继续完成目标中的 Italian 交付：9 份 `Translated_Italian_*.xlsx` 已生成并通过当前硬 QA，`okFiles=9/9`、`missingOutputs=0`、`untranslatedCells=0`、`protectedMismatches=0`、`physicalMissingTargets=0`、`physicalResidualCjkTargets=0`；四语语义审计中 Italian `riskPairCount=0`。
+- 人工同坐标抽样发现 Portuguese 仍有 `situacao/situacoes/populacoes/eliminacao/hematicas/pos-infeccao` 和 `levando a anemia` 等脚本漏检问题；已扩展 pt-BR profile、后处理和回归断言，并再次保留样式回写 9 份 Portuguese 输出。复扫结果：Portuguese 硬 QA `okFiles=9/9`，高置信无重音词扫描 `hitCount=0`，介词候选扫描 `hitCount=0`，语义审计 `Portuguese riskPairCount=0`。
+- 2026-06-11 设备配置前复核：将 9 份原文与 French / Russian / Portuguese / Italian 译文逐 workbook / sheet / cell 坐标比对，确认 sheet 顺序、`!ref`、合并区域、列宽/行高、非文本值、ID/编号锚点、identifier、源文医学代码、源非空单元格和目标额外单元格均无错位问题。复核时发现 Italian `白细胞正常-AWBC.xlsx` `AK39` 漏保留源文 `NEU` 代码，已在 `utils/postprocess.ts` 增加窄范围修复、在回归 smoke 中沉淀断言，并重新保留样式回写 9 份 Italian 输出；复扫结果四语 `idAnchorMismatches=0`、`identifierMismatches=0`、`sourceCodeMissingCells=0`、`missingTargetCells=0`、`targetExtraCellsOnSourceBlank=0`、`residualCjkTargets=0`。
+- 版本号更新为 `v0.0.112`；本地验证已通过 `typecheck`、`test`、`test:issue-regression`、`build`、`test:real-docs`。
+
 ## v0.0.111
 
 - 完成 `local-data/inbox/` 中 9 个新增 Excel 文件的三语交付：法语、俄语、葡语各 9 个输出，统一输出到 `local-data/done/2026-06-02-deepseek-v4-flash-excel/`。

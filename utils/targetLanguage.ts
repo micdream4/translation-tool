@@ -49,8 +49,13 @@ export const getTargetLocaleInstruction = (targetLang: TargetLanguage) => {
 - Do not output ASCII-only French for words that require accents.`;
   }
   if (normalized.includes("portuguese")) {
-    return `- Use standard Portuguese orthography with required diacritics where appropriate, especially medical/common terms such as possível, diminuição, reação, infecção and referência.
+    return `- Target locale is Brazilian Portuguese (pt-BR). Use Brazilian forms such as infecção, infecções, infecciosa, sistêmico and caxumba; do not use European Portuguese forms such as infeção, infeciosa, sistémico or parotidite epidémica.
+- Use standard Brazilian Portuguese orthography with required diacritics where appropriate, especially medical/common terms such as possível, diminuição, reação, infecção and referência.
 - Do not output ASCII-only Portuguese for words that require diacritics.`;
+  }
+  if (normalized.includes("italian")) {
+    return `- Use standard Italian medical/report wording with required accents where appropriate, especially function words such as è, può and più.
+- Do not leave Chinese or English natural-language text in Italian output unless it is a protected code, model name, unit, or abbreviation.`;
   }
   if (!isTraditionalChineseTaiwanTarget(targetLang)) return "";
   return `- Target locale is Traditional Chinese for Taiwan. Use natural Taiwanese Traditional Chinese medical/technical wording, not Simplified Chinese converted character-by-character.

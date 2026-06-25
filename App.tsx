@@ -9,6 +9,11 @@ import { useQualityWorkflow } from './hooks/useQualityWorkflow';
 import { parseExcelFile, exportToExcelPreservingStyles } from './utils/excel';
 import type { ExcelContext } from './utils/excel';
 import {
+  formatExcelSkipScopeSummary,
+  isExcelCellSkipped,
+  parseExcelSkipScope
+} from './utils/excelSkipScope';
+import {
   parseDocxFile,
   exportDocxFile,
   formatDocxCoverageSummary,
@@ -110,6 +115,7 @@ import {
   runQualityChecks,
   runQualityChecksOnUnits,
   PLACEHOLDER_REGEX,
+  type QualityCheckOptions,
   type QualitySeverity
 } from './utils/quality';
 import {
@@ -515,6 +521,7 @@ const App: React.FC = () => {
   const [stringErrorDetails, setStringErrorDetails] = useState<string | null>(null);
   const [stringAutoFix, setStringAutoFix] = useState<boolean>(true);
   const [runtimeProtectedTermsRaw, setRuntimeProtectedTermsRaw] = useState<string>('');
+  const [excelSkipScopeRaw, setExcelSkipScopeRaw] = useState<string>('');
   const [stringHistoryCount, setStringHistoryCount] = useState<number>(0);
   const [translationMemoryCount, setTranslationMemoryCount] = useState<number>(0);
   const [translationMemoryEnabled, setTranslationMemoryEnabled] = useState<boolean>(() => {
@@ -538,6 +545,29 @@ const App: React.FC = () => {
   const [pdfIssueDetails, setPdfIssueDetails] = useState<DocxIssueDetail[]>([]);
   const [docxStats, setDocxStats] = useState<{ total: number; translated: number }>({ total: 0, translated: 0 });
   const [pdfStats, setPdfStats] = useState<{ pages: number; total: number; translated: number }>({ pages: 0, total: 0, translated: 0 });
+  const excelSkipScope = useMemo(
+    () => parseExcelSkipScope(excelSkipScopeRaw, excelContext),
+    [excelSkipScopeRaw, excelContext]
+  );
+  const excelSkipScopeSummary = useMemo(
+    () => formatExcelSkipScopeSummary(excelSkipScope),
+    [excelSkipScope]
+  );
+  const shouldSkipExcelCell = (rowIndex: number, columnKey: string) =>
+    documentKind === 'excel' && isExcelCellSkipped(excelSkipScope, rowIndex, columnKey);
+  const excelQualityOptions = useMemo<QualityCheckOptions>(
+    () => ({
+      targetLang,
+      shouldIgnoreUnit: (unit) => shouldSkipExcelCell(unit.rowIndex, unit.columnKey)
+    }),
+    [targetLang, excelSkipScope, documentKind]
+  );
+  const untranslatedOptions = useMemo(
+    () => ({
+      shouldIgnoreCell: (rowIndex: number, columnKey: string) => shouldSkipExcelCell(rowIndex, columnKey)
+    }),
+    [excelSkipScope, documentKind]
+  );
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
   const translationMemorySessionRef = useRef<Map<string, string>>(new Map());
@@ -981,6 +1011,7 @@ const App: React.FC = () => {
     }
 
     setFile(uploadedFile);
+    setExcelSkipScopeRaw('');
     setSavedSnapshot(null);
     snapshotPromptKeyRef.current = '';
     setPreviewFocus(null);
@@ -1141,7 +1172,7 @@ const App: React.FC = () => {
         const translatedCount = flags.filter(Boolean).length;
         const remaining = Math.max(0, data.length - translatedCount);
         addLog(
-          `检测到本地进度：已翻译 ${translatedCount}/${data.length} 行，剩余 ${remaining} 行；未写入 ${writeFailed.length} 行。点击 Load Saved Progress 可恢复，或直接 Run Global Translation 重新开始。`
+          `检测到本地进度：已翻译 ${translatedCount}/${data.length} 行，剩余 ${remaining} 行；未写入 ${writeFailed.length} 行。${snapshot.excelSkipScopeRaw ? '包含 Excel 跳过行/列设置。' : ''}点击 Load Saved Progress 可恢复，或直接 Run Global Translation 重新开始。`
         );
         snapshotPromptKeyRef.current = promptKey;
       }
@@ -1189,6 +1220,7 @@ const App: React.FC = () => {
 
     const missing = savedSnapshot.missingRows ?? [];
     const writeFailed = savedSnapshot.writeFailedRows ?? [];
+    setExcelSkipScopeRaw(savedSnapshot.excelSkipScopeRaw || '');
     const translatedCount = flags.filter(Boolean).length;
     const progress = Math.round((translatedCount / data.length) * 100);
 
@@ -1254,12 +1286,13 @@ const App: React.FC = () => {
       records,
       translatedFlags: flags,
       missingRows,
-      writeFailedRows
+      writeFailedRows,
+      excelSkipScopeRaw
     });
   };
 
   const refreshTranslationIssues = (records: POCTRecord[]) => {
-    const summary = summarizeUntranslated(records, targetLang);
+    const summary = summarizeUntranslated(records, targetLang, untranslatedOptions);
     const refreshedMissing: number[] = [...summary.rowIndices];
     const summaryRows = new Set<number>(refreshedMissing);
     const mergedRowIndices = [...refreshedMissing];
@@ -1391,6 +1424,18 @@ const App: React.FC = () => {
     return `${sheetName}R${rowNo} / ${meta.columnLetter}列 / ${meta.headerName}${duplicateLabel}`;
   };
 
+  const restoreSkippedExcelCells = (row: POCTRecord, rowIndex: number) => {
+    if (documentKind !== 'excel' || excelSkipScope.cellCount === 0) return row;
+    const original = data[rowIndex] || {};
+    const output: POCTRecord = { ...row };
+    Object.keys(original).forEach((key) => {
+      if (shouldSkipExcelCell(rowIndex, key)) {
+        output[key] = original[key];
+      }
+    });
+    return output;
+  };
+
   const autoRepairExcelPlaceholders = (
     records: POCTRecord[],
     options?: { mutateState?: boolean; logLabel?: string }
@@ -1409,6 +1454,7 @@ const App: React.FC = () => {
       const nextRow: POCTRecord = { ...row };
 
       Object.entries(nextRow).forEach(([key, value]) => {
+        if (shouldSkipExcelCell(rowIndex, key)) return;
         if (typeof value !== 'string' || !PLACEHOLDER_REGEX.test(value)) return;
         const originalValue = originalRow[key];
         if (typeof originalValue !== 'string' || !originalValue.trim()) {
@@ -1478,6 +1524,10 @@ const App: React.FC = () => {
       const polished = applyPostprocessRow(original, row, targetLang);
       const output: POCTRecord = { ...polished };
       Object.entries(polished).forEach(([key, value]) => {
+        if (shouldSkipExcelCell(idx, key)) {
+          output[key] = original[key];
+          return;
+        }
         const originalValue = original[key];
         if (shouldLockCell(key, originalValue) && typeof originalValue === 'string') {
           output[key] = originalValue;
@@ -1504,7 +1554,7 @@ const App: React.FC = () => {
     setProcessedData(fixed);
     setTranslatedFlags(flags);
     persistProgress(fixed, flags, refreshedMissing, refreshedWriteFailed);
-    setQualityReport(runQualityChecks(data, fixed, { targetLang }));
+    setQualityReport(runQualityChecks(data, fixed, excelQualityOptions));
     resetSampleReviewState();
     addLog('Quality Fix: 已应用常见格式与 ID 修复。');
   };
@@ -1686,6 +1736,7 @@ const App: React.FC = () => {
     const seen = new Set<string>();
     data.forEach((row, rowIndex) => {
       Object.entries(row).forEach(([key, value]) => {
+        if (shouldSkipExcelCell(rowIndex, key)) return;
         if (typeof value !== 'string') return;
         const text = value.replace(/\s+/g, ' ').trim();
         if (!text || shouldLockCell(key, value) || !shouldTranslateValue(value, key)) return;
@@ -3004,15 +3055,28 @@ const App: React.FC = () => {
     const shouldResume = mode === 'resume' && processedData.length === data.length;
     const baseResults = data.map(row => ({ ...row }));
     const workingResults = shouldResume ? [...processedData] : baseResults;
+    const rowHasUnskippedTranslatableCell = (row: POCTRecord, rowIndex: number) =>
+      Object.entries(row).some(
+        ([key, value]) =>
+          !shouldSkipExcelCell(rowIndex, key) &&
+          typeof value === 'string' &&
+          value.trim() &&
+          !shouldLockCell(key, value) &&
+          shouldTranslateValue(value, key)
+      );
+    const rowNeedsUnskippedTranslation = (row: POCTRecord, rowIndex: number) =>
+      Object.entries(row).some(
+        ([key, value]) => !shouldSkipExcelCell(rowIndex, key) && cellNeedsTranslation(key, value, targetLang)
+      );
     const initialFlags =
       translationMode === 'selective'
-        ? data.map(row => (rowNeedsTranslation(row, targetLang) ? false : true))
-        : Array(data.length).fill(false);
+        ? data.map((row, rowIndex) => (rowNeedsUnskippedTranslation(row, rowIndex) ? false : true))
+        : data.map((row, rowIndex) => !rowHasUnskippedTranslatableCell(row, rowIndex));
     const workingFlags =
       shouldResume && translatedFlags.length === data.length
         ? [...translatedFlags]
         : [...initialFlags];
-    const resumeMissing = shouldResume ? summarizeUntranslated(workingResults, targetLang).rowIndices : [];
+    const resumeMissing = shouldResume ? summarizeUntranslated(workingResults, targetLang, untranslatedOptions).rowIndices : [];
     const workingMissing = new Set<number>(resumeMissing);
     const spreadsheetBatchSize = getSpreadsheetBatchSize();
 
@@ -3027,6 +3091,9 @@ const App: React.FC = () => {
       setWriteFailedRowIndices([]);
       setProcessingState(prev => ({ ...prev, status: 'processing', progress: 0, currentBatch: 0, total: data.length }));
       addLog(`Stage[translate]: 准备将 ${data.length} 行翻译为 [${targetLang}]`);
+      if (excelSkipScope.cellCount > 0) {
+        addLog(`Excel Skip Scope: ${excelSkipScopeSummary}`);
+      }
       if (translationMode === 'selective') {
         const skipped = initialFlags.filter(Boolean).length;
         if (skipped > 0) {
@@ -3090,6 +3157,7 @@ const App: React.FC = () => {
           const translatableCells: Array<{ rowIdx: number; key: string; value: string }> = [];
           pendingIndices.forEach((rowIdx) => {
             Object.entries(data[rowIdx]).forEach(([key, value]) => {
+              if (shouldSkipExcelCell(rowIdx, key)) return;
               if (
                 typeof value === 'string' &&
                 value.trim() &&
@@ -3127,6 +3195,9 @@ const App: React.FC = () => {
             const placeholdersForRow: Record<string, Record<string, string> | null> = {};
 
             Object.entries(row).forEach(([key, value]) => {
+              if (shouldSkipExcelCell(rowIdx, key)) {
+                return;
+              }
               if (typeof value !== 'string') {
                 return;
               }
@@ -3223,6 +3294,10 @@ const App: React.FC = () => {
               const leader = leaderByCell.get(`${item.rowIdx}\u0000${key}`);
               if (!leader) return;
               const originalValue = original[key];
+              if (shouldSkipExcelCell(item.rowIdx, key)) {
+                merged[key] = originalValue;
+                return;
+              }
               if (shouldLockCell(key, originalValue) || !shouldTranslateValue(originalValue, key)) {
                 merged[key] = originalValue;
                 return;
@@ -3258,19 +3333,27 @@ const App: React.FC = () => {
               });
             });
 
-            finalResults[item.rowIdx] = normalizeTerminology(merged, targetLang, data[item.rowIdx]);
+            finalResults[item.rowIdx] = restoreSkippedExcelCells(
+              normalizeTerminology(merged, targetLang, data[item.rowIdx]),
+              item.rowIdx
+            );
           });
           await rememberTranslationPairs(memoryPairs, memoryStats);
           logTranslationMemoryStats(`Batch ${batchNum}`, memoryStats);
 
           pendingIndices.forEach((rowIdx) => {
-            finalResults[rowIdx] = normalizeTerminology(
-              finalResults[rowIdx] || data[rowIdx],
-              targetLang,
-              data[rowIdx]
+            finalResults[rowIdx] = restoreSkippedExcelCells(
+              normalizeTerminology(
+                finalResults[rowIdx] || data[rowIdx],
+                targetLang,
+                data[rowIdx]
+              ),
+              rowIdx
             );
             const stillUntranslated =
-              detectUntranslatedCells([finalResults[rowIdx]], targetLang).length > 0;
+              detectUntranslatedCells([finalResults[rowIdx]], targetLang, {
+                shouldIgnoreCell: (_localRowIndex, columnKey) => shouldSkipExcelCell(rowIdx, columnKey)
+              }).length > 0;
             if (stillUntranslated) {
               incompleteRows.push(rowIdx);
               missingRows.add(rowIdx);
@@ -3289,7 +3372,7 @@ const App: React.FC = () => {
 
           const snapshot = finalResults.map(row => ({ ...row }));
           const flagsSnapshot = [...flags];
-          const summarySnapshot = summarizeUntranslated(snapshot, targetLang);
+          const summarySnapshot = summarizeUntranslated(snapshot, targetLang, untranslatedOptions);
           const missingSnapshot = summarySnapshot.rowIndices;
           const writeFailedSnapshot = Array.from(writeFailedRows).sort((a, b) => a - b);
           persistProgress(snapshot, flagsSnapshot, missingSnapshot, writeFailedSnapshot);
@@ -3316,7 +3399,7 @@ const App: React.FC = () => {
         }
 
         const completedCount = flags.filter(Boolean).length;
-        const finalSummary = summarizeUntranslated(finalResults, targetLang);
+        const finalSummary = summarizeUntranslated(finalResults, targetLang, untranslatedOptions);
         const missingSnapshot = finalSummary.rowIndices;
         const writeFailedSnapshot = Array.from(writeFailedRows).sort((a, b) => a - b);
         setMissingRowIndices(missingSnapshot);
@@ -3369,7 +3452,7 @@ const App: React.FC = () => {
   };
 
   const auditTranslation = async (records: POCTRecord[]) => {
-    const summary = summarizeUntranslated(records, targetLang);
+    const summary = summarizeUntranslated(records, targetLang, untranslatedOptions);
     const mergedRowIndices = [...summary.rowIndices];
     const filteredWriteFailed = writeFailedRowIndices.filter((idx) => mergedRowIndices.includes(idx));
     const mergedSummary: IssueSummaryState = {
@@ -3427,13 +3510,14 @@ const App: React.FC = () => {
         : processedData.length === data.length
           ? processedData
           : data;
-    const missingSummary = summarizeUntranslated(sourceRecords, targetLang);
+    const missingSummary = summarizeUntranslated(sourceRecords, targetLang, untranslatedOptions);
     const retryItems = buildExcelRetryTargets({
       rowIndices: uniqueIndices,
       details: missingSummary.details || [],
       originalRows: data,
       sourceRows: sourceRecords,
-      isRetryableCell: ({ columnKey, value, originalValue }) => {
+      isRetryableCell: ({ rowIndex, columnKey, value, originalValue }) => {
+        if (shouldSkipExcelCell(rowIndex, columnKey)) return false;
         const lockBasis = typeof originalValue === 'string' ? originalValue : value;
         return Boolean(value.trim()) && !shouldLockCell(columnKey, lockBasis) && !isNeutralToken(value.trim());
       },
@@ -3573,9 +3657,14 @@ const App: React.FC = () => {
           }
         });
 
-        baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang, data[rowIdx]);
+        baseProcessed[rowIdx] = restoreSkippedExcelCells(
+          normalizeTerminology(merged, targetLang, data[rowIdx]),
+          rowIdx
+        );
         const stillUntranslated =
-          detectUntranslatedCells([baseProcessed[rowIdx]], targetLang).length > 0;
+          detectUntranslatedCells([baseProcessed[rowIdx]], targetLang, {
+            shouldIgnoreCell: (_localRowIndex, columnKey) => shouldSkipExcelCell(rowIdx, columnKey)
+          }).length > 0;
         const isComplete = !stillUntranslated;
         updatedFlags[rowIdx] = isComplete;
         if (isComplete) {
@@ -3588,7 +3677,7 @@ const App: React.FC = () => {
 
       const synced = baseProcessed.map(row => ({ ...row }));
       const flagsSnapshot = [...updatedFlags];
-      const summarySnapshot = summarizeUntranslated(synced, targetLang);
+      const summarySnapshot = summarizeUntranslated(synced, targetLang, untranslatedOptions);
       const missingSnapshot = summarySnapshot.rowIndices;
       const writeFailedSnapshot = Array.from(writeFailedSet).sort((a, b) => a - b);
       setProcessedData(synced);
@@ -3601,7 +3690,7 @@ const App: React.FC = () => {
     const rawSynced = baseProcessed.map(row => ({ ...row }));
     const { records: synced, fixedCells: retryAutoFixed } = autoRepairExcelPlaceholders(rawSynced);
     const flagsSnapshot = [...updatedFlags];
-    const summary = summarizeUntranslated(synced, targetLang);
+    const summary = summarizeUntranslated(synced, targetLang, untranslatedOptions);
     const missingSnapshot = summary.rowIndices;
     const writeFailedSnapshot = Array.from(writeFailedSet).sort((a, b) => a - b);
     setProcessedData(synced);
@@ -3653,6 +3742,7 @@ const App: React.FC = () => {
       const sanitizedRow: POCTRecord = {};
       const placeholdersForRow: Record<string, Record<string, string> | null> = {};
       keys.forEach((key) => {
+        if (shouldSkipExcelCell(rowIdx, key)) return;
         const value = row?.[key];
         if (typeof value !== 'string') {
           sanitizedRow[key] = value;
@@ -3757,6 +3847,10 @@ const App: React.FC = () => {
         const placeholdersForRow = item.placeholders || {};
 
         item.keys.forEach((key) => {
+          if (shouldSkipExcelCell(rowIdx, key)) {
+            merged[key] = original[key];
+            return;
+          }
           const originalValue = original[key];
           if (
             shouldLockCell(key, originalValue) ||
@@ -3782,7 +3876,10 @@ const App: React.FC = () => {
           }
         });
 
-        baseProcessed[rowIdx] = normalizeTerminology(merged, targetLang, data[rowIdx]);
+        baseProcessed[rowIdx] = restoreSkippedExcelCells(
+          normalizeTerminology(merged, targetLang, data[rowIdx]),
+          rowIdx
+        );
         updatedFlags[rowIdx] = true;
       });
 
@@ -3798,7 +3895,7 @@ const App: React.FC = () => {
     setTranslatedFlags([...updatedFlags]);
     const { refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(synced);
     persistProgress(synced, [...updatedFlags], refreshedMissing, refreshedWriteFailed);
-    setQualityReport(runQualityChecks(data, synced, { targetLang }));
+    setQualityReport(runQualityChecks(data, synced, excelQualityOptions));
     resetSampleReviewState();
     if (keyedRetryAutoFixed > 0) {
       addLog(`${label}: 已自动恢复 ${keyedRetryAutoFixed} 个坏 token。`);
@@ -3821,7 +3918,7 @@ const App: React.FC = () => {
       addLog('Retry Placeholder Cells: 当前没有可扫描的数据。');
       return;
     }
-    const issues = collectPlaceholderIssues(data, target);
+    const issues = collectPlaceholderIssues(data, target, excelQualityOptions);
     if (fixedCells > 0 && issues.length === 0) {
       addLog('Retry Placeholder Cells: 坏 token 已自动恢复，无需重翻。');
       return;
@@ -3937,7 +4034,7 @@ const App: React.FC = () => {
     const filename = `Translated_${targetLang}_${file?.name || 'Result.xlsx'}`;
     addLog(`Generating file: ${filename}`);
     const outputRows = processedData.map((row, idx) =>
-      applyPostprocessRow(data[idx], row, targetLang)
+      restoreSkippedExcelCells(applyPostprocessRow(data[idx], row, targetLang), idx)
     );
     try {
       const stats = await exportToExcelPreservingStyles(outputRows, filename, excelContext || undefined, {
@@ -3945,6 +4042,9 @@ const App: React.FC = () => {
       });
       if (stats.stylePreserved) {
         addLog('Excel export: 已基于原始工作簿写回译文并保留原格式。');
+      }
+      if (excelSkipScope.cellCount > 0) {
+        addLog(`Excel export: 已按跳过范围保留 ${excelSkipScope.cellCount} 个源文单元格。`);
       }
       if (stats?.overwrittenFormulas) {
         addLog(`已覆盖 ${stats.overwrittenFormulas} 个公式单元格以写入翻译结果。`);
@@ -4037,33 +4137,35 @@ const App: React.FC = () => {
   const currentRowsForRetry =
     processedData.length === data.length && processedData.length > 0 ? processedData : data;
   const currentIssueSummary = useMemo(
-    () => (documentKind === 'excel' ? summarizeUntranslated(currentRowsForRetry, targetLang) : translationIssues),
-    [documentKind, currentRowsForRetry, targetLang, translationIssues]
+    () => (documentKind === 'excel' ? summarizeUntranslated(currentRowsForRetry, targetLang, untranslatedOptions) : translationIssues),
+    [documentKind, currentRowsForRetry, targetLang, translationIssues, untranslatedOptions]
   );
   const retryableRowsFromDetails = useMemo(() => {
     return buildRetryableExcelSummary({
       details: currentIssueSummary.details,
       originalRows: data,
       sourceRows: currentRowsForRetry,
-      isRetryableCell: ({ columnKey, value, originalValue }) => {
+      isRetryableCell: ({ rowIndex, columnKey, value, originalValue }) => {
         if (!value.trim()) return false;
+        if (shouldSkipExcelCell(rowIndex, columnKey)) return false;
         const lockBasis = typeof originalValue === 'string' ? originalValue : value;
         return !shouldLockCell(columnKey, lockBasis) && !isNeutralToken(value.trim());
       }
     }).rowIndices;
-  }, [currentIssueSummary.details, currentRowsForRetry, data]);
+  }, [currentIssueSummary.details, currentRowsForRetry, data, excelSkipScope, documentKind]);
   const retryableCellCount = useMemo(() => {
     return buildRetryableExcelSummary({
       details: currentIssueSummary.details,
       originalRows: data,
       sourceRows: currentRowsForRetry,
-      isRetryableCell: ({ columnKey, value, originalValue }) => {
+      isRetryableCell: ({ rowIndex, columnKey, value, originalValue }) => {
         if (!value.trim()) return false;
+        if (shouldSkipExcelCell(rowIndex, columnKey)) return false;
         const lockBasis = typeof originalValue === 'string' ? originalValue : value;
         return !shouldLockCell(columnKey, lockBasis) && !isNeutralToken(value.trim());
       }
     }).cellCount;
-  }, [currentIssueSummary.details, currentRowsForRetry, data]);
+  }, [currentIssueSummary.details, currentRowsForRetry, data, excelSkipScope, documentKind]);
   const untranslatedLocationPreview = useMemo(
     () => formatIssueLocationPreview(currentIssueSummary.details, 6),
     [currentIssueSummary.details, excelContext]
@@ -4100,8 +4202,8 @@ const App: React.FC = () => {
     if (documentKind !== 'excel') return [];
     const target = processedData.length > 0 ? processedData : data;
     if (!target.length) return [];
-    return collectPlaceholderIssues(data, target);
-  }, [documentKind, data, processedData]);
+    return collectPlaceholderIssues(data, target, excelQualityOptions);
+  }, [documentKind, data, processedData, excelQualityOptions]);
   const placeholderIssueCount = livePlaceholderIssues.length;
   const formatSnapshot = excelContext
     ? {
@@ -4215,6 +4317,9 @@ const App: React.FC = () => {
     setPdfIssueDetails,
     buildDocumentQualityRows,
     buildDocumentQualityInput,
+    excelQualityOptions,
+    excelSkipSummary: excelSkipScopeSummary,
+    excelSkippedCellCount: excelSkipScope.cellCount,
     autoRepairExcelPlaceholders,
     refreshTranslationIssues,
     persistProgress,
@@ -4259,9 +4364,10 @@ const App: React.FC = () => {
         translatedValue === undefined || translatedValue === null ? '' : String(translatedValue),
       original:
         originalValue === undefined || originalValue === null ? '' : String(originalValue),
-      changed: hasChanged(originalValue, translatedValue)
+      changed: hasChanged(originalValue, translatedValue),
+      skipped: shouldSkipExcelCell(previewFocus.rowIndex, previewFocus.columnKey)
     };
-  }, [previewFocus, previewData, previewSourceRows]);
+  }, [previewFocus, previewData, previewSourceRows, excelSkipScope, documentKind]);
   const severityBadgeClass = (severity?: QualitySeverity) => {
     switch (severity) {
       case 'high':
@@ -4870,6 +4976,30 @@ const App: React.FC = () => {
                 </p>
               </div>
 
+              {documentKind === 'excel' && (
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>
+                    Excel Skip Rows / Columns
+                  </label>
+                  <textarea
+                    className={textareaClass}
+                    value={excelSkipScopeRaw}
+                    onChange={(e) => setExcelSkipScopeRaw(e.target.value)}
+                    disabled={isTranslating}
+                    placeholder={'One rule per line. e.g.\nrows: 2-5, 8\ncols: A:C, F\nSheet2!rows: 10-12\nSheet2!cols: B, 检测项目'}
+                  />
+                  <p className={`text-xs mt-1 ${mutedTextClass}`}>
+                    {excelSkipScopeSummary} 跳过区域会保留源文，不调用模型、不进入补译和质量残留统计。
+                  </p>
+                  {excelSkipScope.errors.length > 0 && (
+                    <p className={`text-[11px] mt-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
+                      {excelSkipScope.errors.slice(0, 3).join('；')}
+                      {excelSkipScope.errors.length > 3 ? '；...' : ''}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className={`space-y-2 text-xs ${mutedTextClass}`}>
                 <div className="flex items-center justify-between gap-3">
                   <label className="flex items-center gap-2 font-semibold">
@@ -5434,7 +5564,9 @@ const App: React.FC = () => {
                     <p className={`text-xs mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
                   </div>
                   <span className={`text-[10px] ${mutedTextClass}`}>
-                    {focusedPreviewCell.changed ? 'Showing translated value' : 'Original and translated are identical'}
+                    {focusedPreviewCell.skipped
+                      ? 'Skipped: source text will be kept'
+                      : focusedPreviewCell.changed ? 'Showing translated value' : 'Original and translated are identical'}
                   </span>
                 </div>
                 <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
@@ -5491,6 +5623,7 @@ const App: React.FC = () => {
                             const isDiff = hasChanged(origVal, val);
                             const isFocusedCell =
                               previewFocus?.rowIndex === actualIndex && previewFocus.columnKey === key;
+                            const isSkippedCell = shouldSkipExcelCell(actualIndex, key);
                             
                             return (
                               <td
@@ -5511,6 +5644,11 @@ const App: React.FC = () => {
                                       className={`text-[10px] text-slate-500 truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-white border-slate-200' : 'bg-slate-800/50 border-slate-700/50'}`}
                                     >
                                       {String(origVal)}
+                                    </span>
+                                  )}
+                                  {isSkippedCell && (
+                                    <span className={`text-[10px] truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
+                                      Skipped
                                     </span>
                                   )}
                                 </div>

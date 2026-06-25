@@ -202,6 +202,8 @@ export const runQualityChecksOnUnits = (
   const nonTargetRows = new Set<number>();
 
   input.units.forEach((unit) => {
+    if (options.shouldIgnoreUnit?.(unit)) return;
+
     if (unit.structureOnly) {
       totals.structureMismatches += 1;
       structureMismatchRows.add(unit.rowIndex);
@@ -359,5 +361,6 @@ export const runQualityChecks = (
 
 export const collectPlaceholderIssues = (
   original: POCTRecord[],
-  translated: POCTRecord[]
-) => runQualityChecks(original, translated).issues.placeholders;
+  translated: POCTRecord[],
+  options: QualityCheckOptions = {}
+) => runQualityChecks(original, translated, options).issues.placeholders;

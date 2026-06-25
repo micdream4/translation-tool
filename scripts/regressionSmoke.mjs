@@ -211,6 +211,58 @@ test("Excel parser flattens multiple sheets and export writes each row back to i
   assert.match(preservedSheetXml, /<c r="B2" s="7" t="inlineStr"><is><t>白细胞 translated<\/t><\/is><\/c>/);
 });
 
+
+test("Excel skip scope resolves row and column rules across sheets", async () => {
+  const { parseExcelWorkbook } = await transpileTsModule(path.join(repoRoot, "utils/excel.ts"));
+  const { parseExcelSkipScope, isExcelCellSkipped, isExcelRowFullySkipped } = await transpileTsModule(
+    path.join(repoRoot, "utils/excelSkipScope.ts")
+  );
+  const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "quality/checks.ts"));
+  const { summarizeUntranslated } = await bundleTsModule(path.join(repoRoot, "utils/untranslated.ts"));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["ID", "Text", "Note"],
+      [1, "白细胞", "保留"],
+      [2, "红细胞", "需要翻译"]
+    ]),
+    "Sheet A"
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["ID", "Text", "Note"],
+      [3, "血小板", "跳过列"]
+    ]),
+    "Sheet B"
+  );
+  const { records, context } = parseExcelWorkbook(workbook);
+  const scope = parseExcelSkipScope("rows: 2\nSheet B!cols: C", context);
+
+  assert.deepEqual(scope.errors, []);
+  assert.equal(isExcelRowFullySkipped(scope, 0), true);
+  assert.equal(isExcelCellSkipped(scope, 0, "Text"), true);
+  assert.equal(isExcelCellSkipped(scope, 1, "Text"), false);
+  assert.equal(isExcelCellSkipped(scope, 2, "Note"), true);
+
+  const ignoreSkipped = {
+    shouldIgnoreCell: (rowIndex, columnKey) => isExcelCellSkipped(scope, rowIndex, columnKey)
+  };
+  const summary = summarizeUntranslated(records, "English", ignoreSkipped);
+  assert.equal(summary.details.some((item) => item.rowIndex === 0), false);
+  assert.equal(summary.details.some((item) => item.rowIndex === 2 && item.columnKey === "Note"), false);
+  assert.equal(summary.details.some((item) => item.rowIndex === 1 && item.columnKey === "Text"), true);
+
+  const report = runQualityChecks(records, records, {
+    targetLang: "English",
+    shouldIgnoreUnit: (unit) => isExcelCellSkipped(scope, unit.rowIndex, unit.columnKey)
+  });
+  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 0), false);
+  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 2 && item.columnKey === "Note"), false);
+  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 1 && item.columnKey === "Text"), true);
+});
+
 test("frontend upload copy stays aligned with supported formats", () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   assert.match(appSource, /accept="\.xlsx,\.docx,\.pdf"/);
@@ -640,7 +692,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(qualityHookSource, /SampleReviewAuditService/);
   assert.match(qualityHookSource, /const runQualityCheck/);
   assert.match(qualityHookSource, /runQualityChecksOnUnits/);
-  assert.match(qualityHookSource, /runQualityChecks\(data, target, \{ targetLang \}\)/);
+  assert.match(qualityHookSource, /runQualityChecks\(data, target, excelQualityOptions \|\| \{ targetLang \}\)/);
   assert.doesNotMatch(appSource, /const runQualityCheck =/);
   assert.match(appSource, /segmentsToQualityUnits/);
   assert.match(qualityReportSource, /mapQualityFindingToIssueType/);

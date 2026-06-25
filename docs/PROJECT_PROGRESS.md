@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.113
+
+- Excel 翻译新增首期用户可配置跳过范围：`Excel Skip Rows / Columns` 输入框支持 `rows: 2-5, 8`、`cols: A:C, F`、`Sheet2!rows: 10-12`、`Sheet2!cols: B, 检测项目` 等规则。
+- 跳过范围统一接入 Excel 全局翻译、Smart Fill、Retry Missing Cells、Retry Placeholder Cells、Apply Cleanup、Quality Check、Quality Report、Live Data Preview、导出和本地进度恢复；跳过单元格保留源文，不调用模型、不写入翻译记忆、不进入残留/补译统计。
+- 新增 `utils/excelSkipScope.ts`，按 workbook / sheet / Excel 行号 / 列字母 / 表头解析跳过范围；多 sheet 文件中不带 sheet 前缀的行列规则会作用于所有工作表。
+- 回归测试新增多 sheet Excel 跳过范围用例，覆盖行/列解析、`detectUntranslatedCells` 忽略跳过单元格、Quality Core 忽略跳过单元格。
+- 前端真实文件 smoke：使用 `local-data/inbox/独立组合更新-20260330.xlsx` 上传测试，规则 `rows: 2` + `cols: A:C` 命中 4 行、1 条列规则、406 个单元格；Quality Check 日志确认排除跳过范围后残留统计为 846 个单元格 / 66 行，Live Data Preview 显示 `Skipped` 标签。
+- 本地验证已通过 `npm run typecheck`、`npm test`、`npm run build`、`npm run test:real-docs`。
+
 ## v0.0.112
 
 - 对 9 份中文 Excel 的 French / Russian / Portuguese 输出做了更广泛的语义、地道性和报告展示质量抽查；新增本地 issue 包 `local-data/issues/2026-06-03-excel-trilingual-semantic-quality-audit/`，保留审计脚本、报告、抽样样本和高风险明细。

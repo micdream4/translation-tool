@@ -1,11 +1,12 @@
 import { POCTRecord, TargetLanguage, UntranslatedSummary } from "../types";
-import { detectUntranslatedCells } from "./language";
+import { detectUntranslatedCells, type DetectUntranslatedOptions } from "./language";
 
 export const summarizeUntranslated = (
   records: POCTRecord[],
-  targetLang: TargetLanguage
+  targetLang: TargetLanguage,
+  options: DetectUntranslatedOptions = {}
 ): UntranslatedSummary => {
-  const cells = detectUntranslatedCells(records, targetLang);
+  const cells = detectUntranslatedCells(records, targetLang, options);
   const rowIndices = Array.from(new Set(cells.map((cell) => cell.rowIndex))).sort(
     (a, b) => a - b
   );

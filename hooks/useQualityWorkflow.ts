@@ -31,6 +31,7 @@ import {
   type QualityFinding
 } from '../quality/report';
 import { runQualityChecks, runQualityChecksOnUnits, type QualityCheckInput, type QualityReport } from '../utils/quality';
+import type { QualityCheckOptions } from '../utils/quality';
 import type { POCTRecord, ReviewSample, SampleReviewAIResult, TargetLanguage } from '../types';
 
 export type SampleReviewAiSummary = {
@@ -126,6 +127,9 @@ type UseQualityWorkflowParams = {
   setPdfIssueDetails: (details: DocumentIssueDetail[]) => void;
   buildDocumentQualityRows: () => QualityRows | null;
   buildDocumentQualityInput: () => QualityCheckInput | null;
+  excelQualityOptions?: QualityCheckOptions;
+  excelSkipSummary?: string;
+  excelSkippedCellCount?: number;
   autoRepairExcelPlaceholders: (
     records: POCTRecord[],
     options?: { mutateState?: boolean; logLabel?: string }
@@ -182,6 +186,9 @@ export const useQualityWorkflow = ({
   setPdfIssueDetails,
   buildDocumentQualityRows,
   buildDocumentQualityInput,
+  excelQualityOptions,
+  excelSkipSummary,
+  excelSkippedCellCount = 0,
   autoRepairExcelPlaceholders,
   refreshTranslationIssues,
   persistProgress,
@@ -289,7 +296,7 @@ export const useQualityWorkflow = ({
       addLog('Quality Check: 没有可检查的数据。');
       return;
     }
-    const report = runQualityChecks(data, target, { targetLang });
+    const report = runQualityChecks(data, target, excelQualityOptions || { targetLang });
     setQualityReport(report);
     resetSampleReviewState();
     const { summary, refreshedMissing, refreshedWriteFailed } = refreshTranslationIssues(target);
@@ -307,6 +314,9 @@ export const useQualityWorkflow = ({
       `格式问题 ${report.totals.spacingIssues} 个，` +
       `结构异常 ${report.totals.structureMismatches} 个。`
     );
+    if (excelSkippedCellCount > 0 && excelSkipSummary) {
+      addLog(`Quality Check: 已排除用户跳过范围，${excelSkipSummary}`);
+    }
     if (fixedCells > 0) {
       addLog(`Quality Check: 已在检查前自动恢复 ${fixedCells} 个坏 token。`);
     }

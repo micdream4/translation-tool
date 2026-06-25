@@ -40,6 +40,7 @@ export interface QualityCheckInput {
 
 export interface QualityCheckOptions {
   targetLang?: TargetLanguage;
+  shouldIgnoreUnit?: (unit: QualityUnit) => boolean;
 }
 
 export interface QualityIssue {

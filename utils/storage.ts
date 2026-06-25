@@ -8,6 +8,7 @@ export interface TranslationProgressSnapshot {
   translatedFlags?: boolean[];
   missingRows?: number[];
   writeFailedRows?: number[];
+  excelSkipScopeRaw?: string;
   updatedAt: number;
 }
 
@@ -16,6 +17,7 @@ export interface TranslationProgressPayload {
   translatedFlags?: boolean[];
   missingRows?: number[];
   writeFailedRows?: number[];
+  excelSkipScopeRaw?: string;
 }
 
 const getKey = (fileId: string, targetLang: TargetLanguage) =>
@@ -34,6 +36,7 @@ export const saveTranslationProgress = (
       translatedFlags: payload.translatedFlags,
       missingRows: payload.missingRows,
       writeFailedRows: payload.writeFailedRows,
+      excelSkipScopeRaw: payload.excelSkipScopeRaw,
       updatedAt: Date.now()
     };
     localStorage.setItem(getKey(fileId, targetLang), JSON.stringify(snapshot));

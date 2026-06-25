@@ -15,6 +15,10 @@ export interface UntranslatedCell {
   value: string;
 }
 
+export interface DetectUntranslatedOptions {
+  shouldIgnoreCell?: (rowIndex: number, columnKey: string, value: unknown) => boolean;
+}
+
 type LangCode = "zh" | "en" | "es" | "fr" | "de" | "it" | "pt" | "tr" | "ru" | "unknown";
 
 const CJK_REGEX = /[\u4e00-\u9fff]/;
@@ -631,13 +635,15 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
 
 export const detectUntranslatedCells = (
   records: POCTRecord[],
-  targetLang: TargetLanguage
+  targetLang: TargetLanguage,
+  options: DetectUntranslatedOptions = {}
 ): UntranslatedCell[] => {
   if (!records || records.length === 0) return [];
 
   const flagged: UntranslatedCell[] = [];
   records.forEach((row, rowIndex) => {
     Object.entries(row).forEach(([key, value]) => {
+      if (options.shouldIgnoreCell?.(rowIndex, key, value)) return;
       if (typeof value !== "string") return;
       const trimmed = value.trim();
       if (!trimmed) return;

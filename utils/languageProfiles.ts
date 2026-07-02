@@ -563,6 +563,22 @@ export const ITALIAN_DIACRITIC_RISK_WORDS = [
   { plain: 'puo', preferred: 'può' }
 ];
 
+export const POLISH_DIACRITIC_RISK_WORDS = [
+  { plain: 'zakazenie', preferred: 'zakażenie' },
+  { plain: 'mozliwe', preferred: 'możliwe' },
+  { plain: 'podwyzszony', preferred: 'podwyższony' },
+  { plain: 'obnizony', preferred: 'obniżony' },
+  { plain: 'lagodny', preferred: 'łagodny' }
+];
+
+export const ROMANIAN_DIACRITIC_RISK_WORDS = [
+  { plain: 'infectie', preferred: 'infecție' },
+  { plain: 'crestere', preferred: 'creștere' },
+  { plain: 'scazut', preferred: 'scăzut' },
+  { plain: 'numar', preferred: 'număr' },
+  { plain: 'usor', preferred: 'ușor' }
+];
+
 const getDiacriticRiskMap = (targetLang?: TargetLanguage) => {
   const profile = getTargetLanguageProfile(targetLang);
   if (!profile?.diacriticRiskWords?.length) return null;
@@ -653,6 +669,28 @@ export const TARGET_LANGUAGE_PROFILES: Record<string, TargetLanguageProfile> = {
       'Use Italian function-word signal conservatively because many medical terms are shared Latin.',
       'Flag missing accents only on high-confidence Italian function words such as può, più and perché.',
       'Preserve numeric and unit formatting.'
+    ]
+  },
+  polish: {
+    target: 'Polish',
+    script: 'latin',
+    diacriticRiskWords: [...POLISH_DIACRITIC_RISK_WORDS],
+    commonFunctionWords: ['i', 'oraz', 'w', 'z', 'na', 'do', 'dla', 'jest'],
+    distinctiveCharacters: /[ąćęłńóśźż]/i,
+    notes: [
+      'Use Polish medical/report wording with required Polish characters.',
+      'Preserve medical abbreviations, IDs, model names, and units.'
+    ]
+  },
+  romanian: {
+    target: 'Romanian',
+    script: 'latin',
+    diacriticRiskWords: [...ROMANIAN_DIACRITIC_RISK_WORDS],
+    commonFunctionWords: ['și', 'în', 'cu', 'pentru', 'este', 'sunt'],
+    distinctiveCharacters: /[ăâîșşțţ]/i,
+    notes: [
+      'Use Romanian medical/report wording with required Romanian characters.',
+      'Preserve medical abbreviations, IDs, model names, and units.'
     ]
   },
   turkish: {

@@ -11,6 +11,8 @@ export type TargetLanguage =
   | 'French'
   | 'German'
   | 'Italian'
+  | 'Polish'
+  | 'Romanian'
   | 'Turkish'
   | 'Russian'
   | 'Portuguese'

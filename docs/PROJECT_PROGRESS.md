@@ -1,5 +1,11 @@
 # 项目进度
 
+## v0.0.114
+
+- 目标语言列表新增 Polish 和 Romanian，覆盖 Excel/DOCX/PDF 主目标语言下拉框与 String Resource 多语言输出列表。
+- Polish / Romanian 已接入目标语言 profile、语言检测和 prompt locale 指令；Quality Check 可识别明显源语言残留，并对高置信 ASCII-only 波兰语/罗马尼亚语医学词形给出残留风险。
+- 当前网页工具的 String Resource 已支持一次选择全部目标语言自动输出；Excel/DOCX/PDF 主文档翻译仍是单文件单目标语言流程，需要新增批量目标语言队列才能可靠支持“上传一次、选择多语言、自动逐个翻译并导出”。
+
 ## v0.0.113
 
 - Excel 翻译新增首期用户可配置跳过范围：`Excel Skip Rows / Columns` 输入框支持 `rows: 2-5, 8`、`cols: A:C, F`、`Sheet2!rows: 10-12`、`Sheet2!cols: B, 检测项目` 等规则。

@@ -19,7 +19,7 @@ export interface DetectUntranslatedOptions {
   shouldIgnoreCell?: (rowIndex: number, columnKey: string, value: unknown) => boolean;
 }
 
-type LangCode = "zh" | "en" | "es" | "fr" | "de" | "it" | "pt" | "tr" | "ru" | "unknown";
+type LangCode = "zh" | "en" | "es" | "fr" | "de" | "it" | "pl" | "ro" | "pt" | "tr" | "ru" | "unknown";
 
 const CJK_REGEX = /[\u4e00-\u9fff]/;
 const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
@@ -284,6 +284,87 @@ const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[
     "moderado",
     "grave"
   ],
+  pl: [
+    "i",
+    "oraz",
+    "w",
+    "we",
+    "z",
+    "ze",
+    "na",
+    "do",
+    "dla",
+    "jest",
+    "sa",
+    "są",
+    "moze",
+    "może",
+    "mozliwe",
+    "możliwe",
+    "wynik",
+    "wyniki",
+    "badania",
+    "pacjenta",
+    "krew",
+    "krwi",
+    "komorka",
+    "komórka",
+    "komorki",
+    "komórki",
+    "zakazenie",
+    "zakażenie",
+    "wzrost",
+    "spadek",
+    "podwyzszony",
+    "podwyższony",
+    "obnizony",
+    "obniżony",
+    "wskazuje",
+    "sugeruje",
+    "lagodny",
+    "łagodny",
+    "umiarkowany",
+    "ciezki",
+    "ciężki"
+  ],
+  ro: [
+    "si",
+    "și",
+    "in",
+    "în",
+    "cu",
+    "pentru",
+    "este",
+    "sunt",
+    "poate",
+    "posibil",
+    "rezultat",
+    "rezultate",
+    "pacient",
+    "pacientului",
+    "sange",
+    "sânge",
+    "celula",
+    "celulă",
+    "celule",
+    "infectie",
+    "infecție",
+    "crestere",
+    "creștere",
+    "scadere",
+    "scădere",
+    "crescut",
+    "scazut",
+    "scăzut",
+    "indica",
+    "indică",
+    "sugereaza",
+    "sugerează",
+    "usor",
+    "ușor",
+    "moderat",
+    "sever"
+  ],
   tr: [
     "ve",
     "ile",
@@ -312,6 +393,8 @@ const LANGUAGE_DIACRITICS: Record<
   fr: /[éèêëàâçîïôûùüÿœ]/i,
   de: /[äöüß]/i,
   it: /[àèéìòù]/i,
+  pl: /[ąćęłńóśźż]/i,
+  ro: /[ăâîșşțţ]/i,
   pt: /[ãõçáéíóúàâêô]/i,
   tr: /[çğıöşü]/i
 };
@@ -473,6 +556,8 @@ const LATIN_TARGET_CODES: Array<Exclude<LangCode, "zh" | "ru" | "unknown">> = [
   "fr",
   "de",
   "it",
+  "pl",
+  "ro",
   "pt",
   "tr"
 ];
@@ -503,6 +588,8 @@ const targetLangToCode = (targetLang: TargetLanguage): LangCode => {
   if (normalized.includes("french")) return "fr";
   if (normalized.includes("german")) return "de";
   if (normalized.includes("italian")) return "it";
+  if (normalized.includes("polish")) return "pl";
+  if (normalized.includes("romanian")) return "ro";
   if (normalized.includes("portuguese")) return "pt";
   if (normalized.includes("turkish")) return "tr";
   if (normalized.includes("russian")) return "ru";

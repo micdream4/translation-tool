@@ -10,6 +10,8 @@ export const TARGET_LANGUAGE_OPTIONS: TargetLanguage[] = [
   "French",
   "German",
   "Italian",
+  "Polish",
+  "Romanian",
   "Turkish",
   "Russian",
   "Portuguese"
@@ -22,6 +24,8 @@ export const STRING_RESOURCE_TARGET_LANGS: TargetLanguage[] = [
   "French",
   "German",
   "Italian",
+  "Polish",
+  "Romanian",
   "Turkish",
   "Russian",
   "Portuguese"
@@ -56,6 +60,14 @@ export const getTargetLocaleInstruction = (targetLang: TargetLanguage) => {
   if (normalized.includes("italian")) {
     return `- Use standard Italian medical/report wording with required accents where appropriate, especially function words such as è, può and più.
 - Do not leave Chinese or English natural-language text in Italian output unless it is a protected code, model name, unit, or abbreviation.`;
+  }
+  if (normalized.includes("polish")) {
+    return `- Use standard Polish medical/report wording with required Polish characters where appropriate, especially terms such as zakażenie, możliwe, podwyższony, obniżony and łagodny.
+- Do not output ASCII-only Polish for words that require diacritics.`;
+  }
+  if (normalized.includes("romanian")) {
+    return `- Use standard Romanian medical/report wording with required Romanian characters where appropriate, especially terms such as infecție, creștere, scăzut, număr and ușor.
+- Do not output ASCII-only Romanian for words that require diacritics.`;
   }
   if (!isTraditionalChineseTaiwanTarget(targetLang)) return "";
   return `- Target locale is Traditional Chinese for Taiwan. Use natural Taiwanese Traditional Chinese medical/technical wording, not Simplified Chinese converted character-by-character.

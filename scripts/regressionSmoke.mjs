@@ -1352,7 +1352,11 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "quality/checks.ts"));
 
   assert.ok(TARGET_LANGUAGE_OPTIONS.includes("Traditional Chinese (Taiwan)"));
+  assert.ok(TARGET_LANGUAGE_OPTIONS.includes("Polish"));
+  assert.ok(TARGET_LANGUAGE_OPTIONS.includes("Romanian"));
   assert.ok(STRING_RESOURCE_TARGET_LANGS.includes("Traditional Chinese (Taiwan)"));
+  assert.ok(STRING_RESOURCE_TARGET_LANGS.includes("Polish"));
+  assert.ok(STRING_RESOURCE_TARGET_LANGS.includes("Romanian"));
   assert.equal(isChineseTarget("Chinese"), true);
   assert.equal(isChineseTarget("Traditional Chinese (Taiwan)"), true);
   assert.equal(isChineseTarget("French"), false);
@@ -1378,7 +1382,7 @@ test("Traditional Chinese Taiwan target has UI, prompt, and quality-check covera
   assert.match(modelReviewSource, /penalize Simplified Chinese characters/);
 });
 
-test("Russian, French, Portuguese, and Italian profiles flag high-confidence source-language residue", async () => {
+test("language profiles flag high-confidence source-language residue", async () => {
   const { isLikelyTargetLanguage, detectUntranslatedCells } = await bundleTsModule(
     path.join(repoRoot, "utils/language.ts")
   );
@@ -1588,12 +1592,20 @@ test("Russian, French, Portuguese, and Italian profiles flag high-confidence sou
   assert.ok(TARGET_LANGUAGE_PROFILES.french.diacriticRiskWords.some((item) => item.plain === "hemoglobine"));
   assert.ok(TARGET_LANGUAGE_PROFILES.portuguese.diacriticRiskWords.some((item) => item.plain === "infeccao"));
   assert.ok(TARGET_LANGUAGE_PROFILES.italian.diacriticRiskWords.some((item) => item.plain === "puo"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.polish.diacriticRiskWords.some((item) => item.plain === "zakazenie"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.romanian.diacriticRiskWords.some((item) => item.plain === "infectie"));
   assert.equal(getTargetLanguageProfile("French")?.target, "French");
   assert.equal(getTargetLanguageProfile("Italian")?.target, "Italian");
+  assert.equal(getTargetLanguageProfile("Polish")?.target, "Polish");
+  assert.equal(getTargetLanguageProfile("Romanian")?.target, "Romanian");
   assert.equal(getTargetLanguageProfile("Portuguese")?.target, "Portuguese");
   assert.equal(getTargetLanguageProfile("Portuguese")?.preferredLocale, "pt-BR");
   assert.match(getTargetLocaleInstruction("Italian"), /standard Italian/);
   assert.match(getTargetLocaleInstruction("Italian"), /è/);
+  assert.match(getTargetLocaleInstruction("Polish"), /standard Polish/);
+  assert.match(getTargetLocaleInstruction("Polish"), /zakażenie/);
+  assert.match(getTargetLocaleInstruction("Romanian"), /standard Romanian/);
+  assert.match(getTargetLocaleInstruction("Romanian"), /infecție/);
   assert.match(getTargetLocaleInstruction("Portuguese"), /Brazilian Portuguese/);
   assert.match(getTargetLocaleInstruction("Portuguese"), /infecção/);
   assert.match(getTargetLocaleInstruction("Portuguese"), /infeção/);
@@ -1603,6 +1615,12 @@ test("Russian, French, Portuguese, and Italian profiles flag high-confidence sou
   assert.equal(isLikelyTargetLanguage("Quickly squeeze", "French"), false);
   assert.equal(isLikelyTargetLanguage("The blue button is lifted", "French"), false);
   assert.equal(isLikelyTargetLanguage("Insérez le flacon quadruple dans l'injecteur d'échantillon.", "French"), true);
+  assert.equal(isLikelyTargetLanguage("Wyniki badania wskazują na możliwe zakażenie.", "Polish"), true);
+  assert.equal(isLikelyTargetLanguage("Wyniki badania wskazuja na mozliwe zakazenie.", "Polish"), false);
+  assert.equal(isLikelyTargetLanguage("The patient blood results indicate severe decrease.", "Polish"), false);
+  assert.equal(isLikelyTargetLanguage("Rezultatele indică o posibilă infecție.", "Romanian"), true);
+  assert.equal(isLikelyTargetLanguage("Rezultatele indica o posibila infectie.", "Romanian"), false);
+  assert.equal(isLikelyTargetLanguage("The patient blood results indicate severe decrease.", "Romanian"), false);
   assert.equal(
     isLikelyTargetLanguage(
       "La leucopenia (WBC ridotto) riflette spesso una disfunzione del midollo osseo o un aumento della distruzione periferica.",

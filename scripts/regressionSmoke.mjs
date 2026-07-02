@@ -211,7 +211,6 @@ test("Excel parser flattens multiple sheets and export writes each row back to i
   assert.match(preservedSheetXml, /<c r="B2" s="7" t="inlineStr"><is><t>白细胞 translated<\/t><\/is><\/c>/);
 });
 
-
 test("Excel skip scope resolves row and column rules across sheets", async () => {
   const { parseExcelWorkbook } = await transpileTsModule(path.join(repoRoot, "utils/excel.ts"));
   const { parseExcelSkipScope, isExcelCellSkipped, isExcelRowFullySkipped } = await transpileTsModule(
@@ -516,6 +515,47 @@ test("local issue capture workflow prepares ignored self-iteration workspace", (
   assert.match(gitignoreSource, /^local-data\/$/m);
 });
 
+test("local translation agent requires semantic review after hard QA", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  const workflowDoc = fs.readFileSync(path.join(repoRoot, "docs/local-issue-capture-workflow.md"), "utf8");
+  const agentSource = fs.readFileSync(path.join(repoRoot, "scripts/localAgentTranslate.mjs"), "utf8");
+
+  assert.equal(packageJson.scripts["agent:translate"], "node scripts/localAgentTranslate.mjs");
+  assert.match(agentSource, /SampleReviewAuditService/);
+  assert.match(agentSource, /\.xlsx/);
+  assert.match(agentSource, /\.docx/);
+  assert.match(agentSource, /\.pdf/);
+  assert.match(agentSource, /translateDocx/);
+  assert.match(agentSource, /translatePdf/);
+  assert.match(agentSource, /buildDocxTranslationBuffer/);
+  assert.match(agentSource, /PDFDocument/);
+  assert.match(agentSource, /runSemanticReview/);
+  assert.match(agentSource, /runQualityRepairLoop/);
+  assert.match(agentSource, /applyRepairRound/);
+  assert.match(agentSource, /translateRepairTargets/);
+  assert.match(agentSource, /mergeSemanticReview/);
+  assert.match(agentSource, /pendingSemanticReviewIds/);
+  assert.match(agentSource, /targetId: target\.id/);
+  assert.match(agentSource, /--max-repair-rounds/);
+  assert.match(agentSource, /--semantic must be sample or full\. Semantic review is required/);
+  assert.match(agentSource, /poct\.local_agent_translation_report\.v1/);
+  assert.match(agentSource, /hardQa/);
+  assert.match(agentSource, /semanticReview/);
+  assert.match(agentSource, /repair/);
+  assert.match(agentSource, /needs_review/);
+  assert.match(agentSource, /Translated_\$\{options\.target\}_\$\{baseName\}/);
+  assert.match(agentSource, /buildStylePreservingExcelBuffer/);
+  assert.match(agentSource, /runQualityChecks/);
+  assert.match(agentSource, /guardTranslationTokens/);
+  assert.match(agentSource, /restoreTranslationTokens/);
+  assert.match(workflowDoc, /硬 QA 通过不代表语义通过/);
+  assert.match(workflowDoc, /targeted repair -> re-QA -> re-review/);
+  assert.match(workflowDoc, /默认最多自动修复 3 轮/);
+  assert.match(workflowDoc, /Excel、Word\/DOCX 和 PDF/);
+  assert.match(workflowDoc, /--semantic full --review-model deepseek-v4-pro/);
+  assert.match(workflowDoc, /status.*needs_review.*failed/s);
+});
+
 test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", async () => {
   const docxSource = fs.readFileSync(path.join(repoRoot, "utils/docx.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
@@ -533,6 +573,10 @@ test("DOCX parser covers body, headers, footers, footnotes, endnotes, and commen
   assert.match(docxSource, /endnotes\\.xml/);
   assert.match(docxSource, /comments\\.xml/);
   assert.match(docxSource, /parts\.forEach\(\(part\) =>/);
+  assert.match(docxSource, /sanitizeInvalidDocxRelationships/);
+  assert.match(docxSource, /Target=\(\["'\]\)NULL/);
+  assert.match(docxSource, /normalizeDocxTocPageRefFields/);
+  assert.match(docxSource, /PAGEREF/);
   assert.match(appSource, /DOCX coverage:/);
   assert.match(appSource, /Docx coverage: 导出覆盖/);
   assert.doesNotMatch(docxSource, /segment\.original\s*=\s*text/);
@@ -1584,12 +1628,20 @@ test("language profiles flag high-confidence source-language residue", async () 
     ).trim(),
     "Can manifest as abnormalities (e.g., amylase); etc.; Ehome Health Technology Co., Ltd."
   );
+  const generatedTerminologySource = fs.readFileSync(
+    path.join(repoRoot, "utils/generatedTerminology.ts"),
+    "utf8"
+  );
+  assert.match(generatedTerminologySource, /"zh_source": "多功能样本分析仪"[\s\S]*"en_draft": "Multi-Functional Analyzer"/);
+  assert.doesNotMatch(generatedTerminologySource, /Multi-functional Sample Analyzer/);
   assert.ok(getRussianResidueProfile().disallowedLatinResidueWords.includes("home"));
   assert.equal(isRussianDisallowedLatinResidue("Reports"), true);
   assert.equal(isRussianDisallowedLatinResidue("year"), true);
   assert.ok(TARGET_LANGUAGE_PROFILES.french.commonFunctionWords.includes("avec"));
   assert.ok(TARGET_LANGUAGE_PROFILES.french.englishResidueWords.includes("quickly"));
   assert.ok(TARGET_LANGUAGE_PROFILES.french.diacriticRiskWords.some((item) => item.plain === "hemoglobine"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.french.diacriticRiskWords.some((item) => item.plain === "propriete"));
+  assert.ok(TARGET_LANGUAGE_PROFILES.french.diacriticRiskWords.some((item) => item.plain === "numero"));
   assert.ok(TARGET_LANGUAGE_PROFILES.portuguese.diacriticRiskWords.some((item) => item.plain === "infeccao"));
   assert.ok(TARGET_LANGUAGE_PROFILES.italian.diacriticRiskWords.some((item) => item.plain === "puo"));
   assert.ok(TARGET_LANGUAGE_PROFILES.polish.diacriticRiskWords.some((item) => item.plain === "zakazenie"));
@@ -1843,6 +1895,146 @@ test("language profiles flag high-confidence source-language residue", async () 
   assert.equal(
     detectUntranslatedCells([{ content: frenchCompoundRepair }], "French").length,
     0
+  );
+  assert.equal(
+    polishTranslation(
+      "湖南伊鸿健康科技有限公司对本使用说明书拥有最终解释权。",
+      "湖南伊鸿健康科技有限公司 détient le droit d'interprétation finale de la présente notice d'utilisation.",
+      "French"
+    ),
+    "Hunan Ehome Health Technology Co., Ltd. détient le droit d'interprétation finale de la présente notice d'utilisation."
+  );
+  assert.equal(
+    polishTranslation(
+      "点击『Login』按钮进行登录操作。",
+      "Cliquez sur le bouton 『Login』 pour vous connecter.",
+      "French"
+    ),
+    "Cliquez sur le bouton 『Connexion』 pour vous connecter."
+  );
+  assert.equal(
+    polishTranslation(
+      "选择样本类型『Whole Blood』『Serum』『Plasma』。",
+      "Sélectionnez le type d'échantillon TKN_0____TKN_1____TKN_2__.",
+      "French"
+    ),
+    "Sélectionnez le type d'échantillon 『Sang total』『Sérum』『Plasma』."
+  );
+  assert.equal(
+    polishTranslation(
+      "点击『Patient's information setting』图标，打开设置弹窗。",
+      "Cliquez sur l'icône 『TKN_0__s information setting』 pour ouvrir la fenêtre contextuelle des paramètres.",
+      "French"
+    ),
+    "Cliquez sur l'icône 『Paramètres des informations patient』 pour ouvrir la fenêtre contextuelle des paramètres."
+  );
+  assert.equal(
+    polishTranslation(
+      "点击『OK』开始质控检测。",
+      "Cliquez sur 『OK』 pour lancer le test de contrôle qualité.",
+      "French"
+    ),
+    "Cliquez sur 『Valider』 pour lancer le test de contrôle qualité."
+  );
+  assert.equal(
+    polishTranslation(
+      "点击『Test completed』按钮，进入【取出样本】页面。",
+      "Cliquez sur le bouton 『Test completed』 pour accéder à la page 【Retirer l'échantillon】.",
+      "French"
+    ),
+    "Cliquez sur le bouton 『Test terminé』 pour accéder à la page 【Retirer l'échantillon】."
+  );
+  assert.equal(
+    polishTranslation(
+      "点击『Removed』按钮，来到质控结果页面。",
+      "Cliquez sur le bouton 『Removed』 pour accéder à la page des résultats du contrôle qualité.",
+      "French"
+    ),
+    "Cliquez sur le bouton 『Retiré』 pour accéder à la page des résultats du contrôle qualité."
+  );
+  assert.equal(
+    polishTranslation(
+      "选择样本类型『Whole Blood』『Serum』『Plasma』。",
+      "Sélectionnez le type d'échantillon 『Whole Blood』『Serum』『Plas ma』.",
+      "French"
+    ),
+    "Sélectionnez le type d'échantillon 『Sang total』『Sérum』『Plasma』."
+  );
+  assert.equal(
+    polishTranslation(" 注意", "Rem arque", "French"),
+    "Remarque"
+  );
+  assert.equal(
+    polishTranslation(
+      "每条记录显示质控品的质控项目、序号、类型。",
+      "Chaque enregistrement affiche le paramètre de contrôle qualité, le numéro de série et le type.",
+      "French"
+    ),
+    "Chaque enregistrement affiche l'élément de contrôle qualité, le numéro de série et le type."
+  );
+  assert.equal(
+    polishTranslation(
+      "每条记录显示质控品的质控项目、序号（根据添加顺序自动生成）、类型、项目、批次、编号、水平、有效期、最后质控时间。",
+      "Chaque enregistrement affiche l'élément de contrôle qualité, le numéro de série (généré automatiquement selon l'ordre d'ajout), le type, le paramètre, le lot, le numéro, le niveau, la date limite d'utilisation et la date et l'heure du dernier contrôle qualité.",
+      "French"
+    ),
+    "Chaque enregistrement affiche le paramètre du contrôle qualité, le numéro de série (généré automatiquement selon l'ordre d'ajout), le type, l'analyte, le lot, le numéro, le niveau, la date limite d'utilisation et la date et l'heure du dernier contrôle qualité."
+  );
+  assert.equal(
+    polishTranslation(
+      "点击后的Wi-Fi热点『...』，点击『Cancel save』可忽略此Wi-Fi热点。",
+      "Cliquez sur le point d'accès Wi-Fi 『. . . 』, puis cliquez sur 『Cancel save』 pour ignorer ce point d'accès Wi-Fi.",
+      "French"
+    ),
+    "Cliquez sur le point d'accès Wi-Fi 『...』, puis cliquez sur 『Annuler l'enregistrement』 pour ignorer ce point d'accès Wi-Fi."
+  );
+  assert.equal(
+    polishTranslation(
+      "5.2.2干式质控品质控56",
+      "5.2.2 Contrôle qualité avec matériaux de contrôle secs 56",
+      "French"
+    ),
+    "5.2.2 Contrôle qualité avec matériau de contrôle sec 56"
+  );
+  assert.equal(
+    polishTranslation(
+      "按页面提示取出干式质控品，放回干式质控品包装盒内妥善保存。",
+      "Suivez les instructions à l'écran pour retirer le matériau de Contrôle qualité avec matériaux de contrôle secs et replacez-le dans son emballage pour le conserver correctement.",
+      "French"
+    ),
+    "Suivez les instructions à l'écran pour retirer le matériau de contrôle qualité sec et replacez-le dans son emballage pour le conserver correctement."
+  );
+  assert.equal(
+    polishTranslation(
+      "该分析仪仅供具有专业背景或经培训合格上岗的医务人员使用。",
+      "L'analyseur est réservé à l'usage de professionnels de santé ayant une formation spécialisée ou ayant suivi une formation qualifiante.",
+      "French"
+    ),
+    "L'analyseur est réservé à l'usage de professionnels de santé ayant une formation professionnelle ou ayant suivi une formation qualifiante."
+  );
+  assert.equal(
+    polishTranslation(
+      "本说明书详细介绍了分析仪的安装步骤。用户在使用该分析仪前，敬请仔细阅读本说明书。",
+      "Ce manuel décrit en détail les procédures d'installation de l'analyseur. Avant d'utiliser l'analyseur, veuillez lire attentivement ce manuel.",
+      "French"
+    ),
+    "Cette notice d'utilisation décrit en détail les procédures d'installation de l'analyseur. Avant d'utiliser l'analyseur, veuillez lire attentivement cette notice."
+  );
+  assert.equal(
+    polishTranslation(
+      "您需要支付维修费及配件费：",
+      "Hunan Yihong Health Technology Co., Ltd. facturera les frais de réparation et les pièces:",
+      "French"
+    ),
+    "Hunan Ehome Health Technology Co., Ltd. appliquera un service de réparation payant; les frais de réparation et de pièces seront à votre charge:"
+  );
+  assert.equal(
+    polishTranslation(
+      "可设置功能包括：Basic setting（8项）、Parameters setting（3项）。",
+      "Les fonctions paramétrables incluent: Paramètres de base (8 éléments), Paramètres de paramètres (3 éléments).",
+      "French"
+    ),
+    "Les fonctions paramétrables incluent: Paramètres de base (8 éléments), Paramètres des paramètres (3 éléments)."
   );
   const medicalCodeArtifactRepair = polishTranslation(
     "EOS#升高提示过敏或寄生虫感染。ALY#升高提示病毒感染。",

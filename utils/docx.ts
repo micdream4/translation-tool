@@ -174,6 +174,25 @@ const getDocxNumberingLevelElements = (root: DocxSearchRoot) =>
 const buildSegmentText = (nodes: Element[]) =>
   nodes.map((node) => node.textContent || "").join("");
 
+const getElementLocalName = (node: Element) =>
+  (node.localName || node.tagName || "").split(":").pop() || "";
+
+const collectDocxFlowElements = (root: Element) => {
+  const output: Element[] = [];
+  const visit = (node: Node) => {
+    if (node.nodeType === 1) {
+      const element = node as Element;
+      const localName = getElementLocalName(element);
+      if (["t", "tab", "instrText", "fldChar"].includes(localName)) {
+        output.push(element);
+      }
+    }
+    Array.from(node.childNodes || []).forEach(visit);
+  };
+  visit(root);
+  return output;
+};
+
 const getDocxCoverageWarnings = (zip: JSZip) => {
   const warnings: string[] = [];
   if (zip.file(/^word\/glossary\/document\.xml$/).length) {
@@ -384,6 +403,13 @@ const hasWordInternalRunSplit = (nodes: Element[]) => {
   return false;
 };
 
+const hasPreferredSplitPoint = (text: string) => {
+  for (let i = 1; i < text.length; i += 1) {
+    if (isPreferredSplitBoundary(text, i)) return true;
+  }
+  return false;
+};
+
 const adjustSplitIndex = (
   text: string,
   desired: number,
@@ -420,6 +446,14 @@ export const setDocxSegmentText = (segment: DocxSegment, text: string) => {
   }
 
   if (hasWordInternalRunSplit(nodes)) {
+    nodes.forEach((node, idx) => {
+      node.textContent = idx === 0 ? text : "";
+      ensurePreserveSpace(node);
+    });
+    return;
+  }
+
+  if (!hasPreferredSplitPoint(text)) {
     nodes.forEach((node, idx) => {
       node.textContent = idx === 0 ? text : "";
       ensurePreserveSpace(node);
@@ -567,10 +601,120 @@ const normalizeDocxNumbering = (xmlDoc: Document) => {
   });
 };
 
-export async function exportDocxFile(
-  context: DocxContext,
-  filename: string
-): Promise<void> {
+const getFldCharType = (node: Element) =>
+  node.getAttribute("w:fldCharType") ?? node.getAttribute("fldCharType") ?? "";
+
+const hasPageRefField = (nodes: Element[]) =>
+  nodes.some(
+    (node) =>
+      getElementLocalName(node) === "instrText" &&
+      /\bPAGEREF\b/i.test(node.textContent || "")
+  );
+
+const getVisibleDocxFlowText = (nodes: Element[]) =>
+  nodes
+    .map((node) => {
+      const localName = getElementLocalName(node);
+      if (localName === "t") return node.textContent || "";
+      if (localName === "tab") return "\t";
+      return "";
+    })
+    .join("");
+
+const findFirstPageRefFieldResultTextIndex = (nodes: Element[], startIndex: number) => {
+  let inPageRefField = false;
+  let inPageRefResult = false;
+  for (let i = startIndex + 1; i < nodes.length; i += 1) {
+    const node = nodes[i];
+    const localName = getElementLocalName(node);
+    if (localName === "instrText" && /\bPAGEREF\b/i.test(node.textContent || "")) {
+      inPageRefField = true;
+      inPageRefResult = false;
+      continue;
+    }
+    if (localName === "fldChar" && inPageRefField) {
+      const type = getFldCharType(node);
+      if (type === "separate") {
+        inPageRefResult = true;
+        continue;
+      }
+      if (type === "end") {
+        inPageRefField = false;
+        inPageRefResult = false;
+        continue;
+      }
+    }
+    if (localName === "t" && inPageRefField && inPageRefResult) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+const normalizeDocxTocPageRefFields = (xmlDoc: Document) => {
+  getDocxParagraphElements(xmlDoc).forEach((paragraph) => {
+    const nodes = collectDocxFlowElements(paragraph);
+    if (!hasPageRefField(nodes)) return;
+    const pageRefInstructionIndex = nodes.findIndex(
+      (node) =>
+        getElementLocalName(node) === "instrText" &&
+        /\bPAGEREF\b/i.test(node.textContent || "")
+    );
+    let tabIndex = -1;
+    for (let index = 0; index < pageRefInstructionIndex; index += 1) {
+      if (getElementLocalName(nodes[index]) === "tab") {
+        tabIndex = index;
+      }
+    }
+    if (tabIndex < 0) return;
+    const visible = getVisibleDocxFlowText(nodes);
+    const pageMatch = visible.replace(/\t/g, " ").match(/^(.*?)\s+(\d+)\s*$/);
+    if (!pageMatch) return;
+    const title = pageMatch[1].replace(/\s+/g, " ").trim();
+    const page = pageMatch[2];
+    if (!title || !page) return;
+
+    const textNodesBeforeTab = nodes
+      .slice(0, tabIndex)
+      .filter((node) => getElementLocalName(node) === "t");
+    const firstPageTextIndex = findFirstPageRefFieldResultTextIndex(nodes, tabIndex);
+    if (!textNodesBeforeTab.length || firstPageTextIndex < 0) return;
+
+    textNodesBeforeTab.forEach((node, index) => {
+      node.textContent = index === 0 ? title : "";
+      ensurePreserveSpace(node);
+    });
+    nodes.slice(firstPageTextIndex).forEach((node, index) => {
+      if (getElementLocalName(node) !== "t") return;
+      node.textContent = index === 0 ? ` ${page}` : "";
+      ensurePreserveSpace(node);
+    });
+  });
+};
+
+const INVALID_NULL_RELATIONSHIP_REGEX =
+  /<Relationship\b(?=[^>]*\bTarget=(["'])NULL\1)[^>]*\/>/gi;
+
+const sanitizeInvalidDocxRelationships = async (zip: JSZip) => {
+  const relPaths = Object.keys(zip.files).filter((entryPath) =>
+    /(^|\/)_rels\/.+\.rels$/i.test(entryPath)
+  );
+  await Promise.all(
+    relPaths.map(async (entryPath) => {
+      const entry = zip.file(entryPath);
+      if (!entry) return;
+      const xml = await entry.async("string");
+      const sanitized = xml.replace(INVALID_NULL_RELATIONSHIP_REGEX, "");
+      if (sanitized !== xml) {
+        zip.file(entryPath, sanitized);
+      }
+    })
+  );
+};
+
+export async function buildDocxTranslationBuffer(
+  context: DocxContext
+): Promise<Uint8Array> {
   const serializer = new XMLSerializer();
   const parts = context.parts?.length
     ? context.parts
@@ -585,11 +729,21 @@ export async function exportDocxFile(
       ];
   parts.forEach((part) => {
     normalizeDocxNumbering(part.xmlDoc);
+    normalizeDocxTocPageRefFields(part.xmlDoc);
     normalizeDocxRunSpacing(part.xmlDoc);
     const payload = serializer.serializeToString(part.xmlDoc);
     context.zip.file(part.path, payload);
   });
-  const blob = await context.zip.generateAsync({ type: "blob" });
+  await sanitizeInvalidDocxRelationships(context.zip);
+  return context.zip.generateAsync({ type: "uint8array" });
+}
+
+export async function exportDocxFile(
+  context: DocxContext,
+  filename: string
+): Promise<void> {
+  const bytes = await buildDocxTranslationBuffer(context);
+  const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

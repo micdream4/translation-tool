@@ -215,11 +215,76 @@ const RUSSIAN_MODEL_ARTIFACT_FIXES: Array<[RegExp, string]> = [
   [/([\u0400-\u04FF])\s+ce\b/g, "$1"]
 ];
 const FRENCH_CHINESE_RESIDUE_FIXES: Array<[RegExp, string]> = [
+  [/湖南伊鸿健康科技有限公司/g, "Hunan Ehome Health Technology Co., Ltd."],
   [/([A-Za-zÀ-ÖØ-öø-ÿœŒ])复合/g, "$1 complexe"],
   [/复合([A-Za-zÀ-ÖØ-öø-ÿœŒ])/g, "complexe $1"],
   [/复合/g, "complexe"]
 ];
+const FRENCH_UI_MARKER_REGEX =
+  /([『「“"'《【\[«])\s*([A-Za-z][A-Za-z0-9 _.\/'\-]{0,80})\s*([』」”"'》】\]»])/g;
+const FRENCH_BROKEN_PLACEHOLDER_RUN_REGEX =
+  /(?:_*(?:TKN|ID|FMT)_\d+_*){2,}/gi;
+const FRENCH_SINGLE_BROKEN_LABEL_REGEX =
+  /([『「“"'《【\[«])\s*_*(?:TKN|ID|FMT)_\d+_*(?:s)?(?:\s+information setting)?\s*([』」”"'》】\]»])/gi;
+const FRENCH_UI_LABEL_TRANSLATIONS: Record<string, string> = {
+  "add qc material": "Ajouter un matériau CQ",
+  back: "Retour",
+  biochemistry: "Biochimie",
+  cancel: "Annuler",
+  "cancel save": "Annuler l'enregistrement",
+  cbc: "CBC",
+  "clinic information": "Informations de la clinique",
+  confirm: "Confirmer",
+  "consumables management": "Gestion des consommables",
+  "date setting": "Paramètres de date",
+  "data cleaning": "Nettoyage des données",
+  delete: "Supprimer",
+  disconnect: "Déconnecter",
+  edit: "Modifier",
+  export: "Exporter",
+  "export selected items": "Exporter les éléments sélectionnés",
+  immunoassay: "Immunoessai",
+  "import batch": "Importer le lot",
+  "imaging system qc": "Contrôle qualité du système d'imagerie",
+  "incubation time setting": "Paramètres du temps d'incubation",
+  "inboard incubation": "Incubation interne",
+  "lis communication setting": "Paramètres de communication LIS",
+  "lls communication setting": "Paramètres de communication LIS",
+  "log upload & export": "Téléchargement et exportation des journaux",
+  login: "Connexion",
+  logout: "Déconnexion",
+  "network setting": "Paramètres réseau",
+  next: "Suivant",
+  ok: "Valider",
+  "patient information": "Informations patient",
+  "patient's information setting": "Paramètres des informations patient",
+  plasma: "Plasma",
+  previous: "Précédent",
+  "print setting": "Paramètres d'impression",
+  "print the report": "Imprimer le rapport",
+  "qc method instructions": "Instructions de la méthode de CQ",
+  removed: "Retiré",
+  "restore default": "Restaurer les valeurs par défaut",
+  "restore factory setting": "Restaurer les paramètres d'usine",
+  "sample in": "Échantillon en place",
+  save: "Enregistrer",
+  "screensaver setting": "Paramètres de l'économiseur d'écran",
+  serum: "Sérum",
+  settings: "Paramètres",
+  "start qc": "Démarrer le CQ",
+  "test completed": "Test terminé",
+  "test now": "Analyse immédiate",
+  "upload lis": "Télécharger vers LIS",
+  "upload lls": "Télécharger vers LIS",
+  "upload logs": "Téléverser les journaux",
+  "user management": "Gestion des utilisateurs",
+  "version test": "Test de version",
+  voice: "Voix",
+  "whole blood": "Sang total"
+};
 const FRENCH_GRAMMAR_ARTIFACT_FIXES: Array<[RegExp, string]> = [
+  [/\bRem\s+arque\b/g, "Remarque"],
+  [/\bPlas\s+ma\b/g, "Plasma"],
   [/\binfection a (cytomégalovirus|toxoplasme)\b/gi, "infection à $1"],
   [/\binfection a EB virus\b/gi, "infection par le virus EB"],
   [/\bréaction a une infection\b/gi, "réaction à une infection"],
@@ -234,6 +299,26 @@ const FRENCH_GRAMMAR_ARTIFACT_FIXES: Array<[RegExp, string]> = [
   [/\bneutrophiles a noyau\b/gi, "neutrophiles à noyau"],
   [/\ba noyau en batonnet\b/gi, "à noyau en bâtonnet"],
   [/\bà noyau en batonnet\b/gi, "à noyau en bâtonnet"]
+];
+const FRENCH_MANUAL_TERMINOLOGY_FIXES: Array<[RegExp, string]> = [
+  [
+    /\bmatériau de Contrôle qualité avec matériaux de contrôle secs\b/gi,
+    "matériau de contrôle qualité sec"
+  ],
+  [
+    /\bContrôle qualité avec matériaux de contrôle secs\b/gi,
+    "Contrôle qualité avec matériau de contrôle sec"
+  ],
+  [/\bplaque lithographique\b/gi, "plaque de photolithographie"],
+  [/\ble paramètre de contrôle qualité/gi, "l'élément de contrôle qualité"],
+  [/\bparamètre de contrôle qualité/gi, "élément de contrôle qualité"],
+  [/\bParamètres de paramètres\b/g, "Paramètres des paramètres"],
+  [/\bCe manuel décrit\b/g, "Cette notice d'utilisation décrit"],
+  [/\bce manuel\b/g, "cette notice"],
+  [
+    /\bprofessionnels de santé ayant une formation spécialisée ou ayant suivi une formation qualifiante\b/gi,
+    "professionnels de santé ayant une formation professionnelle ou ayant suivi une formation qualifiante"
+  ]
 ];
 const MEDICAL_CODE_REGEX =
   /(?<![A-Za-z0-9])(?:WBC|RBC|HGB|HCT|MCV|MCHC?|RDW|PLT|NEU|NST|NSG|NSH|LYM|MONO|MON|EOS|BASO|BAS|ALY|LIC|RET|NRBC|AWBC|SRBC)(?:[#%])?(?![A-Za-z0-9])/g;
@@ -618,6 +703,92 @@ const fixFrenchChineseResidue = (translated: string, targetLang?: TargetLanguage
   return output;
 };
 
+const normalizeFrenchUiLabel = (value: string) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/\blls\b/g, "lis")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const translateFrenchUiLabel = (value: string) => {
+  const normalized = normalizeFrenchUiLabel(value);
+  return FRENCH_UI_LABEL_TRANSLATIONS[normalized] || "";
+};
+
+const collectFrenchSourceUiLabels = (original: string) => {
+  const labels: string[] = [];
+  String(original || "").replace(FRENCH_UI_MARKER_REGEX, (_match, _open, label) => {
+    const translated = translateFrenchUiLabel(label);
+    if (translated) labels.push(translated);
+    return "";
+  });
+  return labels;
+};
+
+const fixFrenchManualUiLabels = (
+  original: string,
+  translated: string,
+  targetLang?: TargetLanguage
+) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
+  let output = translated;
+
+  const sourceLabels = collectFrenchSourceUiLabels(original);
+  if (sourceLabels.length > 1) {
+    output = output.replace(
+      FRENCH_BROKEN_PLACEHOLDER_RUN_REGEX,
+      sourceLabels.map((label) => `『${label}』`).join("")
+    );
+  }
+  if (sourceLabels.length === 1) {
+    output = output.replace(
+      FRENCH_SINGLE_BROKEN_LABEL_REGEX,
+      (_match, open, close) => `${open}${sourceLabels[0]}${close}`
+    );
+  }
+
+  output = output.replace(FRENCH_UI_MARKER_REGEX, (match, open, label, close) => {
+    const translatedLabel = translateFrenchUiLabel(label);
+    return translatedLabel ? `${open}${translatedLabel}${close}` : match;
+  });
+  output = output.replace(/『\s*\.\s*\.\s*\.\s*』/g, "『...』");
+  output = output.replace(/『\s*Annuler la sauvegarde\s*』/gi, "『Annuler l'enregistrement』");
+  return output;
+};
+
+const fixFrenchManualTerminology = (
+  original: string,
+  translated: string,
+  targetLang?: TargetLanguage
+) => {
+  if (!translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
+  if (!/质控项目|干式质控品|专业背景|Parameters setting|本说明书|您需要支付维修费及配件费/.test(original || "")) return translated;
+  let output = translated;
+  FRENCH_MANUAL_TERMINOLOGY_FIXES.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
+  if (/5\.2\.2\s*干式质控品质控/.test(original || "")) {
+    output = output.replace(
+      /\bContrôle qualité sec\b/gi,
+      "Contrôle qualité avec matériau de contrôle sec"
+    );
+  }
+  if (/每条记录显示质控品的质控项目.*类型、项目、批次/.test(original || "")) {
+    output = output
+      .replace(/\bl'élément de contrôle qualité,\s+le numéro de série/gi, "le paramètre du contrôle qualité, le numéro de série")
+      .replace(/\ble projet de contrôle qualité,\s+le numéro de série/gi, "le paramètre du contrôle qualité, le numéro de série")
+      .replace(/\ble type,\s+l'élément,\s+le lot/gi, "le type, l'analyte, le lot")
+      .replace(/\ble type,\s+le paramètre,\s+le lot/gi, "le type, l'analyte, le lot");
+  }
+  if (/您需要支付维修费及配件费/.test(original || "")) {
+    output = output.replace(
+      /Hunan (?:Yihong|Ehome) Health Technology Co\., Ltd\. facturera les frais de réparation et les pièces:/g,
+      "Hunan Ehome Health Technology Co., Ltd. appliquera un service de réparation payant; les frais de réparation et de pièces seront à votre charge:"
+    );
+  }
+  return output;
+};
+
 const fixFrenchGrammarArtifacts = (translated: string, targetLang?: TargetLanguage) => {
   if (!translated || !String(targetLang || "").toLowerCase().includes("french")) return translated;
   let output = translated;
@@ -914,6 +1085,8 @@ export const polishTranslation = (
   refined = restoreFrenchNumericMonth(original || "", refined, targetLang);
   refined = fixTargetDiacritics(refined, targetLang);
   refined = fixFrenchChineseResidue(refined, targetLang);
+  refined = fixFrenchManualUiLabels(original || "", refined, targetLang);
+  refined = fixFrenchManualTerminology(original || "", refined, targetLang);
   refined = fixFrenchGrammarArtifacts(refined, targetLang);
   refined = fixPortugueseBrazilianLocaleArtifacts(refined, targetLang);
   refined = fixPortugueseGrammarArtifacts(refined, targetLang);

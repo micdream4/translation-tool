@@ -123,6 +123,48 @@ npm run test:quality-gate
 
 当前阶段是人工捕获问题。目录结构稳定后，可以逐步升级：
 
-1. `npm run agent:batch`: 批量扫描 `local-data/inbox/`，生成 QA 报告和本地 issue 包。
+1. `npm run agent:translate`: 批量扫描 `local-data/agent/inbox/`，生成译文，自动执行硬 QA、语义审查和定点修复。
 2. `npm run issue:create`: 从本地 issue 包创建 GitHub Issue。
 3. Runner Agent / QA Agent / Fix Agent 闭环：修复发布后自动重跑失败样本。
+
+## 本地翻译 Agent
+
+自用批量翻译可以不走前端界面。默认把 Excel / DOCX / PDF 放进：
+
+```bash
+local-data/agent/inbox/
+```
+
+然后运行：
+
+```bash
+npm run agent:translate -- --target Portuguese
+```
+
+默认输出：
+
+```text
+local-data/agent/done/      # Translated_<语言>_<原文件名>，保留原扩展名
+local-data/agent/reports/   # 每个文件的 JSON / Markdown 质量报告
+```
+
+本地 agent 与线上工具的区别是：线上工具主要保证目标语言、漏翻、错行、占位符、ID、医学代码和结构；本地 agent 必须在翻译后继续做源文-译文语义/地道性审查。默认 `--semantic sample` 做确定性广泛抽查；最终交付前可以用：
+
+```bash
+npm run agent:translate -- --target Portuguese --semantic full --review-model deepseek-v4-pro
+```
+
+语义审查的 `warning` / `fail` 会单独写入报告。硬 QA 通过不代表语义通过；报告里的 `status` 为 `needs_review` 或 `failed` 时，不应直接配置到设备中。本地 agent 必须覆盖线上支持的 Excel、Word/DOCX 和 PDF 三类文档能力。
+
+本地 agent 不应只把问题留给人工阅读报告。默认最多自动修复 3 轮：
+
+```text
+translate -> hard QA -> semantic review -> targeted repair -> re-QA -> re-review
+```
+
+修复策略：
+
+- ID mismatch 这类确定性问题直接恢复源文。
+- 漏翻、非目标语言、中文残留、占位符/医学代码问题只重译对应 cell / DOCX 段落 / PDF segment。
+- 语义审查返回 `suggestion` 时优先采用 suggestion；没有 suggestion 时只重译该问题位置。
+- 每轮修复后重新跑硬 QA 和语义审查；超过 `--max-repair-rounds` 或没有可执行修复时才保留 `needs_review` / `failed`。

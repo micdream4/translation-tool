@@ -567,10 +567,9 @@ const normalizeDocxNumbering = (xmlDoc: Document) => {
   });
 };
 
-export async function exportDocxFile(
-  context: DocxContext,
-  filename: string
-): Promise<void> {
+export async function buildDocxFileBytes(
+  context: DocxContext
+): Promise<Uint8Array> {
   const serializer = new XMLSerializer();
   const parts = context.parts?.length
     ? context.parts
@@ -589,7 +588,17 @@ export async function exportDocxFile(
     const payload = serializer.serializeToString(part.xmlDoc);
     context.zip.file(part.path, payload);
   });
-  const blob = await context.zip.generateAsync({ type: "blob" });
+  return context.zip.generateAsync({ type: "uint8array" });
+}
+
+export async function exportDocxFile(
+  context: DocxContext,
+  filename: string
+): Promise<void> {
+  const bytes = await buildDocxFileBytes(context);
+  const blob = new Blob([bytes as BlobPart], {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

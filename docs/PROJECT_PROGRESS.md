@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.115
+
+- 新增正式本地 Agent 文档任务入口 `npm run agent:translate`，供 Hermes/Codex 传入文件路径、任务目录、目标语言和模型，在不依赖网页或线上站点的情况下调用仓库现有解析、模型路由、术语后处理、重试、写回和 QA。
+- Agent 统一输出 `poct.agent.translation-task.v1` JSON、逐文件 Quality Report 和 JSONL 日志，明确区分 `COMPLETED`、`COMPLETED_WITH_WARNINGS`、`BLOCKED`、`FAILED`；自动 QA 通过只表示可进入人工验收，不自动等同于可交付或可配置。
+- Excel `.xlsx` 已接入多工作表、行列/表头关系、ID/编号/医学代码锚点、公式保护、残留语言和输出重开校验；DOCX 已接入 XML 部件、语义段覆盖和输出重开校验；JSON/XML/Properties/Strings 字符串资源已接入结构保护与可用性检查。
+- 本地 Node PDF 仍缺少与浏览器 Canvas/字体/文本层写回等价的可验证 adapter，因此 Agent 对 PDF 明确返回 `BLOCKED` 且不调用模型；旧 `.xls`、`.po` 和源码字符串文件同样不虚报完成。
+- 抽出 `buildDocxFileBytes` 供浏览器下载和本地 Agent 共用；修复字符串资源同时包含 `%s` 与 `WBC` 等医学代码时的 placeholder 索引碰撞。
+- 新增 Agent smoke，覆盖 Excel/DOCX/JSON/XML 成功、模型失败和 PDF `BLOCKED`；发布前验证通过 `npm run typecheck`、`npm test`、`npm run test:issue-regression` 和 `npm run build`。
+
 ## v0.0.114
 
 - 目标语言列表新增 Polish 和 Romanian，覆盖 Excel/DOCX/PDF 主目标语言下拉框与 String Resource 多语言输出列表。

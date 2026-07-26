@@ -65,6 +65,7 @@ ${localeInstruction}
 - Do not invent or introduce new placeholder tokens; only preserve placeholders already present in input.
 - Translate natural-language UI labels, button names, menu names, and page names into ${targetLabel}; keep only code-like UI tokens, account IDs, and product code literals unchanged.
 - Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); translate the text inside them when it is natural language and do not replace wrappers with straight quotes.
+- Records may be wrapped as {"__poct_record_id": number, "payload": {...}}. Preserve both wrapper keys, keep every numeric record id unchanged, and return every id exactly once.
 - Optimize spacing and punctuation to read naturally in ${targetLabel}.
 - Always return a valid JSON object: {"records":[...]} where records keeps the same length/keys. No explanations outside JSON.
 
@@ -94,6 +95,7 @@ ${localeInstruction}
 - Translate natural-language UI labels, button names, menu names, and page names into ${targetLabel}; keep only code-like UI tokens and abbreviations unchanged.
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; do not invent or rename placeholders.
 - Preserve original wrapper symbols around UI labels exactly (e.g., 『Next』, 『Back』, 【Home】); translate the text inside them when it is natural language and do not replace wrappers with straight quotes.
+- Records may be wrapped as {"__poct_record_id": number, "payload": {...}}. Preserve both wrapper keys, keep every numeric record id unchanged, and return every id exactly once.
 - Keep compact UI/table text compact; do not add explanations that are not present in the source.
 - Use natural IFU/operator-manual wording instead of word-by-word Chinese syntax.
 ${englishManualRule}

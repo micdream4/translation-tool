@@ -1,7 +1,7 @@
 {
   "name": "copy-of-poct-medical-document-translator",
   "private": true,
-  "version": "0.0.116",
+  "version": "0.0.117",
   "type": "module",
   "scripts": {
     "prepare:terminology": "node scripts/generateTerminologyAssets.mjs",
@@ -14,7 +14,8 @@
     "test:agent": "node --import tsx --test scripts/agentTranslateSmoke.mjs",
     "test:issue-regression": "node scripts/issueRegressionSmoke.mjs",
     "test:real-docs": "node scripts/realDocumentSmoke.mjs",
-    "test:quality-gate": "npm run typecheck && npm test && npm run test:issue-regression && npm run build && npm run test:real-docs",
+    "test:ci-gate": "npm run typecheck && npm test && npm run test:issue-regression && npm run build",
+    "test:quality-gate": "npm run test:ci-gate && npm run test:real-docs -- --strict",
     "smoke:openrouter": "node scripts/openrouterModelSmoke.mjs",
     "issue:prepare": "node scripts/prepareLocalIssueWorkspace.mjs",
     "debug:to-regression": "node scripts/debugPackageToRegression.mjs",

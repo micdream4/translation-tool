@@ -140,6 +140,30 @@ export function parseExcelWorkbook(workbook: XLSX.WorkBook): ExcelParseResult {
   };
 }
 
+const getExcelSheetContextForRow = (context: ExcelContext, rowIndex: number) => {
+  const sheets = context.sheets?.length ? context.sheets : [context];
+  return (
+    sheets.find(
+      (sheet) => rowIndex >= sheet.startIndex && rowIndex < sheet.startIndex + sheet.rowCount
+    ) || context
+  );
+};
+
+export const isExcelFormulaCell = (
+  context: ExcelContext | null | undefined,
+  rowIndex: number,
+  columnKey: string
+) => {
+  if (!context) return false;
+  const sheet = getExcelSheetContextForRow(context, rowIndex);
+  const columnOffset = sheet.headerKeys.indexOf(columnKey);
+  if (columnOffset < 0) return false;
+  const row = sheet.dataStartRow + (rowIndex - sheet.startIndex);
+  const column = sheet.range.s.c + columnOffset;
+  const address = XLSX.utils.encode_cell({ r: row, c: column });
+  return Boolean(sheet.worksheet[address]?.f);
+};
+
 const setCellValue = (cell: XLSX.CellObject, value: unknown) => {
   if (value === undefined) return;
   const normalized = value === null ? '' : value;
@@ -191,13 +215,9 @@ export function exportToExcel(
 
   const overwriteFormulas = options.overwriteFormulas === true;
   const { workbook } = context;
-  const sheets = context.sheets?.length ? context.sheets : [context];
 
   data.forEach((row, rowIndex) => {
-    const sheetContext =
-      sheets.find(
-        (sheet) => rowIndex >= sheet.startIndex && rowIndex < sheet.startIndex + sheet.rowCount
-      ) || context;
+    const sheetContext = getExcelSheetContextForRow(context, rowIndex);
     const {
       worksheet,
       headerRow,
@@ -398,8 +418,8 @@ export const buildStylePreservingExcelBuffer = async (
     skippedFormulas: 0,
     stylePreserved: true
   };
-  const sheets = context.sheets?.length ? context.sheets : [context];
-  for (const sheet of sheets) {
+  const workbookSheets = context.sheets?.length ? context.sheets : [context];
+  for (const sheet of workbookSheets) {
     const sheetPath = sheetPaths.get(sheet.sheetName);
     const file = sheetPath ? zip.file(sheetPath) : null;
     if (sheetPath && file && !sheetXmlByPath.has(sheetPath)) {
@@ -408,10 +428,7 @@ export const buildStylePreservingExcelBuffer = async (
   }
 
   data.forEach((row, rowIndex) => {
-    const sheetContext =
-      sheets.find(
-        (sheet) => rowIndex >= sheet.startIndex && rowIndex < sheet.startIndex + sheet.rowCount
-      ) || context;
+    const sheetContext = getExcelSheetContextForRow(context, rowIndex);
     const sheetPath = sheetPaths.get(sheetContext.sheetName);
     if (!sheetPath) return;
 

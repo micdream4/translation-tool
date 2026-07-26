@@ -4,6 +4,12 @@ import { OpenRouterService } from "./openRouterService";
 import { ProxyTranslationService, ProxyEngine, type ProxyModelIssue } from "./proxyService";
 import { POCTRecord, TargetLanguage } from "../types";
 import type { TranslationProfile } from "../utils/translationProfiles";
+import {
+  alignTranslationEnvelopes,
+  isTranslationEnvelopeBatch,
+  unwrapTranslationEnvelopes,
+  wrapTranslationRecords
+} from "../utils/translationAlignment";
 
 export interface TranslationRequest {
   records: POCTRecord[];
@@ -141,6 +147,7 @@ export class TranslationHub {
       message.includes("length mismatch") ||
       message.includes("invalid payload") ||
       message.includes("invalid record data") ||
+      message.includes("translation alignment mismatch") ||
       message.includes("proxy translate network error") ||
       message.includes("proxy translate error 500") ||
       message.includes("deepseek error 429") ||
@@ -158,7 +165,10 @@ export class TranslationHub {
 
   private async translateWithRecovery(req: TranslationRequest): Promise<POCTRecord[]> {
     try {
-      return await this.translateDirect(req);
+      const translated = await this.translateDirect(req);
+      return isTranslationEnvelopeBatch(req.records)
+        ? alignTranslationEnvelopes(req.records, translated)
+        : translated;
     } catch (error) {
       if (!this.isRecoverableBatchError(error) || req.records.length <= 1) {
         throw error;
@@ -331,7 +341,11 @@ export class TranslationHub {
       return this.cache.get(cacheKey)!;
     }
 
-    const translated = await this.translateWithRecovery(req);
+    const translatedEnvelopes = await this.translateWithRecovery({
+      ...req,
+      records: wrapTranslationRecords(req.records)
+    });
+    const translated = unwrapTranslationEnvelopes(translatedEnvelopes);
     this.cache.set(cacheKey, translated);
     return translated;
   }

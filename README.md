@@ -4,9 +4,9 @@
 
 ## 功能概览
 - Excel（.xlsx，多工作表）/Word（.docx）导入导出，尽量保持原始结构与版式
-- 文本型 PDF 导入，抽取可复制文本后翻译，并导出仅含译文且回填可提取图片的 Word（.docx）
+- 文本型 PDF 导入，按原页背景与文本坐标覆盖译文，可下载译文 PDF；同时提供按页整理的 Review DOCX
 - 多翻译引擎（DeepSeek/Gemini/OpenRouter）自动切换与失败回退
-- 目标语言支持：简体中文、繁體中文（台灣）、英语、西班牙语、法语、德语、意大利语、土耳其语、俄语、葡萄牙语
+- 目标语言支持：简体中文、繁體中文（台灣）、英语、西班牙语、法语、德语、意大利语、波兰语、罗马尼亚语、土耳其语、俄语、葡萄牙语
 - 术语表与后处理：术语统一、占位符保护、标识符锁定
 - 组合规则抽取与缺失组合提示
 - 多 AI 交叉核验与质量检查（未翻译内容、空格与格式问题等）
@@ -48,6 +48,9 @@
 - `npm run agent:translate -- ...`：供 Hermes/Codex 调用的本地整份文档翻译与 QA 入口；详见 [`docs/agent-local-translation.md`](./docs/agent-local-translation.md)
 - `npm run test`：运行轻量回归检查和本地 Agent smoke
 - `npm run test:agent`：单独验证 Agent 的成功、失败和 `BLOCKED` 场景
+- `npm run test:ci-gate`：运行 CI 可用的类型、代码回归、Issue 回归和构建检查
+- `npm run test:real-docs -- --strict`：使用本机 `local-data/` 真实样本执行严格文档回归；缺文件或超出基线会失败
+- `npm run test:quality-gate`：先运行 CI gate，再运行严格真实文档回归
 - `npm run smoke:openrouter`：用当前 OpenRouter key 实测模型可用性，不输出密钥
 - `npm run deepseek:test`：DeepSeek 接口连通性测试
 - `npm run docx:translate -- "<docx_path>" --target English`：离线批量翻译/验收脚本（运维辅助，不是最终用户入口）
@@ -129,10 +132,10 @@ npm run --silent agent:translate -- \
    当前默认 OpenRouter 链为空；Gemini、GPT 和 Claude 统一通过 Cloudflare AI Gateway 调用，DeepSeek 通过官方 API 直连。若后续确实需要 OpenRouter 兜底，可先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
 
 6. DOCX 范围说明
-   浏览器端 DOCX 翻译当前处理正文 `word/document.xml` 的段落/表格文本；页眉页脚、脚注/尾注、批注会在上传后提示为暂不翻译范围。
+   浏览器端 DOCX 翻译当前覆盖正文、页眉、页脚、脚注、尾注和批注中的段落文本，并在上传和导出时显示 XML 部件、语义段和文本节点覆盖统计。术语表/构建基块 `word/glossary/document.xml` 暂不处理。
 
 7. PDF 范围说明
-   浏览器端 PDF 翻译当前处理“可抽取文本”的 PDF，并导出为仅含译文的 Word（.docx）。PDF 中可提取的图片会按页插入到对应译文段落后；扫描版 PDF、图片内文字 OCR、复杂坐标级版式复原暂不支持。
+   浏览器端 PDF 翻译当前处理“可抽取文本”的 PDF。主下载会以原页渲染背景为底，在源文本区域覆盖译文并尽量保留可选择文本层；另提供按页整理译文和源图片的 Review DOCX。扫描版 PDF 和图片内文字 OCR 暂不支持，复杂版式仍需人工抽检。
 
 8. 繁體中文（台灣）说明
    目标语言中的 `Traditional Chinese (Taiwan)` 按台湾地区繁体表达处理，不只是简繁字符转换；翻译与审核 prompt 会要求使用台湾常见医学/技术用语，并在质量检查中把明显简体残留视为未达目标语言。

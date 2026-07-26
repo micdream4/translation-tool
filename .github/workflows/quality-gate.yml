@@ -22,17 +22,5 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Unit regression
-        run: npm test
-
-      - name: Issue regression
-        run: npm run test:issue-regression
-
-      - name: Build
-        run: npm run build
-
-      - name: Real document smoke
-        run: npm run test:real-docs
+      - name: CI quality gate
+        run: npm run test:ci-gate

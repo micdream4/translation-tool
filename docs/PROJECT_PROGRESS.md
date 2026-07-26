@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.0.117
+
+- 修复 Excel 公式覆盖：新增公式坐标识别，公式单元格不进入模型、残留检查或补译目标；网页普通导出和保格式 XML patch 均默认跳过公式，并记录 `skippedFormulas`。
+- 新增翻译记录身份 envelope：TranslationHub 为 Excel、DOCX、PDF 和字符串资源统一加入数值 `__poct_record_id` 和 `payload`，模型返回按 ID 重排；重复、缺失或损坏 ID 会作为可恢复批次错误拆分重试，单条仍异常则明确失败。
+- 修复 DOCX 中文目标编号：只有非中文目标才把 CJK 自动编号归一为 decimal，Chinese / Traditional Chinese (Taiwan) 保留原编号样式；网页下载和本地 Agent 共用同一规则。
+- 真实文档 smoke 增加 strict 模式，Excel 公式覆盖、DOCX 非目标段落、常见英文残留和逐词残留均进入版本化阈值；strict 下 skipped 或失败会返回非零退出码。
+- GitHub CI 改为 `npm run test:ci-gate`，不再假装能够访问 `.gitignore` 中的 `local-data/`；本机完整发布前验证继续使用 `npm run test:quality-gate`。
+- 新增本地 issue 包 `local-data/issues/2026-07-10-tool-multilang-integrity-gate/`，并补充公式保留、模型乱序/坏 ID、DOCX 编号条件和严格 smoke 回归。
+
 ## v0.0.116
 
 - 修复本地 Agent 整份文档翻译误用保守补译筛选的问题：Agent 现在只在存在明确目标语言证据时跳过拉丁文本，不再把 `[Product Name]`、`Blood cell counting chamber` 等弱特征英文误判为已经是法语；数字、单位、型号和医学代码继续不调用模型。
@@ -707,6 +716,9 @@
 ## 已知限制
 
 - PDF 图片内文字暂不 OCR 翻译。
-- PDF 暂不做原 PDF 坐标级版式复原，当前以可编辑 Word 译文为第一阶段输出。
-- 多 AI 审核依赖 OpenRouter 模型可用性；部分模型可能受区域或节点限制。
+- PDF 当前使用原页背景 + 坐标覆盖译文的保守保真方案，不承诺复杂说明书达到像素级 1:1；仍需抽检表格、图注、长段换行和遮盖区域。
+- 多 AI 审核依赖 Cloudflare AI Gateway、DeepSeek 和可选 OpenRouter 模型可用性；部分模型可能受区域、配额或节点限制。
 - Excel 解析仍使用 `xlsx`，npm audit 存在 high 公告且暂无官方修复版本；当前仅建议处理可信 `.xlsx` 文件。
+- Excel finding 的 `Save & Apply` 当前只保存问题样本，尚未直接写回表格；DOCX/PDF 已支持写回。
+- Excel/DOCX/PDF 主文档仍是单文件单目标语言流程；多语言自动队列目前只在 String Resource 中可用。
+- GitHub CI 不持有 ignored 的真实文档；真实 Excel/DOCX/PDF 严格 gate 必须在配置了 `local-data/` 样本的受控机器运行。

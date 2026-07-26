@@ -6,7 +6,7 @@ import LogConsole from './components/LogConsole';
 import QualityReportPanel from './components/QualityReportPanel';
 import { useAuth } from './hooks/useAuth';
 import { useQualityWorkflow } from './hooks/useQualityWorkflow';
-import { parseExcelFile, exportToExcelPreservingStyles } from './utils/excel';
+import { parseExcelFile, exportToExcelPreservingStyles, isExcelFormulaCell } from './utils/excel';
 import type { ExcelContext } from './utils/excel';
 import {
   formatExcelSkipScopeSummary,
@@ -554,19 +554,21 @@ const App: React.FC = () => {
     [excelSkipScope]
   );
   const shouldSkipExcelCell = (rowIndex: number, columnKey: string) =>
-    documentKind === 'excel' && isExcelCellSkipped(excelSkipScope, rowIndex, columnKey);
+    documentKind === 'excel' &&
+    (isExcelCellSkipped(excelSkipScope, rowIndex, columnKey) ||
+      isExcelFormulaCell(excelContext, rowIndex, columnKey));
   const excelQualityOptions = useMemo<QualityCheckOptions>(
     () => ({
       targetLang,
       shouldIgnoreUnit: (unit) => shouldSkipExcelCell(unit.rowIndex, unit.columnKey)
     }),
-    [targetLang, excelSkipScope, documentKind]
+    [targetLang, excelSkipScope, excelContext, documentKind]
   );
   const untranslatedOptions = useMemo(
     () => ({
       shouldIgnoreCell: (rowIndex: number, columnKey: string) => shouldSkipExcelCell(rowIndex, columnKey)
     }),
-    [excelSkipScope, documentKind]
+    [excelSkipScope, excelContext, documentKind]
   );
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
@@ -1425,7 +1427,7 @@ const App: React.FC = () => {
   };
 
   const restoreSkippedExcelCells = (row: POCTRecord, rowIndex: number) => {
-    if (documentKind !== 'excel' || excelSkipScope.cellCount === 0) return row;
+    if (documentKind !== 'excel') return row;
     const original = data[rowIndex] || {};
     const output: POCTRecord = { ...row };
     Object.keys(original).forEach((key) => {
@@ -3995,7 +3997,7 @@ const App: React.FC = () => {
       addLog(`Docx coverage: 导出覆盖 ${formatDocxCoverageSummary(context.coverage)}。`);
       const filename = `Translated_${targetLang}_${file?.name || 'Result.docx'}`;
       addLog(`Generating file: ${filename}`);
-      exportDocxFile(context, filename);
+      exportDocxFile(context, filename, targetLang);
       return;
     }
 
@@ -4037,9 +4039,7 @@ const App: React.FC = () => {
       restoreSkippedExcelCells(applyPostprocessRow(data[idx], row, targetLang), idx)
     );
     try {
-      const stats = await exportToExcelPreservingStyles(outputRows, filename, excelContext || undefined, {
-        overwriteFormulas: true
-      });
+      const stats = await exportToExcelPreservingStyles(outputRows, filename, excelContext || undefined);
       if (stats.stylePreserved) {
         addLog('Excel export: 已基于原始工作簿写回译文并保留原格式。');
       }
@@ -4047,7 +4047,10 @@ const App: React.FC = () => {
         addLog(`Excel export: 已按跳过范围保留 ${excelSkipScope.cellCount} 个源文单元格。`);
       }
       if (stats?.overwrittenFormulas) {
-        addLog(`已覆盖 ${stats.overwrittenFormulas} 个公式单元格以写入翻译结果。`);
+        addLog(`Excel export warning: 意外覆盖 ${stats.overwrittenFormulas} 个公式单元格。`);
+      }
+      if (stats?.skippedFormulas) {
+        addLog(`Excel export: 已保留 ${stats.skippedFormulas} 个公式单元格。`);
       }
     } catch (error) {
       addLog(`Excel export failed: ${error instanceof Error ? error.message : String(error)}`);

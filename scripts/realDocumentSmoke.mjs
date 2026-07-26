@@ -62,6 +62,7 @@ const loadManifest = () => {
 };
 
 const manifest = loadManifest();
+const strict = process.argv.includes("--strict");
 
 const findCase = (id) => {
   const item = manifest.cases.find((entry) => entry.id === id);
@@ -77,7 +78,7 @@ const check = (name, passed, details = {}) => ({ name, passed: Boolean(passed), 
 
 const summarizeChecks = (checks = []) => {
   if (checks.length === 0) return "not-checked";
-  return checks.every((item) => item.passed) ? "passed" : "warning";
+  return checks.every((item) => item.passed) ? "passed" : "failed";
 };
 
 const listPdfFiles = (dirPath) => {
@@ -196,9 +197,7 @@ const runExcelSmoke = async () => {
   const translated = parseExcelWorkbook(XLSX.readFile(translatedPath, { cellStyles: true }));
   const report = runQualityChecks(source.records, translated.records, { targetLang: caseConfig.targetLang });
   const outPath = path.join(os.tmpdir(), `poct-real-excel-${Date.now()}.xlsx`);
-  const exportStats = exportToExcel(translated.records, outPath, source.context, {
-    overwriteFormulas: true
-  });
+  const exportStats = exportToExcel(translated.records, outPath, source.context);
   const exported = XLSX.readFile(outPath, { cellStyles: true });
   const exportedSheets = exported.SheetNames.length;
   fs.rmSync(outPath, { force: true });
@@ -227,6 +226,10 @@ const runExcelSmoke = async () => {
     check("structure mismatches within baseline", report.totals.structureMismatches <= (expectations.maxStructureMismatches ?? Number.POSITIVE_INFINITY), {
       actual: report.totals.structureMismatches,
       expectedMax: expectations.maxStructureMismatches
+    }),
+    check("formula overwrites within baseline", exportStats.overwrittenFormulas <= (expectations.maxOverwrittenFormulas ?? 0), {
+      actual: exportStats.overwrittenFormulas,
+      expectedMax: expectations.maxOverwrittenFormulas ?? 0
     })
   ];
   return {
@@ -264,6 +267,7 @@ const runDocxSmoke = async () => {
       hits: paragraphs.filter((item) => item.text.toLowerCase().includes(String(term).toLowerCase())).length
     }))
     .filter((item) => item.hits > 0);
+  const maxKnownResidualHits = expectations.maxKnownResidualHits || {};
   const checks = [
     check("paragraph count meets baseline", paragraphs.length >= (expectations.minParagraphs || 0), {
       actual: paragraphs.length,
@@ -276,6 +280,21 @@ const runDocxSmoke = async () => {
     check("CJK numbering separators within baseline", numbering.cjkSeparators <= (expectations.maxCjkNumberingSeparators ?? Number.POSITIVE_INFINITY), {
       actual: numbering.cjkSeparators,
       expectedMax: expectations.maxCjkNumberingSeparators
+    }),
+    check("non-target paragraphs within baseline", issueParagraphs.length <= (expectations.maxNonTargetParagraphs ?? Number.POSITIVE_INFINITY), {
+      actual: issueParagraphs.length,
+      expectedMax: expectations.maxNonTargetParagraphs
+    }),
+    check("common English residuals within baseline", commonEnglishResiduals.length <= (expectations.maxCommonEnglishResiduals ?? Number.POSITIVE_INFINITY), {
+      actual: commonEnglishResiduals.length,
+      expectedMax: expectations.maxCommonEnglishResiduals
+    }),
+    ...Object.entries(maxKnownResidualHits).map(([term, expectedMax]) => {
+      const actual = knownResidualHits.find((item) => item.term === term)?.hits || 0;
+      return check(`known residual ${term} within baseline`, actual <= Number(expectedMax), {
+        actual,
+        expectedMax: Number(expectedMax)
+      });
     })
   ];
   return {
@@ -362,7 +381,19 @@ const main = async () => {
     docx: await runDocxSmoke(),
     pdf: runPdfSmoke()
   };
+  const cases = [result.excel, result.docx, result.pdf];
+  const failedCases = cases.filter((item) => item.status !== "passed");
+  result.summary = {
+    strict,
+    passed: cases.length - failedCases.length,
+    failed: failedCases.filter((item) => item.status === "failed").length,
+    skipped: failedCases.filter((item) => item.status === "skipped").length,
+    failedCaseIds: failedCases.map((item) => item.caseId)
+  };
   console.log(JSON.stringify(result, null, 2));
+  if (strict && failedCases.length > 0) {
+    process.exitCode = 1;
+  }
 };
 
 main().catch((error) => {

@@ -83,8 +83,9 @@ If deploying from Git integration:
    - layout intact
    - images intact
    - translated text updated
-   - if the document has headers, footers, footnotes, endnotes, or comments, confirm the app surfaced the DOCX scope note
-   - for PDF, confirm the app exports a Word `.docx` containing translated text and any extractable source images
+   - if the document has headers, footers, footnotes, endnotes, or comments, confirm the DOCX coverage summary includes the expected XML parts
+   - for PDF, confirm the translated PDF keeps the expected page background/images and exposes an extractable text layer; use Review DOCX for secondary text review
+   - before release, run `npm run test:quality-gate` on the Mac that owns the ignored `local-data/` regression samples; GitHub CI intentionally runs `test:ci-gate` only
 
 ## 7. Cost and Stability Tips
 - Use `OPENROUTER_KEYS_BY_EMAIL` for per-user budget control.

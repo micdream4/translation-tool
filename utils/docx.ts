@@ -1,4 +1,6 @@
 import JSZip from "jszip";
+import type { TargetLanguage } from "../types";
+import { isChineseTarget } from "./targetLanguage";
 
 export interface DocxTextNode {
   id: string;
@@ -459,8 +461,12 @@ const normalizeDocxNumbering = (xmlDoc: Document) => {
   });
 };
 
+export const shouldNormalizeDocxNumbering = (targetLang?: TargetLanguage) =>
+  targetLang ? !isChineseTarget(targetLang) : true;
+
 export async function buildDocxFileBytes(
-  context: DocxContext
+  context: DocxContext,
+  targetLang?: TargetLanguage
 ): Promise<Uint8Array> {
   const serializer = new XMLSerializer();
   const parts = context.parts?.length
@@ -475,7 +481,9 @@ export async function buildDocxFileBytes(
         }
       ];
   parts.forEach((part) => {
-    normalizeDocxNumbering(part.xmlDoc);
+    if (shouldNormalizeDocxNumbering(targetLang)) {
+      normalizeDocxNumbering(part.xmlDoc);
+    }
     const payload = serializer.serializeToString(part.xmlDoc);
     context.zip.file(part.path, payload);
   });
@@ -484,9 +492,10 @@ export async function buildDocxFileBytes(
 
 export async function exportDocxFile(
   context: DocxContext,
-  filename: string
+  filename: string,
+  targetLang?: TargetLanguage
 ): Promise<void> {
-  const bytes = await buildDocxFileBytes(context);
+  const bytes = await buildDocxFileBytes(context, targetLang);
   const blob = new Blob([bytes as BlobPart], {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   });

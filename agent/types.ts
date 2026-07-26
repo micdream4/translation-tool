@@ -1,5 +1,6 @@
 import type { POCTRecord, TargetLanguage } from "../types";
 import type { TranslationProfile } from "../utils/translationProfiles";
+import type { QualityIssueType } from "../quality/types";
 
 export type AgentTaskStatus =
   | "COMPLETED"
@@ -27,6 +28,19 @@ export interface AgentStructureCheck {
   detail: string;
 }
 
+export interface AgentFailureSummary {
+  source: "quality" | "check";
+  type: QualityIssueType | "check";
+  severity: keyof AgentIssueCounts;
+  rowIndex?: number;
+  columnKey?: string;
+  locationLabel?: string;
+  value?: string;
+  original?: string;
+  checkName?: string;
+  detail?: string;
+}
+
 export interface AgentFileResult {
   inputPath: string;
   relativePath: string;
@@ -39,6 +53,7 @@ export interface AgentFileResult {
   qualityReportPath: string;
   issueCounts: AgentIssueCounts;
   checks: AgentStructureCheck[];
+  failures: AgentFailureSummary[];
   message: string;
 }
 

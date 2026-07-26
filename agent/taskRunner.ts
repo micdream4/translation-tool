@@ -11,6 +11,7 @@ import {
 import {
   buildDocxFileBytes,
   getDocxSegmentText,
+  hasDocxCrossRunWordBreak,
   parseDocxFile,
   setDocxSegmentText
 } from "../utils/docx";
@@ -37,6 +38,7 @@ import { TARGET_LANGUAGE_OPTIONS } from "../utils/targetLanguage";
 import type { TranslationProfile } from "../utils/translationProfiles";
 import type {
   AgentDocumentKind,
+  AgentFailureSummary,
   AgentFileResult,
   AgentIssueCounts,
   AgentStructureCheck,
@@ -73,6 +75,7 @@ type QualityPayload = {
   quality: QualityReport | null;
   checks: AgentStructureCheck[];
   issueCounts: AgentIssueCounts;
+  failures: AgentFailureSummary[];
   notes: string[];
 };
 
@@ -243,6 +246,55 @@ const countsWithChecks = (
       return counts;
     }, qualityCounts(quality));
 
+const buildFailureSummary = (
+  quality: QualityReport | null,
+  checks: AgentStructureCheck[]
+): AgentFailureSummary[] => {
+  const failures: AgentFailureSummary[] = [];
+  const appendQualityIssues = (
+    issues: QualityReport["issues"][keyof QualityReport["issues"]],
+    severity: keyof AgentIssueCounts
+  ) => {
+    issues.forEach((issue) => {
+      failures.push({
+        source: "quality",
+        type: issue.type,
+        severity,
+        rowIndex: issue.rowIndex,
+        columnKey: issue.columnKey,
+        locationLabel: issue.locationLabel,
+        value: issue.value,
+        original: issue.original
+      });
+    });
+  };
+
+  if (quality) {
+    appendQualityIssues(quality.issues.chinese, "critical");
+    appendQualityIssues(quality.issues.placeholders, "critical");
+    appendQualityIssues(quality.issues.idMismatch, "critical");
+    appendQualityIssues(quality.issues.emptyTranslations, "critical");
+    appendQualityIssues(quality.issues.structureMismatches, "critical");
+    appendQualityIssues(quality.issues.nonTargetLanguage, "critical");
+    quality.issues.spacing.forEach((issue) =>
+      appendQualityIssues([issue], issue.severity === "high" ? "critical" : issue.severity === "low" ? "minor" : "medium")
+    );
+  }
+
+  checks
+    .filter((check) => !check.passed)
+    .forEach((check) => {
+      failures.push({
+        source: "check",
+        type: "check",
+        severity: check.severity,
+        checkName: check.name,
+        detail: check.detail
+      });
+    });
+  return failures;
+};
+
 const statusFromCounts = (counts: AgentIssueCounts): AgentTaskStatus => {
   if (counts.critical > 0) return "BLOCKED";
   if (counts.medium > 0 || counts.minor > 0) return "COMPLETED_WITH_WARNINGS";
@@ -263,6 +315,7 @@ const buildQualityPayload = (
   quality,
   checks,
   issueCounts: countsWithChecks(quality, checks),
+  failures: buildFailureSummary(quality, checks),
   notes
 });
 
@@ -358,14 +411,14 @@ const finalizeValue = (
   return typeof normalized.content === "string" ? normalized.content : polished;
 };
 
-const translateTextItems = async (
-  items: Array<{ index: number; text: string }>,
+const translateTextItems = async <T extends string | number>(
+  items: Array<{ index: T; text: string }>,
   targetLanguage: TargetLanguage,
   model: string,
   profile: TranslationProfile,
   provider: AgentTranslationProvider
 ) => {
-  const output = new Map<number, string>();
+  const output = new Map<T, string>();
   const batchSize = /deepseek-v4-pro/i.test(model) ? 8 : 20;
   let engine = "not-required";
 
@@ -432,6 +485,7 @@ const processExcel = async (
         if (
           !locked &&
           shouldTranslateCellValue(key, value, targetLanguage, {
+            requireTargetLanguageEvidence: true,
             shouldLockCell: (cellKey) => LOCKED_KEY_REGEX.test(cellKey)
           })
         ) {
@@ -538,15 +592,21 @@ const processDocx = async (
   });
   const context = await parseDocxFile(file);
   const sourceSegments = context.segments.map((segment) => ({
+    coordinate: segment.coordinate,
     original: segment.original,
+    runTexts: segment.nodes.map((node) => node.textContent || ""),
     partPath: segment.partPath,
     partLabel: segment.partLabel
   }));
+  const sourceSegmentsByCoordinate = new Map(
+    context.segments.map((segment) => [segment.coordinate, segment])
+  );
   const items = context.segments
-    .map((segment, index) => ({ index, text: segment.original }))
+    .map((segment) => ({ index: segment.coordinate, text: segment.original }))
     .filter((item) =>
       shouldTranslateCellValue("content", item.text, targetLanguage, {
-        ignoreLock: true
+        ignoreLock: true,
+        requireTargetLanguageEvidence: true
       })
     );
   const translated = await translateTextItems(
@@ -556,9 +616,13 @@ const processDocx = async (
     "docx-manual",
     provider
   );
-  translated.values.forEach((text, index) =>
-    setDocxSegmentText(context.segments[index], text)
-  );
+  translated.values.forEach((text, coordinate) => {
+    const segment = sourceSegmentsByCoordinate.get(coordinate);
+    if (!segment) {
+      throw new Error(`DOCX 回填坐标不存在：${coordinate}`);
+    }
+    setDocxSegmentText(segment, text);
+  });
   const outputBytes = await buildDocxFileBytes(context);
   await writeBytesAtomically(outputPath, outputBytes);
 
@@ -566,8 +630,13 @@ const processDocx = async (
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   });
   const reopened = await parseDocxFile(reopenedFile);
+  const reopenedSegmentsByCoordinate = new Map(
+    reopened.segments.map((segment) => [segment.coordinate, segment])
+  );
   const sourcePartPaths = context.coverage.parts.map((part) => part.path);
   const targetPartPaths = reopened.coverage.parts.map((part) => part.path);
+  const sourceCoordinates = sourceSegments.map((segment) => segment.coordinate);
+  const targetCoordinates = reopened.segments.map((segment) => segment.coordinate);
   const checks: AgentStructureCheck[] = [
     {
       name: "output-openable",
@@ -587,6 +656,12 @@ const processDocx = async (
       severity: "critical",
       detail: `源语义段 ${sourceSegments.length} 个，输出 ${reopened.segments.length} 个。`
     },
+    {
+      name: "segment-coordinate-alignment",
+      passed: JSON.stringify(sourceCoordinates) === JSON.stringify(targetCoordinates),
+      severity: "critical",
+      detail: `逐坐标比对源段 ${sourceCoordinates.length} 个，输出段 ${targetCoordinates.length} 个。`
+    },
     ...context.coverageWarnings.map((warning) => ({
       name: "coverage-warning",
       passed: false,
@@ -597,10 +672,19 @@ const processDocx = async (
   const qualityInput: QualityCheckInput = segmentsToQualityUnits(
     sourceSegments,
     "docx",
-    (_segment, index) =>
-      reopened.segments[index] ? getDocxSegmentText(reopened.segments[index]) : "",
+    (segment) => {
+      const reopenedSegment = reopenedSegmentsByCoordinate.get(segment.coordinate);
+      return reopenedSegment ? getDocxSegmentText(reopenedSegment) : "";
+    },
     (segment) => segment.original,
-    (segment) => `${segment.partLabel}:${segment.partPath}`
+    (segment) => `${segment.partLabel}:${segment.coordinate}`,
+    (segment) => {
+      const reopenedSegment = reopenedSegmentsByCoordinate.get(segment.coordinate);
+      return Boolean(
+        reopenedSegment &&
+          hasDocxCrossRunWordBreak(segment.runTexts, reopenedSegment)
+      );
+    }
   );
   const quality = runQualityChecksOnUnits(qualityInput, { targetLang: targetLanguage });
   return {
@@ -677,7 +761,10 @@ const translateLineStringResource = async (
           "content",
           structured.translatableContent,
           targetLanguage,
-          { ignoreLock: true }
+          {
+            ignoreLock: true,
+            requireTargetLanguageEvidence: true
+          }
         )
           ? index
           : -1;
@@ -819,7 +906,8 @@ const processStringResource = async (
       .map((leaf, index) => ({ index, text: leaf.source }))
       .filter((item) =>
         shouldTranslateCellValue("content", item.text, targetLanguage, {
-          ignoreLock: true
+          ignoreLock: true,
+          requireTargetLanguageEvidence: true
         })
       );
     const translated = await translateTextItems(
@@ -956,6 +1044,7 @@ const blockedResult = async (
     qualityReportPath,
     issueCounts: payload.issueCounts,
     checks,
+    failures: payload.failures,
     message
   };
 };
@@ -1085,6 +1174,7 @@ const runFileTarget = async ({
       qualityReportPath: reportPath,
       issueCounts: payload.issueCounts,
       checks: execution.checks,
+      failures: payload.failures,
       message:
         status === "BLOCKED"
           ? "翻译输出已生成，但 QA 发现严重问题，禁止进入人工验收。"
@@ -1122,6 +1212,7 @@ const runFileTarget = async ({
       qualityReportPath: reportPath,
       issueCounts: payload.issueCounts,
       checks,
+      failures: payload.failures,
       message
     };
   }

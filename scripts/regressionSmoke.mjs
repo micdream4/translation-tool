@@ -569,6 +569,67 @@ test("DOCX parser covers body, headers, footers, footnotes, endnotes, and commen
   assert.equal(boundaryNodes.every((node) => typeof node.textContent === "string"), true);
 });
 
+test("DOCX segments are non-overlapping coordinates and export never splits words across runs", async () => {
+  await bundleTsModule(path.join(repoRoot, "agent/nodeRuntime.ts"));
+  const {
+    parseDocxFile,
+    buildDocxFileBytes,
+    getDocxSegmentText,
+    hasDocxCrossRunWordBreak,
+    setDocxSegmentText
+  } = await bundleTsModule(path.join(repoRoot, "utils/docx.ts"));
+  const zip = new JSZip();
+  zip.file(
+    "word/document.xml",
+    [
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+      "<w:body>",
+      "<w:p><w:r><w:t>Outer label</w:t></w:r><w:r><w:drawing><w:txbxContent>",
+      "<w:p><w:r><w:t>Inner first</w:t></w:r></w:p>",
+      "<w:p><w:r><w:t>Inner second</w:t></w:r></w:p>",
+      "</w:txbxContent></w:drawing></w:r></w:p>",
+      "<w:p><w:r><w:t>Tech</w:t></w:r><w:r><w:t>nology guide</w:t></w:r></w:p>",
+      "</w:body></w:document>"
+    ].join("")
+  );
+  const sourceBytes = await zip.generateAsync({ type: "uint8array" });
+  const parsed = await parseDocxFile(new File([sourceBytes], "synthetic.docx"));
+
+  assert.deepEqual(
+    parsed.segments.map((segment) => segment.original),
+    ["Outer label", "Inner first", "Inner second", "Technology guide"]
+  );
+  assert.deepEqual(
+    parsed.segments.map((segment) => segment.coordinate),
+    [
+      "word/document.xml#paragraph-0",
+      "word/document.xml#paragraph-1",
+      "word/document.xml#paragraph-2",
+      "word/document.xml#paragraph-3"
+    ]
+  );
+  assert.equal(
+    new Set(parsed.segments.flatMap((segment) => segment.nodes)).size,
+    parsed.segments.reduce((count, segment) => count + segment.nodes.length, 0)
+  );
+
+  setDocxSegmentText(parsed.segments[1], "Premier contenu");
+  assert.equal(getDocxSegmentText(parsed.segments[0]), "Outer label");
+  assert.equal(getDocxSegmentText(parsed.segments[2]), "Inner second");
+  assert.equal(
+    hasDocxCrossRunWordBreak(["Tech", "nology guide"], {
+      nodes: [{ textContent: "Tech " }, { textContent: "nology guide" }]
+    }),
+    true
+  );
+
+  const reopened = await parseDocxFile(
+    new File([await buildDocxFileBytes(parsed)], "synthetic-output.docx")
+  );
+  assert.equal(getDocxSegmentText(reopened.segments[3]), "Technology guide");
+});
+
 test("production proxy builds do not inject server-side model keys into the browser bundle", () => {
   const viteSource = fs.readFileSync(path.join(repoRoot, "vite.config.ts"), "utf8");
   assert.match(viteSource, /allowClientKeys = translationMode === 'direct'/);
@@ -1242,6 +1303,24 @@ test("quality core adapters preserve existing row-based quality checks", async (
   );
   assert.equal(segmentInput.units[0].locationLabel, "PDF segment 1");
   assert.equal(runQualityChecksOnUnits(segmentInput).issues.chinese[0].locationLabel, "PDF segment 1");
+
+  const crossRunWordBreakInput = segmentsToQualityUnits(
+    [{ original: "Technology guide", translated: "Guide techn ologique" }],
+    "docx",
+    (segment) => segment.translated,
+    (segment) => segment.original,
+    () => "word/document.xml#paragraph-3",
+    () => true
+  );
+  const crossRunWordBreakReport = runQualityChecksOnUnits(crossRunWordBreakInput, {
+    targetLang: "French"
+  });
+  assert.equal(crossRunWordBreakReport.totals.spacingIssues, 1);
+  assert.equal(crossRunWordBreakReport.totals.spacingMedium, 1);
+  assert.equal(
+    crossRunWordBreakReport.issues.spacing[0].locationLabel,
+    "word/document.xml#paragraph-3"
+  );
 });
 
 test("retry target helpers reuse quality issue details across document kinds", async () => {
@@ -1280,6 +1359,29 @@ test("retry target helpers reuse quality issue details across document kinds", a
   );
   assert.equal(
     shouldTranslateCellValue("content", "Abra la pestaña «QC».", "Spanish"),
+    false
+  );
+  assert.equal(
+    shouldTranslateCellValue("content", "[Product Name]", "French"),
+    true
+  );
+  assert.equal(
+    shouldTranslateCellValue("content", "Blood cell counting chamber", "French"),
+    false
+  );
+  assert.equal(
+    shouldTranslateCellValue(
+      "content",
+      "Blood cell counting chamber",
+      "French",
+      { requireTargetLanguageEvidence: true }
+    ),
+    true
+  );
+  assert.equal(
+    shouldTranslateCellValue("content", "240μL", "French", {
+      requireTargetLanguageEvidence: true
+    }),
     false
   );
   assert.equal(
@@ -1991,6 +2093,27 @@ test("language profiles flag high-confidence source-language residue", async () 
     { targetLang: "French" }
   );
   assert.equal(frenchQualityReport.totals.nonTargetCells, 1);
+  const frenchHeadingResidueReport = runQualityChecks(
+    [
+      { content: "Directions" },
+      { content: "Collect Sample" },
+      { content: "Storage Conditions" },
+      { content: "Manufacturer" },
+      { content: "Page 2 of 4" }
+    ],
+    [
+      { content: "Directions" },
+      { content: "Collect Sample" },
+      { content: "Storage Conditions" },
+      { content: "Manufacturer" },
+      { content: "Page 2 of 4" }
+    ],
+    { targetLang: "French" }
+  );
+  assert.deepEqual(
+    frenchHeadingResidueReport.issues.nonTargetLanguage.map((issue) => issue.value),
+    ["Directions", "Collect Sample", "Storage Conditions", "Manufacturer", "Page 2 of 4"]
+  );
 });
 
 test("API translate function accepts proxy payload and normalizes OpenRouter records", async () => {

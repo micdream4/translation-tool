@@ -120,14 +120,19 @@ Hermes 不应只看进程是否结束；应同时读取 `status`、`readyForHuma
 
 ### DOCX `.docx`
 
-真实可执行。复用现有 DOCX 部件解析、语义段、run 回填、编号/空格归一和 Quality Check Core。
+真实可执行。复用现有 DOCX 部件解析、语义段、run 保真回填、编号处理和 Quality Check Core。
+
+整份文档入口与网页的选择性补译不同：型号、医学代码、纯数值和单位继续跳过；普通拉丁文本只有在存在明确目标语言证据时才跳过。弱特征英文标题和短标签仍会送入模型，避免将“无法判定语言”误当成“已经是目标语言”。
 
 自动检查：
 
 - 输出能否重新解包并解析。
 - 正文、编号、页眉页脚、脚注尾注、批注等已识别 XML 部件集合。
 - 语义段数量。
+- 每个文本节点只归属于一个语义段。
+- `XML part + paragraph index` 逐坐标回填一致性。
 - 占位符、医学代码和目标语言残留。
+- 跨 Word run 的断词和异常粘连。
 
 解析器明确给出的未覆盖部件会作为 warning 进入报告。
 
@@ -178,10 +183,13 @@ npm run test:agent
 npm run typecheck
 npm test
 npm run build
+npm run test:real-docs
 ```
 
 `test:agent` 使用临时生成的多工作表 Excel、DOCX、JSON、XML 和 PDF smoke，覆盖：
 
 - Excel/DOCX/字符串资源成功、结构重开和输入未覆盖。
+- 英译法短标题不会因语言特征不足而跳过。
+- DOCX 嵌套文本框节点唯一归属、稳定坐标回填和跨 run 断词检测。
 - 模型异常返回 `FAILED`，不发布部分输出。
 - PDF 返回 `BLOCKED`，模型调用次数为 0。

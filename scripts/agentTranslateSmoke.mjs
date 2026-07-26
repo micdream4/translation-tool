@@ -14,7 +14,10 @@ const translateText = (value) =>
     .replaceAll("白细胞", "leucocytes")
     .replaceAll("升高", "élevés")
     .replaceAll("状态", "état")
-    .replaceAll("中文", "texte français");
+    .replaceAll("中文", "texte français")
+    .replaceAll("[Product Name]", "[Nom du produit]")
+    .replaceAll("Blood cell counting chamber", "Chambre de comptage des cellules sanguines")
+    .replaceAll("Collect Sample", "Prélever l’échantillon");
 
 const createProvider = ({ fail = false } = {}) => {
   let calls = 0;
@@ -49,7 +52,8 @@ const createFixtureSet = async (root) => {
     workbook,
     XLSX.utils.aoa_to_sheet([
       ["ID", "Code", "Description"],
-      ["row-001", "WBC", "白细胞 WBC 升高"]
+      ["row-001", "WBC", "白细胞 WBC 升高"],
+      ["row-003", "RBC", "[Product Name]"]
     ]),
     "Results"
   );
@@ -70,6 +74,12 @@ const createFixtureSet = async (root) => {
         children: [
           new Paragraph({
             children: [new TextRun("白细胞 WBC 升高")]
+          }),
+          new Paragraph({
+            children: [new TextRun("[Product Name]")]
+          }),
+          new Paragraph({
+            children: [new TextRun("Blood cell counting chamber")]
           })
         ]
       }
@@ -81,13 +91,17 @@ const createFixtureSet = async (root) => {
   const jsonPath = path.join(inputDir, "strings.json");
   await writeFile(
     jsonPath,
-    `${JSON.stringify({ status: "白细胞 WBC 升高", nested: ["中文状态"] }, null, 2)}\n`,
+    `${JSON.stringify({
+      status: "白细胞 WBC 升高",
+      heading: "[Product Name]",
+      nested: ["中文状态", "Collect Sample"]
+    }, null, 2)}\n`,
     "utf8"
   );
   const xmlPath = path.join(inputDir, "strings.xml");
   await writeFile(
     xmlPath,
-    '<resources>\n<string name="status">白细胞 WBC 升高 %s</string>\n</resources>\n',
+    '<resources>\n<string name="status">白细胞 WBC 升高 %s</string>\n<string name="heading">[Product Name]</string>\n</resources>\n',
     "utf8"
   );
   return { inputDir, excelPath, docxPath, jsonPath, xmlPath };
@@ -131,14 +145,20 @@ test("agent local command translates Excel, DOCX and string resources without ov
   assert.deepEqual(translatedWorkbook.SheetNames, ["Results", "Second"]);
   assert.equal(translatedWorkbook.Sheets.Results.A2.v, "row-001");
   assert.match(String(translatedWorkbook.Sheets.Results.C2.v), /leucocytes/);
+  assert.equal(translatedWorkbook.Sheets.Results.C3.v, "[Nom du produit]");
 
   const docxResult = result.files.find((file) => file.kind === "docx");
   assert.ok(docxResult?.outputPath);
   const translatedDocx = await parseDocxFile(
     new File([await readFile(docxResult.outputPath)], "translated.docx")
   );
-  assert.equal(translatedDocx.segments.length, 1);
+  assert.equal(translatedDocx.segments.length, 3);
   assert.match(translatedDocx.segments[0].original, /leucocytes/);
+  assert.equal(translatedDocx.segments[1].original, "[Nom du produit]");
+  assert.equal(
+    translatedDocx.segments[2].original,
+    "Chambre de comptage des cellules sanguines"
+  );
 
   const jsonResult = result.files.find(
     (file) => file.inputPath === fixtures.jsonPath
@@ -146,6 +166,8 @@ test("agent local command translates Excel, DOCX and string resources without ov
   assert.ok(jsonResult?.outputPath);
   const translatedJson = JSON.parse(await readFile(jsonResult.outputPath, "utf8"));
   assert.match(translatedJson.status, /leucocytes/);
+  assert.equal(translatedJson.heading, "[Nom du produit]");
+  assert.equal(translatedJson.nested[1], "Prélever l’échantillon");
 
   assert.equal(
     JSON.parse(await readFile(result.qualityReportPath, "utf8")).taskId,
@@ -174,6 +196,53 @@ test("agent local command reports model failures and does not publish partial ou
   assert.equal(result.readyForHumanReview, false);
   assert.equal(result.outputFiles.length, 0);
   assert.match(result.files[0].message, /synthetic model failure/);
+});
+
+test("agent master Quality Report includes every file-level failure with locations", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "poct-agent-quality-summary-"));
+  const inputPath = path.join(root, "strings.json");
+  await writeFile(
+    inputPath,
+    `${JSON.stringify({
+      heading: "Directions",
+      action: "Collect Sample",
+      manufacturer: "Manufacturer"
+    })}\n`,
+    "utf8"
+  );
+  const result = await runAgentTranslationTask(
+    {
+      inputPath,
+      outputDir: path.join(root, "output"),
+      reportDir: path.join(root, "reports"),
+      taskId: "quality-summary-smoke",
+      targets: ["French"],
+      model: "deepseek-v4-pro"
+    },
+    {
+      translationProvider: {
+        async translate(request) {
+          return { records: request.records, engine: "synthetic" };
+        }
+      }
+    }
+  );
+
+  assert.equal(result.status, "BLOCKED");
+  const masterReport = JSON.parse(await readFile(result.qualityReportPath, "utf8"));
+  assert.equal(masterReport.files[0].failures.length, 3);
+  assert.deepEqual(
+    masterReport.files[0].failures.map((failure) => failure.type),
+    ["nonTargetLanguage", "nonTargetLanguage", "nonTargetLanguage"]
+  );
+  assert.deepEqual(
+    masterReport.files[0].failures.map((failure) => failure.rowIndex),
+    [0, 1, 2]
+  );
+  assert.equal(
+    masterReport.files[0].failures.length,
+    Object.values(masterReport.files[0].issueCounts).reduce((sum, count) => sum + count, 0)
+  );
 });
 
 test("agent local command returns BLOCKED for PDF before calling a model", async () => {

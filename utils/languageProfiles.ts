@@ -68,19 +68,34 @@ const RUSSIAN_DISALLOWED_LATIN_RESIDUE_SET = new Set(
 );
 
 export const FRENCH_ENGLISH_RESIDUE_WORDS = [
+  'biological',
   'blue',
   'button',
+  'collect',
+  'conditions',
   'consumables',
+  'directions',
   'lifted',
+  'manufacturer',
+  'name',
+  'of',
+  'product',
   'quickly',
   'remove',
   'removed',
+  'risks',
+  'sample',
   'squeeze',
+  'storage',
   'testing'
 ];
 
 export const FRENCH_ENGLISH_RESIDUE_PHRASES = [
+  'biological risks',
+  'collect sample',
+  'product name',
   'quickly squeeze',
+  'storage conditions',
   'blue button',
   'the blue button is lifted'
 ];

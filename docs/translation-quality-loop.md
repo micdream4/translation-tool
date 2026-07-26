@@ -286,8 +286,9 @@ type TranslationIssueCase = {
 固定测试层级：
 
 1. `npm test`: 代码级无网络回归。
-2. `npm run test:real-docs`: 真实文档 smoke。
-3. 后续新增 `npm run test:issue-cases`: 从问题样本库生成的回归。
+2. `npm run test:ci-gate`: CI 可执行的 typecheck、代码回归、Issue 回归和构建。
+3. `npm run test:real-docs -- --strict`: 受控机器上的真实文档硬闸门；缺文件、检查失败或超过版本化残留阈值都会失败。
+4. `npm run test:quality-gate`: CI gate + 本地严格真实文档验证，作为发布前完整检查。
 
 黄金样本建议：
 

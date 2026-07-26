@@ -17,6 +17,7 @@
         "maxPlaceholderCells": 0,
         "maxEmptyTranslations": 0,
         "maxStructureMismatches": 0,
+        "maxOverwrittenFormulas": 0,
         "exportedSheetsMustMatchSource": true
       }
     },
@@ -32,6 +33,8 @@
         "minParagraphs": 1,
         "maxCjkNumberingFormats": 0,
         "maxCjkNumberingSeparators": 0,
+        "maxNonTargetParagraphs": 142,
+        "maxCommonEnglishResiduals": 35,
         "trackNonTargetParagraphs": true,
         "knownResidualTerms": [
           "List",
@@ -39,7 +42,14 @@
           "reference",
           "service",
           "1-year"
-        ]
+        ],
+        "maxKnownResidualHits": {
+          "List": 20,
+          "ref": 25,
+          "reference": 7,
+          "service": 1,
+          "1-year": 1
+        }
       }
     },
     {

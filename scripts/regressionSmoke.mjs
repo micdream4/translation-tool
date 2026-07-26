@@ -211,6 +211,52 @@ test("Excel parser flattens multiple sheets and export writes each row back to i
   assert.match(preservedSheetXml, /<c r="B2" s="7" t="inlineStr"><is><t>白细胞 translated<\/t><\/is><\/c>/);
 });
 
+test("Excel formula cells are never translated or flattened during export", async () => {
+  const { parseExcelWorkbook, exportToExcel, buildStylePreservingExcelBuffer, isExcelFormulaCell } =
+    await transpileTsModule(path.join(repoRoot, "utils/excel.ts"));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["ID", "Text", "Computed"],
+      [1, "白细胞", { t: "n", f: "A2+1", v: 2 }]
+    ]),
+    "Sheet1"
+  );
+  const sourceBytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const parsedWorkbook = XLSX.read(sourceBytes, { type: "buffer", cellStyles: true, cellFormula: true });
+  const parsed = parseExcelWorkbook(parsedWorkbook);
+  parsed.context.sourceArrayBuffer = sourceBytes.buffer.slice(
+    sourceBytes.byteOffset,
+    sourceBytes.byteOffset + sourceBytes.byteLength
+  );
+
+  assert.equal(isExcelFormulaCell(parsed.context, 0, "Computed"), true);
+  assert.equal(isExcelFormulaCell(parsed.context, 0, "Text"), false);
+
+  const outputRows = parsed.records.map((row) => ({
+    ...row,
+    Text: "White blood cell",
+    Computed: "must not replace formula"
+  }));
+  const outPath = path.join(os.tmpdir(), `poct-formula-${Date.now()}.xlsx`);
+  const normalStats = exportToExcel(outputRows, outPath, parsed.context);
+  const normalExport = XLSX.read(fs.readFileSync(outPath), { type: "buffer", cellFormula: true });
+  assert.equal(normalExport.Sheets.Sheet1.C2.f, "A2+1");
+  assert.equal(normalStats.overwrittenFormulas, 0);
+  assert.equal(normalStats.skippedFormulas, 1);
+  fs.rmSync(outPath, { force: true });
+
+  const preserved = await buildStylePreservingExcelBuffer(outputRows, parsed.context);
+  const preservedExport = XLSX.read(preserved.bytes, { type: "array", cellFormula: true });
+  assert.equal(preservedExport.Sheets.Sheet1.C2.f, "A2+1");
+  assert.equal(preserved.stats.overwrittenFormulas, 0);
+  assert.equal(preserved.stats.skippedFormulas, 1);
+
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  assert.doesNotMatch(appSource, /overwriteFormulas:\s*true/);
+});
+
 
 test("Excel skip scope resolves row and column rules across sheets", async () => {
   const { parseExcelWorkbook } = await transpileTsModule(path.join(repoRoot, "utils/excel.ts"));
@@ -467,11 +513,13 @@ test("adaptive document batching respects item and character limits", async () =
   assert.equal(formatElapsedSeconds(1234), "1.2s");
 });
 
-test("real document smoke uses a local-only regression manifest", () => {
+test("real document smoke has a strict local gate and CI does not pretend local files exist", () => {
   const manifestPath = path.join(repoRoot, "fixtures/real-document-regression.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const smokeSource = fs.readFileSync(path.join(repoRoot, "scripts/realDocumentSmoke.mjs"), "utf8");
   const gitignoreSource = fs.readFileSync(path.join(repoRoot, ".gitignore"), "utf8");
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  const workflowSource = fs.readFileSync(path.join(repoRoot, ".github/workflows/quality-gate.yml"), "utf8");
 
   assert.equal(manifest.schema, "poct.real_document_regression.v1");
   assert.deepEqual(
@@ -488,9 +536,18 @@ test("real document smoke uses a local-only regression manifest", () => {
   assert.match(smokeSource, /poct\.real_document_regression\.v1/);
   assert.match(smokeSource, /caseId: caseConfig\.id/);
   assert.match(smokeSource, /knownResidualHits/);
+  assert.match(smokeSource, /maxNonTargetParagraphs/);
+  assert.match(smokeSource, /maxCommonEnglishResiduals/);
+  assert.match(smokeSource, /maxKnownResidualHits/);
+  assert.match(smokeSource, /--strict/);
+  assert.match(smokeSource, /process\.exitCode = 1/);
   assert.match(smokeSource, /current translated PDF has extractable text/);
   assert.match(smokeSource, /translatedPath: path\.relative\(repoRoot, translatedPath\)/);
   assert.match(gitignoreSource, /^local-data\/$/m);
+  assert.match(packageJson.scripts["test:quality-gate"], /test:real-docs -- --strict/);
+  assert.ok(packageJson.scripts["test:ci-gate"]);
+  assert.match(workflowSource, /npm run test:ci-gate/);
+  assert.doesNotMatch(workflowSource, /npm run test:real-docs/);
 });
 
 test("local issue capture workflow prepares ignored self-iteration workspace", () => {
@@ -519,13 +576,19 @@ test("local issue capture workflow prepares ignored self-iteration workspace", (
 test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", async () => {
   const docxSource = fs.readFileSync(path.join(repoRoot, "utils/docx.ts"), "utf8");
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
-  const { setDocxSegmentText, getDocxSegmentText } = await bundleTsModule(
+  const { setDocxSegmentText, getDocxSegmentText, shouldNormalizeDocxNumbering } = await bundleTsModule(
     path.join(repoRoot, "utils/docx.ts")
   );
   assert.match(docxSource, /coverageWarnings/);
   assert.match(docxSource, /formatDocxCoverageSummary/);
   assert.match(docxSource, /numbering\\.xml/);
   assert.match(docxSource, /normalizeDocxNumbering/);
+  assert.equal(shouldNormalizeDocxNumbering("Russian"), true);
+  assert.equal(shouldNormalizeDocxNumbering("Chinese"), false);
+  assert.equal(shouldNormalizeDocxNumbering("Traditional Chinese (Taiwan)"), false);
+  assert.match(appSource, /exportDocxFile\(context, filename, targetLang\)/);
+  const agentSource = fs.readFileSync(path.join(repoRoot, "agent/taskRunner.ts"), "utf8");
+  assert.match(agentSource, /buildDocxFileBytes\(context, targetLanguage\)/);
   assert.match(docxSource, /CJK_NUMBER_FORMAT_REGEX/);
   assert.match(docxSource, /header\\d\*\\.xml/);
   assert.match(docxSource, /footer\\d\*\\.xml/);
@@ -628,6 +691,32 @@ test("DOCX segments are non-overlapping coordinates and export never splits word
     new File([await buildDocxFileBytes(parsed)], "synthetic-output.docx")
   );
   assert.equal(getDocxSegmentText(reopened.segments[3]), "Technology guide");
+});
+
+test("translation envelopes restore model output order and reject broken identity anchors", async () => {
+  const {
+    alignTranslationEnvelopes,
+    unwrapTranslationEnvelopes,
+    wrapTranslationRecords
+  } = await bundleTsModule(path.join(repoRoot, "utils/translationAlignment.ts"));
+  const wrapped = wrapTranslationRecords([{ content: "A" }, { content: "B" }]);
+  const reversed = [
+    { __poct_record_id: 1, payload: { content: "B translated" } },
+    { __poct_record_id: 0, payload: { content: "A translated" } }
+  ];
+  const aligned = alignTranslationEnvelopes(wrapped, reversed);
+  assert.deepEqual(unwrapTranslationEnvelopes(aligned), [
+    { content: "A translated" },
+    { content: "B translated" }
+  ]);
+  assert.throws(
+    () => alignTranslationEnvelopes(wrapped, [reversed[0], reversed[0]]),
+    /alignment mismatch/i
+  );
+  assert.throws(
+    () => alignTranslationEnvelopes(wrapped, [{ payload: { content: "missing id" } }, reversed[1]]),
+    /alignment mismatch/i
+  );
 });
 
 test("production proxy builds do not inject server-side model keys into the browser bundle", () => {
@@ -2879,7 +2968,7 @@ test("TranslationHub retry flow splits recoverable proxy batch failures and pres
     await withMockedFetch(async (setFetch) => {
       setFetch(async (_url, init) => {
         const body = JSON.parse(String(init.body));
-        calls.push(body.records.map((record) => record.content));
+        calls.push(body.records.map((record) => record.payload.content));
         if (body.records.length > 1) {
           return new Response(JSON.stringify({ engine: "openrouter", records: [{ content: "only one" }] }), {
             status: 200,
@@ -2891,7 +2980,10 @@ test("TranslationHub retry flow splits recoverable proxy batch failures and pres
             engine: "openrouter",
             records: body.records.map((record) => ({
               ...record,
-              content: `${record.content} translated`
+              payload: {
+                ...record.payload,
+                content: `${record.payload.content} translated`
+              }
             }))
           }),
           {
@@ -2931,7 +3023,7 @@ test("TranslationHub splits DeepSeek Pro proxy overload failures before skipping
     await withMockedFetch(async (setFetch) => {
       setFetch(async (_url, init) => {
         const body = JSON.parse(String(init.body));
-        calls.push(body.records.map((record) => record.content));
+        calls.push(body.records.map((record) => record.payload.content));
         if (body.records.length > 1) {
           return new Response(
             JSON.stringify({
@@ -2956,7 +3048,10 @@ test("TranslationHub splits DeepSeek Pro proxy overload failures before skipping
             engine: "deepseek",
             records: body.records.map((record) => ({
               ...record,
-              content: `${record.content} traduit`
+              payload: {
+                ...record.payload,
+                content: `${record.payload.content} traduit`
+              }
             }))
           }),
           {

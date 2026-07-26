@@ -623,7 +623,7 @@ const processDocx = async (
     }
     setDocxSegmentText(segment, text);
   });
-  const outputBytes = await buildDocxFileBytes(context);
+  const outputBytes = await buildDocxFileBytes(context, targetLanguage);
   await writeBytesAtomically(outputPath, outputBytes);
 
   const reopenedFile = new File([await fs.readFile(outputPath)], path.basename(outputPath), {

@@ -1,5 +1,23 @@
 # 项目进度
 
+## v0.0.116
+
+- 修复本地 Agent 整份文档翻译误用保守补译筛选的问题：Agent 现在只在存在明确目标语言证据时跳过拉丁文本，不再把 `[Product Name]`、`Blood cell counting chamber` 等弱特征英文误判为已经是法语；数字、单位、型号和医学代码继续不调用模型。
+- 修复 DOCX 嵌套文本框父子段重复拥有同一 `w:t` 节点的问题；每个文本节点现在只属于最近的段落，并使用 `part path + paragraph index` 稳定坐标完成模型回填、重开和逐坐标 QA。
+- 移除会在 Word run 边界盲目插入空格的导出处理，新增源 run 对照断词检查，能定位 `t ests`、`thro ugh` 等回填破坏；法语语言 profile 同步覆盖真实说明书中的英文标题、步骤、符号和页脚残留。
+- Agent 主 Quality Report 现在为每个文件携带完整、可定位的失败摘要，不再只展示 issue 数量和通过的结构检查。
+- 新增脱敏嵌套文本框、稳定坐标、英译法短标题、跨 run 断词和完整失败报告回归；真实问题文档只读复核得到 158 个唯一段落坐标、645/645 个唯一文本节点，英译法模型候选从旧逻辑的 38 段提升到 119 段，剩余 39 段均为型号、医学代码、数值或单位。
+- 本地验证通过 `npm run typecheck`、`npm test`、`npm run test:real-docs`；真实 smoke 实际覆盖 818 行 Excel、1195 段 DOCX 和带可抽取文本层的法语 PDF，未跳过样本。
+
+## v0.0.115
+
+- 新增正式本地 Agent 文档任务入口 `npm run agent:translate`，供 Hermes/Codex 传入文件路径、任务目录、目标语言和模型，在不依赖网页或线上站点的情况下调用仓库现有解析、模型路由、术语后处理、重试、写回和 QA。
+- Agent 统一输出 `poct.agent.translation-task.v1` JSON、逐文件 Quality Report 和 JSONL 日志，明确区分 `COMPLETED`、`COMPLETED_WITH_WARNINGS`、`BLOCKED`、`FAILED`；自动 QA 通过只表示可进入人工验收，不自动等同于可交付或可配置。
+- Excel `.xlsx` 已接入多工作表、行列/表头关系、ID/编号/医学代码锚点、公式保护、残留语言和输出重开校验；DOCX 已接入 XML 部件、语义段覆盖和输出重开校验；JSON/XML/Properties/Strings 字符串资源已接入结构保护与可用性检查。
+- 本地 Node PDF 仍缺少与浏览器 Canvas/字体/文本层写回等价的可验证 adapter，因此 Agent 对 PDF 明确返回 `BLOCKED` 且不调用模型；旧 `.xls`、`.po` 和源码字符串文件同样不虚报完成。
+- 抽出 `buildDocxFileBytes` 供浏览器下载和本地 Agent 共用；修复字符串资源同时包含 `%s` 与 `WBC` 等医学代码时的 placeholder 索引碰撞。
+- 新增 Agent smoke，覆盖 Excel/DOCX/JSON/XML 成功、模型失败和 PDF `BLOCKED`；发布前验证通过 `npm run typecheck`、`npm test`、`npm run test:issue-regression` 和 `npm run build`。
+
 ## v0.0.114
 
 - 目标语言列表新增 Polish 和 Romanian，覆盖 Excel/DOCX/PDF 主目标语言下拉框与 String Resource 多语言输出列表。

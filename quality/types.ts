@@ -30,6 +30,7 @@ export interface QualityUnit {
   originalText: string;
   translatedText: string;
   structureOnly?: boolean;
+  crossRunWordBreak?: boolean;
   locationLabel?: string;
 }
 

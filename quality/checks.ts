@@ -307,7 +307,10 @@ export const runQualityChecksOnUnits = (
     const spacingText = unit.translatedText.trim();
     const shouldSkipSpacingCheck =
       shouldLockCell(unit.columnKey, unit.originalValue) || isLikelyIdentifier(spacingText);
-    const spacingSeverity = spacingText && !shouldSkipSpacingCheck ? getSpacingSeverity(spacingText) : null;
+    const spacingSeverity =
+      spacingText && !shouldSkipSpacingCheck
+        ? getSpacingSeverity(spacingText) || (unit.crossRunWordBreak ? 'medium' : null)
+        : null;
     if (spacingSeverity) {
       totals.spacingIssues += 1;
       spacingRows.add(unit.rowIndex);

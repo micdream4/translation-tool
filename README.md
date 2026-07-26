@@ -45,11 +45,29 @@
 - `npm run dev`：本地开发
 - `npm run build`：生产构建
 - `npm run preview`：本地预览
-- `npm run test`：运行轻量回归检查（多工作表 Excel、上传格式、安全配置、DOCX 范围提示、PDF 文本导出路径）
+- `npm run agent:translate -- ...`：供 Hermes/Codex 调用的本地整份文档翻译与 QA 入口；详见 [`docs/agent-local-translation.md`](./docs/agent-local-translation.md)
+- `npm run test`：运行轻量回归检查和本地 Agent smoke
+- `npm run test:agent`：单独验证 Agent 的成功、失败和 `BLOCKED` 场景
 - `npm run smoke:openrouter`：用当前 OpenRouter key 实测模型可用性，不输出密钥
 - `npm run deepseek:test`：DeepSeek 接口连通性测试
 - `npm run docx:translate -- "<docx_path>" --target English`：离线批量翻译/验收脚本（运维辅助，不是最终用户入口）
 - `npm run deploy:pages`：构建并发布到 Cloudflare Pages（需先 `wrangler login`）
+
+## 本地 Agent 文档任务
+
+Hermes 只负责传入任务参数、读取 JSON 状态和通知；实际解析、翻译、后处理、回写和 QA 均由本仓库完成。命令不会打开或操作网页，也不依赖已部署的网站。
+
+```bash
+npm run --silent agent:translate -- \
+  --input "/absolute/path/to/input-or-folder" \
+  --output-dir "/absolute/path/to/task/output" \
+  --report-dir "/absolute/path/to/task/reports" \
+  --task-id "hermes-20260725-001" \
+  --targets "French,Russian" \
+  --model "deepseek-v4-pro"
+```
+
+使用 `npm run --silent` 时，stdout 只输出一行 machine-readable JSON。状态为 `COMPLETED` 或 `COMPLETED_WITH_WARNINGS` 仅表示可以进入人工验收，不等于已可交付或配置；任何严重 QA 问题都会返回 `BLOCKED`。
 
 ## 云端部署
 - Cloudflare Pages 部署清单见：

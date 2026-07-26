@@ -8,6 +8,7 @@ export interface DocxTextNode {
 
 export interface DocxSegment {
   id: string;
+  coordinate: string;
   original: string;
   nodes: Element[];
   partPath: string;
@@ -68,82 +69,10 @@ const PLACEHOLDER_TOKEN_REGEX = /^__[A-Z]+_\d+__$/;
 const PLACEHOLDER_FRAGMENT_REGEX = /^(?:TKN|ID|FMT)_\d+__$/i;
 const UPPER_ABBR_REGEX = /^[A-Z]{2,}(?:[-/][A-Z0-9]{1,})*$/;
 const CODE_WITH_DIGIT_REGEX = /^(?=.*\d)[A-Za-z0-9][A-Za-z0-9_\-/:+().#]*$/;
-const PURE_ALPHA_WORD_REGEX = /^[A-Za-z]{2,}$/;
-const DIGITISH_TOKEN_REGEX = /^\d+(?:[-/.]\d+)*[A-Za-z]*$/;
-const RANGE_OR_NUMBER_REGEX = /^\d+(?:[-/.]\d+)*$/;
-const SHORT_UPPER_TOKEN_REGEX = /^[A-Z]{2,8}$/;
-const WORDISH_TAIL_REGEX = /([A-Za-z0-9][A-Za-z0-9_\-/:+().#]*)$/;
-const WORDISH_HEAD_REGEX = /^([A-Za-z0-9][A-Za-z0-9_\-/:+().#]*)/;
-const NO_SPACE_LEFT_SUFFIX_REGEX = /[-\/([{'"“‘]$/;
-const NO_SPACE_RIGHT_PREFIX_REGEX = /^[,.;:!?%)\]}'"”’\/]/;
 const CJK_NUMBER_FORMAT_REGEX = /(chinese|japanese|korean|taiwanese|ideograph)/i;
 const CJK_NUMBER_LITERAL_REGEX = /^[一二三四五六七八九十百千万零〇]+[、。．.]?$/;
 const CJK_NUMBER_SEPARATOR_REGEX = /[、。．]/;
 const CJK_NUMBER_SEPARATOR_GLOBAL_REGEX = /[、。．]/g;
-const ANALYZER_LEFT_BOUNDARY_WORDS = new Set([
-  "after",
-  "and",
-  "away",
-  "before",
-  "by",
-  "cause",
-  "clean",
-  "disassemble",
-  "exceeds",
-  "for",
-  "from",
-  "in",
-  "into",
-  "not",
-  "notice",
-  "of",
-  "on",
-  "onto",
-  "or",
-  "order",
-  "the",
-  "this",
-  "to",
-  "with"
-]);
-const ANALYZER_RIGHT_BOUNDARY_WORDS = new Set([
-  "all",
-  "any",
-  "clean",
-  "damage",
-  "dcpowerinterface",
-  "faults",
-  "for",
-  "housing",
-  "interface",
-  "is",
-  "itself",
-  "manual",
-  "maintenance",
-  "operation",
-  "operations",
-  "operational",
-  "outer",
-  "parts",
-  "placed",
-  "power",
-  "powerswitch",
-  "procedure",
-  "procedures",
-  "provides",
-  "range",
-  "rear",
-  "reported",
-  "requirements",
-  "residual",
-  "safety",
-  "serial",
-  "specified",
-  "standard",
-  "the",
-  "when",
-  "work"
-]);
 
 type DocxSearchRoot = ParentNode & {
   getElementsByTagName: Document["getElementsByTagName"];
@@ -167,6 +96,22 @@ const getDocxTextElements = (root: DocxSearchRoot) =>
 
 const getDocxParagraphElements = (root: DocxSearchRoot) =>
   collectUniqueElements(root, ["w:p", "p"]);
+
+const isDocxParagraphElement = (node: Node | null): node is Element => {
+  if (!node || node.nodeType !== 1) return false;
+  const element = node as Element;
+  return (element.localName || element.tagName.split(":").pop()) === "p";
+};
+
+const getParagraphOwnedTextElements = (paragraph: Element) =>
+  getDocxTextElements(paragraph).filter((node) => {
+    let parent = node.parentNode;
+    while (parent && parent !== paragraph) {
+      if (isDocxParagraphElement(parent)) return false;
+      parent = parent.parentNode;
+    }
+    return parent === paragraph;
+  });
 
 const getDocxNumberingLevelElements = (root: DocxSearchRoot) =>
   collectUniqueElements(root, ["w:lvl", "lvl"]);
@@ -245,11 +190,13 @@ export async function parseDocxFile(file: File): Promise<DocxContext> {
       return textNode;
     });
     const partSegments: DocxSegment[] = [];
-    getDocxParagraphElements(xmlDoc).forEach((paragraph) => {
-      const nodes = getDocxTextElements(paragraph);
+    getDocxParagraphElements(xmlDoc).forEach((paragraph, paragraphIndex) => {
+      const nodes = getParagraphOwnedTextElements(paragraph);
       if (!nodes.length) return;
+      const coordinate = `${entry.path}#paragraph-${paragraphIndex}`;
       const segment = {
-        id: `docx-segment-${segments.length}`,
+        id: coordinate,
+        coordinate,
         original: buildSegmentText(nodes),
         nodes,
         partPath: entry.path,
@@ -384,6 +331,30 @@ const hasWordInternalRunSplit = (nodes: Element[]) => {
   return false;
 };
 
+export const hasDocxCrossRunWordBreak = (
+  sourceRunTexts: readonly string[],
+  targetSegment: DocxSegment
+) => {
+  const boundaryCount = Math.min(
+    sourceRunTexts.length,
+    targetSegment.nodes.length
+  ) - 1;
+  for (let index = 0; index < boundaryCount; index += 1) {
+    const sourceLeft = sourceRunTexts[index] || "";
+    const sourceRight = sourceRunTexts[index + 1] || "";
+    if (!isWordInternalRunBoundary(sourceLeft, sourceRight)) continue;
+    const targetLeft = targetSegment.nodes[index].textContent || "";
+    const targetRight = targetSegment.nodes[index + 1].textContent || "";
+    const targetAddsWordInternalSpace =
+      (/[A-Za-z\u00C0-\u024F]\s+$/.test(targetLeft) &&
+        /^\s*[A-Za-z\u00C0-\u024F]/.test(targetRight)) ||
+      (/[A-Za-z\u00C0-\u024F]$/.test(targetLeft) &&
+        /^\s+[A-Za-z\u00C0-\u024F]/.test(targetRight));
+    if (targetAddsWordInternalSpace) return true;
+  }
+  return false;
+};
+
 const adjustSplitIndex = (
   text: string,
   desired: number,
@@ -448,85 +419,6 @@ export const setDocxSegmentText = (segment: DocxSegment, text: string) => {
   });
 };
 
-const shouldInsertBoundarySpace = (left: string, right: string) => {
-  if (!left || !right) return false;
-  if (/\s$/.test(left) || /^\s/.test(right)) return false;
-  if (NO_SPACE_LEFT_SUFFIX_REGEX.test(left) || NO_SPACE_RIGHT_PREFIX_REGEX.test(right)) {
-    return false;
-  }
-
-  const leftTailRaw = left.match(WORDISH_TAIL_REGEX)?.[1] || "";
-  const rightHeadRaw = right.match(WORDISH_HEAD_REGEX)?.[1] || "";
-  const leftTail = leftTailRaw.toLowerCase();
-  const rightHead = rightHeadRaw.toLowerCase();
-  if (!leftTail || !rightHead) return false;
-
-  const merged = `${leftTailRaw}${rightHeadRaw}`;
-  if (PLACEHOLDER_TOKEN_REGEX.test(merged) || UPPER_ABBR_REGEX.test(merged)) {
-    return false;
-  }
-
-  if (ANALYZER_LEFT_BOUNDARY_WORDS.has(leftTail) && rightHead.startsWith("analyzer")) {
-    return true;
-  }
-  if (leftTail.endsWith("analyzer") && ANALYZER_RIGHT_BOUNDARY_WORDS.has(rightHead)) {
-    return true;
-  }
-
-  const leftHasLetters = /[A-Za-z]/.test(leftTailRaw);
-  const rightHasLetters = /[A-Za-z]/.test(rightHeadRaw);
-  const leftHasDigits = /\d/.test(leftTailRaw);
-  const rightHasDigits = /\d/.test(rightHeadRaw);
-  const leftIsWord = PURE_ALPHA_WORD_REGEX.test(leftTailRaw);
-  const rightIsWord = PURE_ALPHA_WORD_REGEX.test(rightHeadRaw);
-  const leftIsDigitish = DIGITISH_TOKEN_REGEX.test(leftTailRaw);
-  const rightIsDigitish = DIGITISH_TOKEN_REGEX.test(rightHeadRaw);
-  const rightIsShortUpper = SHORT_UPPER_TOKEN_REGEX.test(rightHeadRaw);
-  const leftIsShortUpper = SHORT_UPPER_TOKEN_REGEX.test(leftTailRaw);
-
-  if (leftHasLetters && rightHasLetters) {
-    return true;
-  }
-  if (leftIsWord && (rightIsDigitish || rightIsShortUpper)) {
-    return true;
-  }
-  if ((leftIsDigitish || leftIsShortUpper) && rightIsWord) {
-    return true;
-  }
-  if (
-    CODE_WITH_DIGIT_REGEX.test(merged) &&
-    !(
-      (leftIsWord && rightIsDigitish) ||
-      (leftIsDigitish && rightIsWord) ||
-      (leftIsWord && rightIsShortUpper) ||
-      (leftIsShortUpper && rightIsWord)
-    )
-  ) {
-    return false;
-  }
-  if ((leftHasLetters && rightHasDigits) || (leftHasDigits && rightHasLetters)) {
-    return true;
-  }
-  return false;
-};
-
-const normalizeDocxRunSpacing = (xmlDoc: Document) => {
-  const paragraphs = getDocxParagraphElements(xmlDoc);
-
-  paragraphs.forEach((paragraph) => {
-    const textNodes = getDocxTextElements(paragraph);
-    for (let i = 0; i < textNodes.length - 1; i += 1) {
-      const current = textNodes[i];
-      const next = textNodes[i + 1];
-      const currentText = current.textContent || "";
-      const nextText = next.textContent || "";
-      if (!shouldInsertBoundarySpace(currentText, nextText)) continue;
-      current.textContent = `${currentText} `;
-      ensurePreserveSpace(current);
-    }
-  });
-};
-
 const findDirectChildElement = (parent: Element, names: string[]) => {
   const expected = new Set(names);
   return Array.from(parent.children).find((child) => expected.has(child.tagName)) || null;
@@ -567,10 +459,9 @@ const normalizeDocxNumbering = (xmlDoc: Document) => {
   });
 };
 
-export async function exportDocxFile(
-  context: DocxContext,
-  filename: string
-): Promise<void> {
+export async function buildDocxFileBytes(
+  context: DocxContext
+): Promise<Uint8Array> {
   const serializer = new XMLSerializer();
   const parts = context.parts?.length
     ? context.parts
@@ -585,11 +476,20 @@ export async function exportDocxFile(
       ];
   parts.forEach((part) => {
     normalizeDocxNumbering(part.xmlDoc);
-    normalizeDocxRunSpacing(part.xmlDoc);
     const payload = serializer.serializeToString(part.xmlDoc);
     context.zip.file(part.path, payload);
   });
-  const blob = await context.zip.generateAsync({ type: "blob" });
+  return context.zip.generateAsync({ type: "uint8array" });
+}
+
+export async function exportDocxFile(
+  context: DocxContext,
+  filename: string
+): Promise<void> {
+  const bytes = await buildDocxFileBytes(context);
+  const blob = new Blob([bytes as BlobPart], {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

@@ -32,6 +32,7 @@ export const shouldTranslateCellValue = (
   targetLang: TargetLanguage,
   options: {
     ignoreLock?: boolean;
+    requireTargetLanguageEvidence?: boolean;
     shouldLockCell?: (key: string, value: unknown) => boolean;
   } = {}
 ) => {
@@ -41,7 +42,9 @@ export const shouldTranslateCellValue = (
   if (isNeutralToken(trimmed) || isLikelyIdentifier(trimmed)) return false;
   if (!options.ignoreLock && options.shouldLockCell?.(key, value)) return false;
   if (hasUntranslatedUiLabelResidue(trimmed, '', targetLang)) return true;
-  return !isLikelyTargetLanguage(trimmed, targetLang);
+  return !isLikelyTargetLanguage(trimmed, targetLang, {
+    requireTargetLanguageEvidence: options.requireTargetLanguageEvidence
+  });
 };
 
 export type TextSegmentIssueDetail = {

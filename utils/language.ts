@@ -645,7 +645,13 @@ const hasDisallowedLatinResidue = (text: string, targetLang?: TargetLanguage) =>
   });
 };
 
-export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage) => {
+export const isLikelyTargetLanguage = (
+  text: string,
+  targetLang: TargetLanguage,
+  options: {
+    requireTargetLanguageEvidence?: boolean;
+  } = {}
+) => {
   const trimmed = text.trim();
   if (!trimmed) return true;
   if (SYMBOL_ONLY_REGEX.test(trimmed)) return true;
@@ -696,6 +702,9 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
     isLatinTargetCode(targetCode) && LANGUAGE_DIACRITICS[targetCode].test(trimmed);
 
   if (best.score === 0) {
+    if (options.requireTargetLanguageEvidence) {
+      return false;
+    }
     if (targetCode === "en") {
       return !CJK_REGEX.test(trimmed) && !CYRILLIC_REGEX.test(trimmed);
     }
@@ -710,6 +719,10 @@ export const isLikelyTargetLanguage = (text: string, targetLang: TargetLanguage)
   if (isLatinTargetCode(targetCode)) {
     if (targetHasDistinctiveDiacritics && targetScore >= 2) return true;
     if (targetScore >= Math.max(3, best.score - 2)) return true;
+  }
+
+  if (options.requireTargetLanguageEvidence) {
+    return false;
   }
 
   // Only flag clear non-target prose. Short or medically abbreviated Latin

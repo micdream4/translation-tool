@@ -143,7 +143,10 @@ export const guardStringResourceTokens = (
   const { sanitized: formatSafe, placeholders: formatPlaceholders } =
     guardFormatTokens(canonicalized);
 
-  let tokenCounter = 0;
+  // Placeholder restoration accepts tolerant type variants, so indices must
+  // remain unique across FMT/ID/TKN namespaces to avoid restoring an ID as a
+  // format token when both appear in the same resource value.
+  let tokenCounter = Object.keys(formatPlaceholders || {}).length;
   const lockedTokenPlaceholders: PlaceholderMap = {};
   const withLockedTokens = formatSafe.replace(MODEL_TOKEN_REGEX, (match) => {
     const placeholder = `__ID_${tokenCounter++}__`;

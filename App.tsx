@@ -55,11 +55,8 @@ import { isNeutralToken } from './utils/language';
 import {
   type ModelReviewResult
 } from './utils/modelReview';
-import {
-  getPdfSegmentText,
-  type PdfContext,
-  type PdfSegment
-} from './utils/pdf';
+import type { PdfContext, PdfSegment } from './utils/pdf';
+import { getPdfSegmentText } from './utils/pdfSegments';
 import { fixSpacingArtifacts,polishTranslation } from './utils/postprocess';
 import {
   PLACEHOLDER_REGEX,

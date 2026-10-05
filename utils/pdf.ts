@@ -14,6 +14,9 @@ import {
   PDF_TEXT_LAYER_SAFE_REGEX
 } from './pdfTextLayer';
 
+export { getPdfSegmentText, setPdfSegmentText } from './pdfSegments';
+import { getPdfSegmentText } from './pdfSegments';
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url
@@ -644,13 +647,6 @@ export async function parsePdfFile(file: File): Promise<PdfContext> {
     coverageWarnings
   };
 }
-
-export const getPdfSegmentText = (segment: PdfSegment) =>
-  segment.translated || segment.original;
-
-export const setPdfSegmentText = (segment: PdfSegment, text: string) => {
-  segment.translated = text;
-};
 
 export async function exportPdfTranslationAsDocx(
   context: PdfContext,

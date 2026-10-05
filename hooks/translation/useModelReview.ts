@@ -18,10 +18,8 @@ import {
   type ModelReviewSample,
   type ModelReviewStyle
 } from '../../utils/modelReview';
-import {
-  getPdfSegmentText,
-  type PdfContext
-} from '../../utils/pdf';
+import type { PdfContext } from '../../utils/pdf';
+import { getPdfSegmentText } from '../../utils/pdfSegments';
 import {
   normalizeMemorySource
 } from '../../utils/translationMemory';

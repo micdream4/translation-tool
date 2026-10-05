@@ -1,6 +1,7 @@
 import type { TranslationHub, TranslationRequest } from "../services/translationHub";
 import type { BatchMonitor, POCTRecord, ProcessingState, TargetLanguage, WorkflowStageKey } from "../types";
-import { getPdfSegmentText, setPdfSegmentText, type PdfContext, type PdfSegment } from "../utils/pdf";
+import type { PdfContext, PdfSegment } from '../utils/pdf';
+import { getPdfSegmentText, setPdfSegmentText } from '../utils/pdfSegments';
 import { polishTranslation } from "../utils/postprocess";
 import {
   buildAdaptiveTextBatches,

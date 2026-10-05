@@ -17,13 +17,7 @@ import {
 import type { ExcelContext } from '../../utils/excel';
 import { exportToExcelPreservingStyles,parseExcelFile } from '../../utils/excel';
 import type { ExcelSkipScope } from '../../utils/excelSkipScope';
-import {
-  exportPdfTranslationAsDocx,
-  exportPdfTranslationAsPdf,
-  getPdfTextLayerStats,
-  parsePdfFile,
-  type PdfContext
-} from '../../utils/pdf';
+import type { PdfContext } from '../../utils/pdf';
 import {
   clearTranslationProgress,
   type TranslationProgressSnapshot
@@ -228,6 +222,8 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
       setPdfStats({ pages: 0, total: 0, translated: 0 });
       setSavedSnapshot(null);
       try {
+        // pdf.js, pdf-lib and docx are only needed once a PDF is actually opened.
+        const { parsePdfFile } = await import('../../utils/pdf');
         const context = await parsePdfFile(uploadedFile);
         pdfContextRef.current = context;
         setPdfStats({ pages: context.pageCount, total: context.segments.length, translated: 0 });
@@ -380,6 +376,7 @@ const handleDownload = async () => {
       }
       const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
       const filename = `Translated_${targetLang}_${baseName}.pdf`;
+      const { exportPdfTranslationAsPdf, getPdfTextLayerStats } = await import('../../utils/pdf');
       const textLayerStats = getPdfTextLayerStats(context);
       addLog(
         `PDF text layer: ${textLayerStats.selectableSegments}/${textLayerStats.totalSegments} 段将写入可复制文本层，${textLayerStats.imageFallbackSegments} 段回退为图片文本。`
@@ -433,7 +430,8 @@ const handleDownloadPdfDocx = () => {
     const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
     const filename = `Translated_${targetLang}_${baseName}_review.docx`;
     addLog(`Generating review DOCX: ${filename}`);
-    void exportPdfTranslationAsDocx(context, filename, targetLang)
+    void import('../../utils/pdf')
+      .then(({ exportPdfTranslationAsDocx }) => exportPdfTranslationAsDocx(context, filename, targetLang))
       .then(() => addLog(`PDF review DOCX export completed: ${filename}`))
       .catch((error) => {
         addLog(`PDF review DOCX export failed: ${error instanceof Error ? error.message : String(error)}`);

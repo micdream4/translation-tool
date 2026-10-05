@@ -119,7 +119,12 @@ export default defineConfig(({ mode }) => {
           output: {
             manualChunks(id: string) {
               if (!id.includes('node_modules')) {
-                if (id.includes('/utils/pdf') || id.includes('/workflows/pdfTranslationWorkflow')) {
+                // Rollup pulls shared dependencies of a manual chunk into it, so the light segment helpers
+                // are pinned to their own chunk to keep the heavy PDF chunk lazy.
+                if (id.endsWith('/utils/pdfSegments.ts') || id.endsWith('/utils/pdfTextLayer.ts')) {
+                  return 'app-core';
+                }
+                if (id.endsWith('/utils/pdf.ts')) {
                   return 'feature-pdf';
                 }
                 return undefined;
@@ -129,6 +134,9 @@ export default defineConfig(({ mode }) => {
               }
               if (id.includes('/pdfjs-dist/')) {
                 return 'vendor-pdf';
+              }
+              if (id.includes('/pdf-lib/') || id.includes('/@pdf-lib/') || id.includes('/@embedpdf/')) {
+                return 'vendor-pdf-export';
               }
               if (id.includes('/xlsx/')) {
                 return 'vendor-xlsx';

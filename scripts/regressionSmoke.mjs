@@ -743,6 +743,41 @@ test("TranslationHub stops splitting a batch when the provider is down instead o
   }
 });
 
+test("heavy PDF code is only loaded on demand and App.tsx stays split into hooks and components", () => {
+  const sourceFiles = [];
+  const walk = (dir) => {
+    fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).forEach((entry) => {
+      const rel = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (["node_modules", "dist", "local-data", "tmp", "scripts", "fixtures", "docs", "public"].includes(entry.name)) return;
+        walk(rel);
+      } else if (/\.(ts|tsx)$/.test(entry.name)) {
+        sourceFiles.push(rel);
+      }
+    });
+  };
+  walk(".");
+  const staticPdfImporters = sourceFiles.filter((file) => {
+    if (file === path.join("utils", "pdf.ts") || file.startsWith("agent")) return false;
+    const text = fs.readFileSync(path.join(repoRoot, file), "utf8");
+    return /^import (?!type)[^;]*from ['"][./]*utils\/pdf['"]/m.test(text) ||
+      /^import (?!type)[^;]*from ['"]\.\/pdf['"]/m.test(text);
+  });
+  assert.deepEqual(staticPdfImporters, []);
+  const documentIo = fs.readFileSync(path.join(repoRoot, "hooks/translation/useDocumentIO.ts"), "utf8");
+  assert.match(documentIo, /await import\('\.\.\/\.\.\/utils\/pdf'\)/);
+  assert.match(fs.readFileSync(path.join(repoRoot, "vite.config.ts"), "utf8"), /vendor-pdf-export/);
+
+  ["usePdfTranslation", "useDocxTranslation", "useExcelTranslation", "useStringResources", "useModelReview", "useDocumentIO", "useModelRouting", "useIssueLocations"].forEach((name) => {
+    assert.ok(fs.existsSync(path.join(repoRoot, `hooks/translation/${name}.ts`)), name);
+  });
+  ["SettingsPanel", "PreviewPanel", "QualityTab", "StringResourcePanel", "ExportBar", "ModelReviewView"].forEach((name) => {
+    assert.ok(fs.existsSync(path.join(repoRoot, `components/translator/${name}.tsx`)), name);
+  });
+  const appLines = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8").split("\n").length;
+  assert.ok(appLines < 2500, `App.tsx grew back to ${appLines} lines`);
+});
+
 test("GitHub issue template captures debug packages with available labels", () => {
   const templateSource = fs.readFileSync(
     path.join(repoRoot, ".github/ISSUE_TEMPLATE/translation-bug.yml"),

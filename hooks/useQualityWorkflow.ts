@@ -6,7 +6,7 @@ import type { UntranslatedCell } from '../utils/language';
 import type { DocxContext } from '../utils/docx';
 import { setDocxSegmentText } from '../utils/docx';
 import type { PdfContext } from '../utils/pdf';
-import { setPdfSegmentText } from '../utils/pdf';
+import { setPdfSegmentText } from '../utils/pdfSegments';
 import { serializeDebugPackage, serializeGitHubIssueMarkdown, type DebugFormatSnapshot, type DebugPackageInput } from '../utils/debugPackage';
 import {
   clearTranslationIssueCases,

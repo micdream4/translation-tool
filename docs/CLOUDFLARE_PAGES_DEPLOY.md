@@ -53,6 +53,20 @@ Optional encrypted Secret:
 - 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。
 - `DEEPSEEK_API_KEY` 必须是 Cloudflare encrypted Secret；不要把它写成 `VITE_DEEPSEEK_API_KEY`，否则生产浏览器 bundle 可能暴露密钥。
 
+Access JWT verification (strongly recommended):
+- 只信任 `CF-Access-Authenticated-User-Email` 请求头时，任何绕过 Access 的访问路径（例如未受保护的 `*.pages.dev` 或预览域名）都可以伪造身份。
+- 在 Pages 环境变量里配置以下两项后，后端会校验 `Cf-Access-Jwt-Assertion`（RS256 签名、aud、iss、exp），并只使用 JWT 内的邮箱，忽略单独的邮箱请求头：
+  - `CF_ACCESS_TEAM_DOMAIN=<your-team>.cloudflareaccess.com`
+  - `CF_ACCESS_AUD=<Access Application 的 Application Audience (AUD) Tag>`
+- 未配置时保持旧行为（只读邮箱请求头），所以上线前必须在 Cloudflare Zero Trust 确认 Access Application 覆盖了生产域名和所有预览域名。
+
+Request limits (optional overrides, defaults shown):
+- `MAX_REQUEST_BYTES=4194304`：单次请求体上限。
+- `MAX_RECORDS_PER_REQUEST=200`：`/api/translate` 单次记录数上限（前端单批最多 40 条）。
+- `MAX_SAMPLES_PER_REQUEST=100`：`/api/model-review`、`/api/review-samples` 单次样本数上限。
+- 单次请求指定的模型数最多 8 个，模型 ID 只允许字母、数字和 `._:/@+-`。
+- 请求频率限制建议在 Cloudflare 的 WAF Rate Limiting 规则里配置（`/api/*`），代码层不做限流。
+
 Public sharing (no Access) notes:
 - 保持 `REQUIRE_CF_ACCESS_EMAIL` 为空或 `false`。
 - 这样前端可直接调用 `/api/translate`，仅使用 `OPENROUTER_API_KEY`。

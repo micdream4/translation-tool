@@ -1,5 +1,14 @@
 # 项目进度
 
+## v0.1.0
+
+- 加固后端鉴权：配置 `CF_ACCESS_TEAM_DOMAIN` 和 `CF_ACCESS_AUD` 后，`/api/*` 会校验 Cloudflare Access JWT（RS256 签名、aud、iss、exp，JWKS 缓存 10 分钟），只使用 JWT 内的邮箱，忽略可被伪造的 `CF-Access-Authenticated-User-Email` 请求头；未配置时保持旧行为。部署前必须在 Cloudflare 配置这两个变量，并确认 Access 覆盖生产域名和所有预览域名。
+- `getAuthContext` / `enforceRequestAuth` 改为异步；三个模型入口现在先鉴权再读取请求体，未登录请求不再被解析。
+- 新增 `functions/_shared/limits.ts`：请求体上限 4MB、`/api/translate` 单次最多 200 条记录、审核接口单次最多 100 个样本、单次最多 8 个模型、模型 ID 字符白名单，均可用环境变量覆盖；超限返回 413/400，不调用任何模型。
+- 新增回归：JWT 签名/aud/过期/伪造密钥/仅请求头伪造均被拒绝；超大请求体、超量记录/样本/模型和非法模型 ID 在调用模型前被拒绝，且鉴权先于请求体解析。
+- 审查结论更正：浏览器 bundle 中 `vendor-misc`（约 1.4MB）的主要来源是 `pdf-lib` 和 `fontkit`（PDF 导出），而不是 `@google/genai`；PDF 模块目前在 `App.tsx` 和 `useQualityWorkflow` 中静态引入，需要在拆分 `App.tsx` 时改为按需加载。
+- 后续待办：把 PDF 工作流改为动态导入；为 CI 增加脱敏小 fixture 以运行部分真实文档回归；继续按计划拆分 `App.tsx`；清理 `Openrouter_API_KEY` 等环境变量别名。
+
 ## v0.0.117
 
 - 修复 Excel 公式覆盖：新增公式坐标识别，公式单元格不进入模型、残留检查或补译目标；网页普通导出和保格式 XML patch 均默认跳过公式，并记录 `skippedFormulas`。

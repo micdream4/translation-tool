@@ -8,6 +8,7 @@ import type {
 import { parseModelJsonObject } from "../../utils/jsonRepair";
 import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../../utils/targetLanguage";
 import { enforceRequestAuth, jsonResponse } from "../_shared/auth";
+import { getMaxRequestBytes, getMaxSamples, readJsonBodyWithLimit, validateModelList } from "../_shared/limits";
 import { callRoutedChat, parseDelimitedModelList } from "../_shared/llmProviders";
 
 const DEFAULT_REVIEW_MODELS = [
@@ -90,7 +91,12 @@ ${JSON.stringify(samples)}
 
 export const onRequestPost = async (context: any) => {
   try {
-    const payload = await context.request.json();
+    const env = (context.env || {}) as Record<string, unknown>;
+    const authResult = await enforceRequestAuth(context.request, env);
+    if (!authResult.ok) return authResult.response;
+    const body = await readJsonBodyWithLimit(context.request, getMaxRequestBytes(env));
+    if (body.response) return body.response;
+    const payload = body.data;
     const samples = payload?.samples as ReviewSample[] | undefined;
     const targetLang = payload?.targetLang as TargetLanguage | undefined;
     const requestedModel = parseRequestedModel(payload?.model);
@@ -99,9 +105,11 @@ export const onRequestPost = async (context: any) => {
       return jsonResponse({ error: "Invalid payload." }, 400);
     }
 
-    const env = (context.env || {}) as Record<string, unknown>;
-    const authResult = enforceRequestAuth(context.request, env);
-    if (!authResult.ok) return authResult.response;
+    if (samples.length > getMaxSamples(env)) {
+      return jsonResponse({ error: `Too many samples (max ${getMaxSamples(env)}).` }, 413);
+    }
+    const modelListError = validateModelList(requestedModel ? [requestedModel] : []);
+    if (modelListError) return jsonResponse({ error: modelListError }, 400);
     const models = requestedModel
       ? [requestedModel]
       : parseDelimitedModelList(

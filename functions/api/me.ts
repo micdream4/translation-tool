@@ -19,7 +19,7 @@ const getTranslationCapabilities = (env: Record<string, unknown>, userEmail: str
 
 export const onRequestGet = async (context: any) => {
   const env = (context.env || {}) as Record<string, unknown>;
-  const auth = getAuthContext(context.request, env);
+  const auth = await getAuthContext(context.request, env);
   const authenticated = Boolean(auth.userEmail);
 
   if (auth.requireAccessEmail && !authenticated) {

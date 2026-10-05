@@ -390,6 +390,133 @@ test("API me exposes server-side translation capabilities without leaking keys",
   assert.doesNotMatch(JSON.stringify(payload), /test-deepseek-key|test-openrouter-key/);
 });
 
+const base64Url = (input) =>
+  Buffer.from(input).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
+const signAccessJwt = async (privateKey, kid, claims) => {
+  const header = base64Url(JSON.stringify({ alg: "RS256", kid }));
+  const payload = base64Url(JSON.stringify(claims));
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    privateKey,
+    new TextEncoder().encode(`${header}.${payload}`)
+  );
+  return `${header}.${payload}.${base64Url(Buffer.from(signature))}`;
+};
+
+test("API me verifies the Cloudflare Access JWT instead of trusting the identity header alone", async () => {
+  const { onRequestGet } = await bundleTsModule(path.join(repoRoot, "functions/api/me.ts"));
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true,
+    ["sign", "verify"]
+  );
+  const publicJwk = { ...(await crypto.subtle.exportKey("jwk", keyPair.publicKey)), kid: "test-kid" };
+  const teamDomain = "team-jwt-test.cloudflareaccess.com";
+  const env = { REQUIRE_CF_ACCESS_EMAIL: "true", CF_ACCESS_TEAM_DOMAIN: teamDomain, CF_ACCESS_AUD: "test-aud" };
+  const now = Math.floor(Date.now() / 1000);
+  const claims = { aud: ["test-aud"], iss: `https://${teamDomain}`, exp: now + 600, email: "User@Example.com" };
+  const callMe = (headers) =>
+    onRequestGet({ request: new Request("https://poct-translator.local/api/me", { headers }), env });
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async () => new Response(JSON.stringify({ keys: [publicJwk] }), { status: 200 }));
+
+    const valid = await callMe({ "Cf-Access-Jwt-Assertion": await signAccessJwt(keyPair.privateKey, "test-kid", claims) });
+    assert.equal(valid.status, 200);
+    assert.equal((await valid.json()).email, "user@example.com");
+
+    const spoofedHeaderOnly = await callMe({ "CF-Access-Authenticated-User-Email": "attacker@example.com" });
+    assert.equal(spoofedHeaderOnly.status, 401);
+
+    const wrongAudience = await callMe({
+      "CF-Access-Authenticated-User-Email": "attacker@example.com",
+      "Cf-Access-Jwt-Assertion": await signAccessJwt(keyPair.privateKey, "test-kid", { ...claims, aud: ["other-aud"] })
+    });
+    assert.equal(wrongAudience.status, 401);
+
+    const expired = await callMe({
+      "Cf-Access-Jwt-Assertion": await signAccessJwt(keyPair.privateKey, "test-kid", { ...claims, exp: now - 10 })
+    });
+    assert.equal(expired.status, 401);
+
+    const otherKeyPair = await crypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign", "verify"]
+    );
+    const forged = await callMe({
+      "Cf-Access-Jwt-Assertion": await signAccessJwt(otherKeyPair.privateKey, "test-kid", claims)
+    });
+    assert.equal(forged.status, 401);
+  });
+});
+
+test("API functions reject oversized bodies, too many records and malformed model ids before calling any model", async () => {
+  const translate = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const modelReview = await bundleTsModule(path.join(repoRoot, "functions/api/model-review.ts"));
+  const reviewSamples = await bundleTsModule(path.join(repoRoot, "functions/api/review-samples.ts"));
+  const aiCalls = [];
+  const env = { AI: { run: async (...args) => { aiCalls.push(args); return {}; } } };
+  const record = { id: "seg-1", content: "中文" };
+
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async () => {
+      throw new Error("No model request should be made for rejected payloads.");
+    });
+
+    const tooManyRecords = await translate.onRequestPost(
+      functionContext({ records: Array.from({ length: 201 }, () => record), targetLang: "English" }, env)
+    );
+    assert.equal(tooManyRecords.status, 413);
+
+    const tooLarge = await translate.onRequestPost(
+      functionContext({ records: [record], targetLang: "English" }, { ...env, MAX_REQUEST_BYTES: "20" })
+    );
+    assert.equal(tooLarge.status, 413);
+
+    const badModel = await translate.onRequestPost(
+      functionContext({ records: [record], targetLang: "English", model: "x y; rm -rf" }, env)
+    );
+    assert.equal(badModel.status, 400);
+
+    const tooManyModels = await translate.onRequestPost(
+      functionContext(
+        { records: [record], targetLang: "English", models: Array.from({ length: 9 }, (_, i) => `vendor/model-${i}`) },
+        env
+      )
+    );
+    assert.equal(tooManyModels.status, 400);
+
+    const reviewTooManyModels = await modelReview.onRequestPost(
+      functionContext(
+        {
+          samples: [{ id: "s1", sourceText: "中文" }],
+          targetLang: "English",
+          translationModels: Array.from({ length: 9 }, (_, i) => `cloudflare-ai:vendor/model-${i}`)
+        },
+        env
+      )
+    );
+    assert.equal(reviewTooManyModels.status, 400);
+
+    const reviewTooManySamples = await reviewSamples.onRequestPost(
+      functionContext(
+        { samples: Array.from({ length: 101 }, (_, i) => ({ id: `s${i}`, sourceText: "中文" })), targetLang: "English" },
+        env
+      )
+    );
+    assert.equal(reviewTooManySamples.status, 413);
+
+    const unauthenticated = await translate.onRequestPost({
+      request: new Request("https://poct-translator.local/api/translate", { method: "POST", body: "not json" }),
+      env: { REQUIRE_CF_ACCESS_EMAIL: "true" }
+    });
+    assert.equal(unauthenticated.status, 401);
+  });
+  assert.equal(aiCalls.length, 0);
+});
+
 test("GitHub issue template captures debug packages with available labels", () => {
   const templateSource = fs.readFileSync(
     path.join(repoRoot, ".github/ISSUE_TEMPLATE/translation-bug.yml"),

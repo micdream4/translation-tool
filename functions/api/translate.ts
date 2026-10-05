@@ -9,6 +9,12 @@ import {
 } from "../../utils/translationProfiles";
 import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
 import {
+  getMaxRecords,
+  getMaxRequestBytes,
+  readJsonBodyWithLimit,
+  validateModelList
+} from "../_shared/limits";
+import {
   callCloudflareAiChat,
   extractChatText,
   getCloudflareAiBinding,
@@ -241,7 +247,12 @@ const parseEngineChain = (
 
 export const onRequestPost = async (context: any) => {
   try {
-    const payload = await context.request.json();
+    const env = (context.env || {}) as Record<string, unknown>;
+    const authResult = await enforceRequestAuth(context.request, env);
+    if (!authResult.ok) return authResult.response;
+    const body = await readJsonBodyWithLimit(context.request, getMaxRequestBytes(env));
+    if (body.response) return body.response;
+    const payload = body.data;
     const records = payload?.records as POCTRecord[] | undefined;
     const targetLang = payload?.targetLang as TargetLanguage | undefined;
     const engine = String(payload?.engine || "auto").toLowerCase();
@@ -253,9 +264,13 @@ export const onRequestPost = async (context: any) => {
       return jsonResponse({ error: "Invalid payload." }, 400);
     }
 
-    const env = (context.env || {}) as Record<string, unknown>;
-    const authResult = enforceRequestAuth(context.request, env);
-    if (!authResult.ok) return authResult.response;
+    if (records.length > getMaxRecords(env)) {
+      return jsonResponse({ error: `Too many records (max ${getMaxRecords(env)}).` }, 413);
+    }
+    const modelListError = validateModelList(
+      [requestedModel, ...requestedModels].filter(Boolean)
+    );
+    if (modelListError) return jsonResponse({ error: modelListError }, 400);
     const openRouterKey = getOpenRouterKeyForUser(env, authResult.auth.userEmail);
     const configuredOpenRouterModels = parseOpenRouterModels(env);
     const hasOpenRouter = Boolean(

@@ -1125,6 +1125,10 @@ const App: React.FC = () => {
       }
     }).cellCount;
   }, [currentIssueSummary.details, currentRowsForRetry, data, excelSkipScope, documentKind]);
+  const { formatExcelRowNumber, formatIssueLocationPreview, formatLocationLabel } = useIssueLocations({
+    excelContext
+  });
+
   const untranslatedLocationPreview = useMemo(
     () => formatIssueLocationPreview(currentIssueSummary.details, 6),
     [currentIssueSummary.details, excelContext]
@@ -1225,10 +1229,6 @@ const App: React.FC = () => {
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? `Auto (${currentModelChainLabel})`
       : currentModelLabel;
-  const { formatExcelRowNumber, formatIssueLocationPreview, formatLocationLabel } = useIssueLocations({
-    excelContext
-  });
-
   const {
     qualityReport,
     setQualityReport,

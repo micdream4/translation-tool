@@ -319,3 +319,15 @@ npm run build
 6. 改变下一阶段优先级。
 
 更新时只写稳定结论，不写长聊天过程。
+
+## v0.2.1 代码结构（`App.tsx` 拆分后）
+
+- `App.tsx`（约 2000 行）只保留状态、少量衍生值和页面组装。
+- 界面：`components/translator/`（`SettingsPanel`、`PreviewPanel`、`QualityTab`、`StringResourcePanel`、`ExportBar`、`ModelReviewView`、`uiClasses.ts`、`types.ts`），以及 `RunMonitor`、`LogConsole`、`QualityReportPanel`、`Header`。
+- 逻辑：`hooks/translation/`（Excel、DOCX、PDF 翻译与重译，字符串资源，Multi-AI 审核，文件导入下载，模型路由，问题位置）。每个 hook 接收一个带类型的 context 对象，函数体与原来在 `App` 中一致。
+- 共享：`utils/translatorShared.ts`（原 `App.tsx` 顶部常量和辅助函数）。
+- 中英文界面：`utils/i18n.ts` 词典（中英键必须一致，有测试），`hooks/useI18n.tsx`。新增界面文字先加词典键，不要写死在组件里。
+- 重要约定：hook 调用放在 `App` 组件末尾 `return` 之前，因为 hook 输出在渲染期之前不存在；渲染期（`useMemo`、`useState` 初始值）里不能引用它们，否则白屏。`regressionSmoke` 里有扫描测试。
+- PDF 重代码（`utils/pdf.ts`）只通过动态 `import()` 加载，不要在其他文件静态导入它；只读段落文本用 `utils/pdfSegments.ts`。
+- 超时与重试：Cloudflare AI 单模型 60 秒，`/api/translate` 总预算 90 秒，浏览器请求 120 秒；服务商不可用类错误连续拆分最多 4 次。详见 `docs/CLOUDFLARE_PAGES_DEPLOY.md`。
+

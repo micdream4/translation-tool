@@ -778,6 +778,44 @@ test("heavy PDF code is only loaded on demand and App.tsx stays split into hooks
   assert.ok(appLines < 2500, `App.tsx grew back to ${appLines} lines`);
 });
 
+test("App.tsx never reads a later declaration while rendering (hook outputs are defined at the end)", async () => {
+  const ts = (await import("typescript")).default;
+  const text = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const sf = ts.createSourceFile("App.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const appStatement = sf.statements.find((node) => ts.isVariableStatement(node) && node.getText(sf).startsWith("const App"));
+  const body = appStatement.declarationList.declarations[0].initializer.body;
+  const declaredAt = new Map();
+  const collect = (binding, position) => {
+    if (ts.isIdentifier(binding)) declaredAt.set(binding.text, position);
+    else if (ts.isObjectBindingPattern(binding) || ts.isArrayBindingPattern(binding)) {
+      binding.elements.forEach((element) => {
+        if (!ts.isOmittedExpression(element)) collect(element.name, position);
+      });
+    }
+  };
+  body.statements.forEach((statement) => {
+    if (ts.isVariableStatement(statement)) {
+      statement.declarationList.declarations.forEach((declaration) => collect(declaration.name, statement.getStart(sf)));
+    }
+  });
+  const offenders = [];
+  const walk = (node, lazy) => {
+    if (ts.isIdentifier(node) && declaredAt.has(node.text) && node.getStart(sf) < declaredAt.get(node.text) && !lazy) {
+      offenders.push(`${node.text} (line ${sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1})`);
+    }
+    let nextLazy = lazy;
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+      const parent = node.parent;
+      const runsDuringRender =
+        parent && ts.isCallExpression(parent) && /^(useMemo|useState|useRef)$/.test(parent.expression.getText(sf));
+      nextLazy = runsDuringRender ? lazy : true;
+    }
+    ts.forEachChild(node, (child) => walk(child, nextLazy));
+  };
+  body.statements.forEach((statement) => walk(statement, false));
+  assert.deepEqual(offenders, []);
+});
+
 test("GitHub issue template captures debug packages with available labels", () => {
   const templateSource = fs.readFileSync(
     path.join(repoRoot, ".github/ISSUE_TEMPLATE/translation-bug.yml"),

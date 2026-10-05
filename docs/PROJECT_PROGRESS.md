@@ -1,5 +1,18 @@
 # 项目进度
 
+## v0.2.1
+
+- 重构 `App.tsx`：5738 行降到约 2000 行，行为不变。
+  - 界面部分拆为 `components/translator/`：`SettingsPanel`、`PreviewPanel`、`QualityTab`、`StringResourcePanel`、`ExportBar`、`ModelReviewView`，界面类名统一在 `uiClasses.ts`。
+  - 翻译与业务逻辑拆为 `hooks/translation/`：`useExcelTranslation`、`useDocxTranslation`、`usePdfTranslation`、`useStringResources`、`useModelReview`、`useDocumentIO`、`useModelRouting`、`useIssueLocations`；各 hook 通过带类型的 context 对象接收 `App` 的状态。
+  - 模块级常量和辅助函数移到 `utils/translatorShared.ts`，共享类型在 `components/translator/types.ts`。
+- PDF 按需加载：`pdf.js`、`pdf-lib`、`docx` 导出代码只在解析或导出 PDF 时加载（`utils/pdfSegments.ts` 保存轻量的段落读写函数）。首屏 JS 约 3.8MB 降到约 1.8MB，`vendor-misc` 从 1.4MB 降到 0.3MB，PDF 相关 chunk 不再在首屏预加载。
+- 新增防回归测试：`App.tsx` 渲染期不得读取后声明的变量（hook 输出在组件末尾定义，渲染期求值会白屏）、PDF 重代码不得被静态导入、`App.tsx` 行数上限、hook 与组件文件齐全。
+- 重构中发现并修复一次白屏：`useMemo` 回调在渲染期引用了后声明的 hook 输出；已用脚本全量扫描并加入测试。
+- 验证：`typecheck`、`npm test`（50 项）、真实后端端到端：Excel 翻译、质检、重译问题项（占位符异常 3→0）；DOCX 849 段解析、两批翻译与暂停；PDF 按需加载确认。PDF 解析在本机浏览器面板里不返回，重构前版本同样如此，判断为面板环境限制，PDF 翻译链路由自动测试覆盖。
+- 约定：新增 `App` 内的函数若要被 hook 使用，hook 调用统一放在组件末尾 `return` 之前；如渲染期要用 hook 输出，需把调用前移并确保依赖已声明。
+- 后续待办：docx 和 xlsx 库仍是首屏静态加载，可再做按需加载；日志文本随界面语言切换；`useQualityWorkflow` 的参数列表可用同样的 context 方式收敛；评估 Excel 批次并发。
+
 ## v0.2.0
 
 - 翻译页重做为"任务仪表盘"布局：文件与一行设置、运行监控、结果标签页（对照预览、质量检查、运行日志、字符串资源）、底部固定导出栏；保护词、Excel 跳过范围、翻译记忆收进"更多设置"。

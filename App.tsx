@@ -1,484 +1,194 @@
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import packageJson from './package.json';
+import React,{ useEffect,useMemo,useRef,useState } from 'react';
 import Header from './components/Header';
 import LogConsole from './components/LogConsole';
-import QualityReportPanel from './components/QualityReportPanel';
 import RunMonitor from './components/RunMonitor';
+import ExportBar from './components/translator/ExportBar';
 import ModelReviewView from './components/translator/ModelReviewView';
-import SettingsPanel from './components/translator/SettingsPanel';
 import PreviewPanel from './components/translator/PreviewPanel';
 import QualityTab from './components/translator/QualityTab';
+import SettingsPanel from './components/translator/SettingsPanel';
 import StringResourcePanel from './components/translator/StringResourcePanel';
-import ExportBar from './components/translator/ExportBar';
+import type { AppView,DocxIssueDetail,ModelReviewStyleSelection } from './components/translator/types';
 import { getUiClasses } from './components/translator/uiClasses';
-import type { AppView, DocxIssueDetail, ModelReviewStyleSelection } from './components/translator/types';
-import { useI18n } from './hooks/useI18n';
 import { useAuth } from './hooks/useAuth';
+import { useI18n } from './hooks/useI18n';
 import { useQualityWorkflow } from './hooks/useQualityWorkflow';
-import { parseExcelFile, exportToExcelPreservingStyles, isExcelFormulaCell } from './utils/excel';
-import type { ExcelContext } from './utils/excel';
+import { segmentsToQualityRows,segmentsToQualityUnits } from './quality/adapters';
 import {
-  formatExcelSkipScopeSummary,
-  isExcelCellSkipped,
-  parseExcelSkipScope
-} from './utils/excelSkipScope';
-import {
-  parseDocxFile,
-  exportDocxFile,
-  formatDocxCoverageSummary,
-  getDocxSegmentText,
-  setDocxSegmentText,
-  type DocxContext,
-  type DocxSegment
-} from './utils/docx';
-import {
-  buildAdaptiveTextBatches,
-  formatElapsedSeconds,
-  sumBatchTextChars
-} from './utils/translationBatching';
-import {
-  parsePdfFile,
-  exportPdfTranslationAsDocx,
-  exportPdfTranslationAsPdf,
-  getPdfSegmentText,
-  getPdfTextLayerStats,
-  setPdfSegmentText,
-  type PdfContext,
-  type PdfSegment
-} from './utils/pdf';
-import { TranslationHub } from './services/translationHub';
-import { ModelReviewService } from './services/modelReviewService';
-import { runPdfTranslationWorkflow } from './workflows/pdfTranslationWorkflow';
-import { segmentsToQualityRows, segmentsToQualityUnits } from './quality/adapters';
-import { detectUntranslatedCells, isLikelyTargetLanguage, isNeutralToken } from './utils/language';
-import type { UntranslatedCell } from './utils/language';
-import { summarizeUntranslated } from './utils/untranslated';
-import {
-  buildExcelRetryTargets,
-  buildRetryableExcelSummary,
-  buildTextSegmentRetryPlan,
-  shouldTranslateCellValue
+buildExcelRetryTargets,
+buildRetryableExcelSummary,
+buildTextSegmentRetryPlan
 } from './quality/retryTargets';
+import { ModelReviewService } from './services/modelReviewService';
+import { TranslationHub } from './services/translationHub';
 import {
-  loadTranslationProgress,
-  saveTranslationProgress,
-  clearTranslationProgress,
-  type TranslationProgressSnapshot
-} from './utils/storage';
+BatchMonitor,
+BatchRun,
+LogEntry,
+POCTRecord,
+ProcessingState,
+SampleReviewAIResult,
+TargetLanguage,
+WorkflowStageKey,
+WorkflowStageState
+} from './types';
 import {
-  buildTranslationMemoryKey,
-  clearTranslationMemory,
-  countTranslationMemoryEntries,
-  lookupTranslationMemoryBatch,
-  normalizeMemorySource,
-  saveTranslationMemoryPairs,
-  type TranslationMemoryPair
-} from './utils/translationMemory';
-import { normalizeTerminology } from './utils/terminology';
-import { polishTranslation, fixSpacingArtifacts } from './utils/postprocess';
+exportDocxFile,
+formatDocxCoverageSummary,
+getDocxSegmentText,
+parseDocxFile,
+setDocxSegmentText,
+type DocxContext,
+type DocxSegment
+} from './utils/docx';
+import type { ExcelContext } from './utils/excel';
+import { exportToExcelPreservingStyles,isExcelFormulaCell,parseExcelFile } from './utils/excel';
 import {
-  guardTranslationTokens,
-  restoreTranslationTokens,
-  isLikelyIdentifier,
-  containsProtectedTerm,
-  setRuntimeProtectedTerms,
-  stripProtectedTerms,
-  stripPreservedUiLabels
-} from './utils/translationTokens';
+formatExcelSkipScopeSummary,
+isExcelCellSkipped,
+parseExcelSkipScope
+} from './utils/excelSkipScope';
+import type { UntranslatedCell } from './utils/language';
+import { detectUntranslatedCells,isNeutralToken } from './utils/language';
 import {
-  extractStructuredStringContent,
-  guardMarkupTags,
-  guardStringResourceTokens,
-  INTERNAL_STRING_PLACEHOLDER_REGEX,
-  isLikelyDateFormatPattern,
-  isXmlCommentLine,
-  localizeDateFormatPattern,
-  parseStringResourceLine,
-  restoreMarkupTags,
-  validateStringResourceXml,
-  restoreStringResourceTokens
-} from './utils/stringResources';
-import { appendStringHistory, clearStringHistory, loadStringHistory, type StringTranslationHistoryEntry } from './utils/stringHistory';
-import {
-  DEEPSEEK_OPENROUTER_MODEL,
-  DOCX_MANUAL_OPENROUTER_MODELS,
-  normalizeOpenRouterModelId
-} from './utils/translationProfiles';
-import {
-  STRING_RESOURCE_TARGET_LANGS,
-  TARGET_LANGUAGE_OPTIONS,
-  getTargetLanguageLabel
-} from './utils/targetLanguage';
-import {
-  DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
-  DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
-  MODEL_REVIEW_STYLE_LABELS,
-  formatModelReviewReport,
-  type ModelReviewResult,
-  type ModelReviewSample,
-  type ModelReviewStyle
+DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
+DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
+MODEL_REVIEW_STYLE_LABELS,
+formatModelReviewReport,
+type ModelReviewResult,
+type ModelReviewSample,
+type ModelReviewStyle
 } from './utils/modelReview';
 import {
-  collectPlaceholderIssues,
-  hasSpacingIssue,
-  runQualityChecks,
-  runQualityChecksOnUnits,
-  PLACEHOLDER_REGEX,
-  type QualityCheckOptions,
-  type QualitySeverity
+exportPdfTranslationAsDocx,
+exportPdfTranslationAsPdf,
+getPdfSegmentText,
+getPdfTextLayerStats,
+parsePdfFile,
+setPdfSegmentText,
+type PdfContext,
+type PdfSegment
+} from './utils/pdf';
+import { fixSpacingArtifacts,polishTranslation } from './utils/postprocess';
+import {
+PLACEHOLDER_REGEX,
+collectPlaceholderIssues,
+hasSpacingIssue,
+runQualityChecks,
+runQualityChecksOnUnits,
+type QualityCheckOptions,
+type QualitySeverity
 } from './utils/quality';
 import {
-  BatchMonitor,
-  BatchRun,
-  LogEntry,
-  POCTRecord,
-  ProcessingState,
-  SampleReviewAIResult,
-  TargetLanguage,
-  WorkflowStageKey,
-  WorkflowStageState
-} from './types';
+clearTranslationProgress,
+loadTranslationProgress,
+saveTranslationProgress,
+type TranslationProgressSnapshot
+} from './utils/storage';
+import { appendStringHistory,clearStringHistory,loadStringHistory } from './utils/stringHistory';
+import {
+INTERNAL_STRING_PLACEHOLDER_REGEX,
+extractStructuredStringContent,
+guardMarkupTags,
+guardStringResourceTokens,
+isLikelyDateFormatPattern,
+isXmlCommentLine,
+localizeDateFormatPattern,
+parseStringResourceLine,
+restoreMarkupTags,
+restoreStringResourceTokens,
+validateStringResourceXml
+} from './utils/stringResources';
+import { normalizeTerminology } from './utils/terminology';
+import {
+buildAdaptiveTextBatches,
+formatElapsedSeconds,
+sumBatchTextChars
+} from './utils/translationBatching';
+import {
+buildTranslationMemoryKey,
+clearTranslationMemory,
+countTranslationMemoryEntries,
+lookupTranslationMemoryBatch,
+normalizeMemorySource,
+saveTranslationMemoryPairs,
+type TranslationMemoryPair
+} from './utils/translationMemory';
+import {
+DOCX_MANUAL_OPENROUTER_MODELS,
+normalizeOpenRouterModelId
+} from './utils/translationProfiles';
+import {
+containsProtectedTerm,
+guardTranslationTokens,
+isLikelyIdentifier,
+restoreTranslationTokens,
+setRuntimeProtectedTerms,
+stripPreservedUiLabels,
+stripProtectedTerms
+} from './utils/translationTokens';
+import type {
+IssueSummaryState,
+OpenRouterModelCooldown,
+OpenRouterModelIssue,
+StageResult,
+StringOutputDiagnostic,
+ThemeMode,
+TranslationEngine,
+TranslationMemoryStats
+} from './utils/translatorShared';
+import {
+ALL_STRING_TARGETS,
+APP_VERSION,
+AUTO_OPENROUTER_MODEL,
+BATCH_SIZE,
+DEEPSEEK_DIRECT_MODEL_VALUES,
+DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT,
+DEEPSEEK_PRO_DOCX_BATCH_SIZE,
+DOCX_BATCH_CHAR_LIMIT,
+DOCX_BATCH_SIZE,
+DOCX_PLACEHOLDER_VARIANT_REGEX,
+DOCX_WORD_REGEX,
+OPENROUTER_MODEL_COOLDOWN_MS,
+PACKAGE_VERSION,
+PROTECTED_TERMS_STORAGE_KEY,
+RETRY_BATCH_SIZE,
+STRING_BATCH_SIZE,
+STRING_TARGET_LANGS,
+TRANSLATION_MEMORY_ENABLED_STORAGE_KEY,
+UI_THEME_STORAGE_KEY,
+applyPostprocessRow,
+cellNeedsTranslation,
+countChineseChars,
+createInitialStages,
+createIssueSummary,
+dedupeLeadingRepeat,
+downloadTextFile,
+formatAutoModelChainLabel,
+formatCurrentStringOutputText,
+formatRowRanges,
+formatStringHistoryText,
+getCloudflareAiProviderModel,
+getDeepSeekDirectProviderModel,
+getModelLabel,
+getTranslationModelLabel,
+isCloudflareAiModelValue,
+isDeepSeekDirectModel,
+isDeepSeekDirectProModel,
+isSevereDocxIssue,
+parseCloudflareAiModelOptions,
+parseOpenRouterAutoModelOptions,
+parseOpenRouterModelOptions,
+parseRuntimeProtectedTerms,
+shouldLockCell,
+toCloudflareAiModelValue,
+toDocxSnippet,
+valueNeedsTranslation
+} from './utils/translatorShared';
+import { summarizeUntranslated } from './utils/untranslated';
+import { runPdfTranslationWorkflow } from './workflows/pdfTranslationWorkflow';
 
-// Batch size kept small for reliability with large column counts
-const BATCH_SIZE = 5;
-const DOCX_BATCH_SIZE = 20;
-const DOCX_BATCH_CHAR_LIMIT = 12000;
-const DEEPSEEK_PRO_DOCX_BATCH_SIZE = 8;
-const DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT = 6000;
-const RETRY_BATCH_SIZE = 5;
-const STRING_BATCH_SIZE = 40;
-const SOURCE_LANG_REGEX = /[\u4e00-\u9fff]/;
-const STRING_TARGET_LANGS: TargetLanguage[] = STRING_RESOURCE_TARGET_LANGS;
-const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
-const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
-const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
-const TRANSLATION_MEMORY_ENABLED_STORAGE_KEY = 'poct.translation_memory_enabled';
-const PACKAGE_VERSION = String((packageJson as { version?: string }).version || '').trim();
-const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || PACKAGE_VERSION).trim();
-const DEFAULT_CLOUDFLARE_AI_MODELS = [
-  'google/gemini-3-flash',
-  'openai/gpt-5.4',
-  'anthropic/claude-sonnet-4.6'
-] as const;
-const DEFAULT_OPENROUTER_MODELS: string[] = [];
-const DEFAULT_OPENROUTER_AUTO_MODELS: string[] = [];
-const AUTO_OPENROUTER_MODEL = '__AUTO_OPENROUTER__';
-const OPENROUTER_MODEL_COOLDOWN_MS = 30 * 60 * 1000;
-const MODEL_LABELS: Record<string, string> = {
-  'cloudflare-ai:google/gemini-3-flash': 'Cloudflare Gemini 3 Flash',
-  'cloudflare-ai:openai/gpt-5.4': 'Cloudflare OpenAI GPT-5.4',
-  'cloudflare-ai:anthropic/claude-sonnet-4.6': 'Cloudflare Claude 4.6 Sonnet',
-  'deepseek:deepseek-v4-flash': 'DeepSeek Direct v4 Flash',
-  'deepseek:deepseek-v4-pro': 'DeepSeek Direct v4 Pro',
-  'deepseek-v4-flash': 'DeepSeek Direct v4 Flash',
-  'deepseek-v4-pro': 'DeepSeek Direct v4 Pro',
-  'google/gemini-3-flash': 'Cloudflare Gemini 3 Flash',
-  'openai/gpt-5.4': 'Cloudflare OpenAI GPT-5.4',
-  'anthropic/claude-sonnet-4.6': 'Cloudflare Claude 4.6 Sonnet',
-  'google/gemini-3-flash-preview': 'Gemini 3 Flash Preview',
-  'google/gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
-  'google/gemini-2.5-pro': 'Gemini 2.5 Pro',
-  'qwen/qwen3.6-plus': 'Qwen 3.6 Plus',
-  'deepseek/deepseek-v4-pro': 'DeepSeek V4 Pro',
-  'openai/gpt-5.3-chat': 'OpenAI GPT-5.3 Chat'
-};
-const DEEPSEEK_DIRECT_MODEL = '__DEEPSEEK_DIRECT_FLASH__';
-const DEEPSEEK_DIRECT_PRO_MODEL = '__DEEPSEEK_DIRECT_PRO__';
-const DEEPSEEK_DIRECT_MODEL_LABEL = 'DeepSeek Direct v4 Flash';
-const DEEPSEEK_DIRECT_PRO_MODEL_LABEL = 'DeepSeek Direct v4 Pro';
-const DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS: Record<string, string> = {
-  [DEEPSEEK_DIRECT_MODEL]: 'deepseek-v4-flash',
-  [DEEPSEEK_DIRECT_PRO_MODEL]: 'deepseek-v4-pro'
-};
-const DEEPSEEK_DIRECT_MODEL_VALUES = [DEEPSEEK_DIRECT_MODEL, DEEPSEEK_DIRECT_PRO_MODEL] as const;
-const DEEPSEEK_DIRECT_MODEL_LABELS: Record<string, string> = {
-  [DEEPSEEK_DIRECT_MODEL]: DEEPSEEK_DIRECT_MODEL_LABEL,
-  [DEEPSEEK_DIRECT_PRO_MODEL]: DEEPSEEK_DIRECT_PRO_MODEL_LABEL
-};
-const DEEPSEEK_DIRECT_AUTO_LABELS = [
-  DEEPSEEK_DIRECT_MODEL_LABEL,
-  DEEPSEEK_DIRECT_PRO_MODEL_LABEL
-] as const;
-const CLOUDFLARE_AI_MODEL_VALUE_PREFIX = '__CLOUDFLARE_AI__:';
-const toCloudflareAiModelValue = (model: string) => `${CLOUDFLARE_AI_MODEL_VALUE_PREFIX}${model}`;
-const isCloudflareAiModelValue = (model: string) => model.startsWith(CLOUDFLARE_AI_MODEL_VALUE_PREFIX);
-const getCloudflareAiProviderModel = (model: string) =>
-  model.slice(CLOUDFLARE_AI_MODEL_VALUE_PREFIX.length);
-const getModelLabel = (model: string) => MODEL_LABELS[model] || model;
-const getDeepSeekDirectModelLabel = (model: string) => DEEPSEEK_DIRECT_MODEL_LABELS[model] || model;
-const getDeepSeekDirectProviderModel = (model: string) => DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS[model];
-const isDeepSeekDirectModel = (model: string) =>
-  Object.prototype.hasOwnProperty.call(DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS, model);
-const isDeepSeekDirectProModel = (model: string) => model === DEEPSEEK_DIRECT_PRO_MODEL;
-const getTranslationModelLabel = (model: string) => {
-  if (isDeepSeekDirectModel(model)) return getDeepSeekDirectModelLabel(model);
-  if (isCloudflareAiModelValue(model)) return getModelLabel(getCloudflareAiProviderModel(model));
-  return getModelLabel(model);
-};
-const formatModelChainLabel = (models: readonly string[]) =>
-  models.map(getModelLabel).join(' -> ');
-const splitCloudflareAutoModels = (models: readonly string[]) => ({
-  primary: models.slice(0, 1),
-  fallback: models.slice(1)
-});
-const formatAutoModelChainLabel = (
-  cloudflareModels: readonly string[],
-  openRouterModels: readonly string[],
-  includeDeepSeekDirect: boolean
-) => {
-  const cloudflareAuto = splitCloudflareAutoModels(cloudflareModels);
-  return [
-    ...cloudflareAuto.primary.map(getModelLabel),
-    ...(includeDeepSeekDirect ? DEEPSEEK_DIRECT_AUTO_LABELS : []),
-    ...cloudflareAuto.fallback.map(getModelLabel),
-    ...openRouterModels.map(getModelLabel)
-  ].join(' -> ');
-};
-type TranslationEngine = 'cloudflare-ai' | 'openrouter' | 'deepseek' | 'gemini';
-type ThemeMode = 'light' | 'dark';
-type TranslationMemoryStats = {
-  hits: number;
-  deduped: number;
-  stored: number;
-};
-type OpenRouterModelCooldown = {
-  until: number;
-  reason: string;
-};
-type OpenRouterModelIssue = {
-  model?: string;
-  status?: number | string;
-  message?: string;
-  kind?: string;
-};
-type StageResult = 'paused' | 'completed' | void;
-
-const parseOpenRouterModelOptions = () => {
-  const raw =
-    String((import.meta as any)?.env?.VITE_OPENROUTER_MODELS || '').trim();
-  const values = raw
-    ? raw.split(/[,\n;]+/).map((item: string) => normalizeOpenRouterModelId(item)).filter(Boolean)
-    : [...DEFAULT_OPENROUTER_MODELS];
-  return Array.from(new Set(values));
-};
-
-const parseCloudflareAiModelOptions = () => {
-  const raw =
-    String((import.meta as any)?.env?.VITE_CLOUDFLARE_AI_MODELS || '').trim();
-  const values = raw
-    ? raw.split(/[,\n;]+/).map((item: string) => item.trim()).filter(Boolean)
-    : [...DEFAULT_CLOUDFLARE_AI_MODELS];
-  return Array.from(new Set(values));
-};
-
-const parseOpenRouterAutoModelOptions = () => {
-  const raw =
-    String((import.meta as any)?.env?.VITE_OPENROUTER_AUTO_MODELS || '').trim();
-  const values = raw
-    ? raw.split(/[,\n;]+/).map((item: string) => normalizeOpenRouterModelId(item)).filter(Boolean)
-    : [...DEFAULT_OPENROUTER_AUTO_MODELS];
-  return Array.from(new Set(values));
-};
-
-const parseRuntimeProtectedTerms = (raw: string) =>
-  Array.from(
-    new Set(
-      String(raw || '')
-        .split(/[\n;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
-
-const downloadTextFile = (filename: string, content: string) => {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
-
-const formatStringHistoryText = (history: StringTranslationHistoryEntry[]) => {
-  const separator = '\n' + '='.repeat(80) + '\n';
-  return history
-    .map((entry, index) => {
-      const availableLangs = STRING_TARGET_LANGS.filter((lang) =>
-        Object.prototype.hasOwnProperty.call(entry.outputs || {}, lang)
-      );
-      const langs = availableLangs.length > 0 ? availableLangs : STRING_TARGET_LANGS;
-      const lines: string[] = [
-        `Record ${index + 1}`,
-        `Timestamp: ${new Date(entry.createdAt).toLocaleString()}`,
-        '',
-        '[Original]',
-        entry.source || ''
-      ];
-      langs.forEach((lang) => {
-        lines.push('', `[${lang}]`, entry.outputs[lang] || '');
-      });
-      return lines.join('\n');
-    })
-    .join(separator);
-};
-
-const formatCurrentStringOutputText = (
-  source: string,
-  outputs: Record<string, string>
-) => {
-  const langs = STRING_TARGET_LANGS.filter((lang) =>
-    Boolean(outputs[lang] && outputs[lang].trim())
-  );
-  const lines: string[] = [
-    `Timestamp: ${new Date().toLocaleString()}`,
-    '',
-    '[Original]',
-    source || ''
-  ];
-  langs.forEach((lang) => {
-    lines.push('', `[${lang}]`, outputs[lang] || '');
-  });
-  return lines.join('\n');
-};
-
-type IssueSummaryState = {
-  cells: number;
-  rows: number;
-  rowIndices: number[];
-  missingRows: number[];
-  details: UntranslatedCell[];
-};
-
-
-type StringOutputDiagnostic = {
-  lang: TargetLanguage;
-  untranslated: number;
-  placeholderLeaks: number;
-  spacingIssues: number;
-  invalidXml: boolean;
-  xmlError: string | null;
-};
-
-const isSevereDocxIssue = (issue: DocxIssueDetail) => {
-  if (issue.issueType === 'placeholder') return true;
-  if (issue.issueType === 'source' && issue.chineseChars >= 2) return true;
-  return false;
-};
-
-const createIssueSummary = (): IssueSummaryState => ({
-  cells: 0,
-  rows: 0,
-  rowIndices: [],
-  missingRows: [],
-  details: []
-});
-
-const DOCX_CHINESE_CHAR_REGEX = /[\u4e00-\u9fff]/g;
-const DOCX_TEXT_CLEANUP_REGEX = /\s+/g;
-const DOCX_WORD_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜçğıöşü][A-Za-zÀ-ÖØ-öø-ÿÇĞİÖŞÜçğıöşü0-9-]{0,32}$/;
-const DOCX_PLACEHOLDER_VARIANT_REGEX = /(?:_+)?(?:TKN|ID|FMT)_\d+_+/i;
-
-const countChineseChars = (text: string) => (text.match(DOCX_CHINESE_CHAR_REGEX) || []).length;
-
-const toDocxSnippet = (text: string, limit: number = 36) => {
-  const normalized = text.replace(DOCX_TEXT_CLEANUP_REGEX, ' ').trim();
-  if (!normalized) return '(empty)';
-  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
-};
-
-const dedupeLeadingRepeat = (source: string, translated: string) => {
-  const sourceTrimmed = source.trim();
-  const targetTrimmed = translated.trim();
-  if (!sourceTrimmed || targetTrimmed.length < 2) return translated;
-  const first = targetTrimmed[0];
-  const second = targetTrimmed[1];
-  if (first.toLowerCase() !== second.toLowerCase()) return translated;
-  const sourceFirst = sourceTrimmed[0];
-  const sourceSecond = sourceTrimmed[1] || '';
-  if (sourceFirst.toLowerCase() !== first.toLowerCase()) return translated;
-  if (sourceSecond && sourceSecond.toLowerCase() === sourceFirst.toLowerCase()) return translated;
-  const prefixLength = translated.length - translated.trimStart().length;
-  const prefix = translated.slice(0, prefixLength);
-  return `${prefix}${targetTrimmed.slice(1)}`;
-};
-
-const formatRowRanges = (indices: number[], limit: number = 3) => {
-  if (!indices.length) return '';
-  const sorted = [...indices].sort((a, b) => a - b);
-  const segments: Array<[number, number]> = [];
-  let start = sorted[0];
-  let prev = sorted[0];
-  for (let i = 1; i < sorted.length; i++) {
-    const current = sorted[i];
-    if (current === prev + 1) {
-      prev = current;
-      continue;
-    }
-    segments.push([start, prev]);
-    start = current;
-    prev = current;
-  }
-  segments.push([start, prev]);
-
-  const displayed = segments.slice(0, limit).map(([s, e]) => {
-    if (s === e) return `${s + 1}`;
-    return `${s + 1}-${e + 1}`;
-  });
-  return displayed.join(', ') + (segments.length > limit ? '...' : '');
-};
-
-const cellNeedsTranslation = (
-  key: string,
-  value: unknown,
-  targetLang: TargetLanguage
-) => {
-  return shouldTranslateCellValue(key, value, targetLang, { shouldLockCell });
-};
-
-const rowNeedsTranslation = (row: POCTRecord, targetLang: TargetLanguage) => {
-  return Object.entries(row).some(([key, value]) => cellNeedsTranslation(key, value, targetLang));
-};
-
-const valueNeedsTranslation = (value: unknown, target: TargetLanguage) => {
-  return shouldTranslateCellValue('', value, target, { ignoreLock: true });
-};
-
-const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
-
-const shouldLockCell = (key: string, value: unknown) => {
-  if (typeof value !== 'string') return false;
-  if (!value.trim()) return false;
-  if (SOURCE_LANG_REGEX.test(value)) return false;
-  if (LOCKED_KEY_REGEX.test(key)) return true;
-  return isLikelyIdentifier(value);
-};
-
-const applyPostprocessRow = (
-  original: POCTRecord | undefined,
-  translated: POCTRecord,
-  lang: TargetLanguage
-) => {
-  const output: POCTRecord = { ...translated };
-  Object.entries(translated).forEach(([key, value]) => {
-    if (typeof value !== 'string') return;
-    const originalValue = original?.[key];
-    const lockValue =
-      typeof originalValue === 'string' ? originalValue : value;
-    if (shouldLockCell(key, lockValue)) return;
-    const sourceText = typeof originalValue === 'string' ? originalValue : '';
-    output[key] = polishTranslation(sourceText, value, lang);
-  });
-  return normalizeTerminology(output, lang, original);
-};
-
-const createInitialStages = (): WorkflowStageState[] => ([
-  { key: 'ingest', label: '导入文档', status: 'pending' },
-  { key: 'translate', label: '全局翻译', status: 'pending' }
-]);
 
 const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);

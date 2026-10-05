@@ -312,7 +312,7 @@ test("Excel skip scope resolves row and column rules across sheets", async () =>
 // App.tsx is being split into hooks and components, so source-level checks read all of them.
 const readAppSource = () => {
   const dirs = ["components/translator", "hooks/translation"];
-  const files = ["App.tsx"];
+  const files = ["App.tsx", "utils/translatorShared.ts"];
   dirs.forEach((dir) => {
     const full = path.join(repoRoot, dir);
     if (!fs.existsSync(full)) return;

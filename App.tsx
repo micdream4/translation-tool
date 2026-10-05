@@ -15,6 +15,7 @@ import { useDocumentIO } from './hooks/translation/useDocumentIO';
 import { useDocxTranslation } from './hooks/translation/useDocxTranslation';
 import { useExcelTranslation } from './hooks/translation/useExcelTranslation';
 import { useModelReview } from './hooks/translation/useModelReview';
+import { useModelRouting } from './hooks/translation/useModelRouting';
 import { usePdfTranslation } from './hooks/translation/usePdfTranslation';
 import { useStringResources } from './hooks/translation/useStringResources';
 import { useAuth } from './hooks/useAuth';
@@ -93,8 +94,7 @@ import {
   type TranslationMemoryPair
 } from './utils/translationMemory';
 import {
-  DOCX_MANUAL_OPENROUTER_MODELS,
-  normalizeOpenRouterModelId
+  DOCX_MANUAL_OPENROUTER_MODELS
 } from './utils/translationProfiles';
 import {
   containsProtectedTerm,
@@ -108,11 +108,9 @@ import {
 import type {
   IssueSummaryState,
   OpenRouterModelCooldown,
-  OpenRouterModelIssue,
   StageResult,
   StringOutputDiagnostic,
   ThemeMode,
-  TranslationEngine,
   TranslationMemoryStats
 } from './utils/translatorShared';
 import {
@@ -121,12 +119,7 @@ import {
   AUTO_OPENROUTER_MODEL,
   BATCH_SIZE,
   DEEPSEEK_DIRECT_MODEL_VALUES,
-  DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT,
-  DEEPSEEK_PRO_DOCX_BATCH_SIZE,
-  DOCX_BATCH_CHAR_LIMIT,
-  DOCX_BATCH_SIZE,
   DOCX_WORD_REGEX,
-  OPENROUTER_MODEL_COOLDOWN_MS,
   PACKAGE_VERSION,
   PROTECTED_TERMS_STORAGE_KEY,
   STRING_TARGET_LANGS,
@@ -140,12 +133,8 @@ import {
   downloadTextFile,
   formatAutoModelChainLabel,
   formatRowRanges,
-  getCloudflareAiProviderModel,
-  getDeepSeekDirectProviderModel,
   getModelLabel,
   getTranslationModelLabel,
-  isCloudflareAiModelValue,
-  isDeepSeekDirectModel,
   isDeepSeekDirectProModel,
   isSevereDocxIssue,
   parseCloudflareAiModelOptions,
@@ -401,173 +390,15 @@ const App: React.FC = () => {
     }
   };
 
-  const shouldCooldownOpenRouterModel = (issue: OpenRouterModelIssue) => {
-    const status = String(issue.status || '').toLowerCase();
-    const message = String(issue.message || '').toLowerCase();
-    return (
-      status === '403' ||
-      status === 'timeout' ||
-      message.includes('terms of service') ||
-      message.includes('timed out') ||
-      message.includes('timeout')
-    );
-  };
-
-  const applyOpenRouterModelCooldowns = (
-    issues: OpenRouterModelIssue[],
-    contextLabel: string
-  ) => {
-    if (translationModelPreference !== AUTO_OPENROUTER_MODEL || issues.length === 0) return;
-    const now = Date.now();
-    let changed = false;
-    issues.forEach((issue) => {
-      const model = normalizeOpenRouterModelId(String(issue.model || ''));
-      if (!model || !allOpenRouterModels.includes(model)) return;
-      if (!shouldCooldownOpenRouterModel(issue)) return;
-      const reason = issue.status === 403 || String(issue.status) === '403'
-        ? '403 TOS/permission block'
-        : String(issue.status || issue.message || 'temporary failure');
-      const existing = openRouterModelCooldownsRef.current.get(model);
-      const until = now + OPENROUTER_MODEL_COOLDOWN_MS;
-      if (existing && existing.until >= until - 1000) return;
-      openRouterModelCooldownsRef.current.set(model, { until, reason });
-      changed = true;
-      addLog(
-        `${contextLabel}: ${getModelLabel(model)} ${reason}，Auto 将跳过 30 分钟。`
-      );
-    });
-    if (changed) {
-      setOpenRouterModelCooldownVersion((version) => version + 1);
-    }
-  };
-
-  const applyLatestOpenRouterModelCooldowns = (contextLabel: string) => {
-    const issues = translationHub.getLastModelIssues?.() || [];
-    applyOpenRouterModelCooldowns(issues as OpenRouterModelIssue[], contextLabel);
-  };
-
   const resetModelReviewState = () => {
     setModelReviewResult(null);
     setIsRunningModelReview(false);
     setModelReviewStatus({ stage: 'idle', message: 'Ready to run.' });
   };
 
-  const getFallbackPriority = (
-    respectSelectedEngine: boolean = false
-  ): TranslationEngine[] => {
-    const engines: TranslationEngine[] = [];
-    if (capabilities.cloudflareAi) engines.push('cloudflare-ai');
-    if (capabilities.deepseek) engines.push('deepseek');
-    if (capabilities.openrouter) engines.push('openrouter');
-    if (capabilities.gemini) engines.push('gemini');
-
-    if (respectSelectedEngine && translationModelPreference !== AUTO_OPENROUTER_MODEL) {
-      if (isCloudflareAiModelValue(translationModelPreference) && capabilities.cloudflareAi) {
-        return ['cloudflare-ai'];
-      }
-      if (isDeepSeekDirectModel(translationModelPreference) && capabilities.deepseek) {
-        return ['deepseek'];
-      }
-      if (capabilities.openrouter) return ['openrouter'];
-    }
-
-    return engines.length > 0 ? engines : ['openrouter'];
-  };
-
-  const getRetryAttemptModelLabel = (model: TranslationEngine) => {
-    if (translationModelPreference !== AUTO_OPENROUTER_MODEL) {
-      if (
-        model === 'cloudflare-ai' &&
-        isCloudflareAiModelValue(translationModelPreference)
-      ) {
-        return getTranslationModelLabel(translationModelPreference);
-      }
-      if (model === 'deepseek' && isDeepSeekDirectModel(translationModelPreference)) {
-        return getTranslationModelLabel(translationModelPreference);
-      }
-      if (
-        model === 'openrouter' &&
-        !isCloudflareAiModelValue(translationModelPreference) &&
-        !isDeepSeekDirectModel(translationModelPreference)
-      ) {
-        return getTranslationModelLabel(translationModelPreference);
-      }
-    }
-    if (model === 'cloudflare-ai') return 'Cloudflare AI';
-    if (model === 'deepseek') return 'DeepSeek Direct';
-    if (model === 'openrouter') return 'OpenRouter';
-    if (model === 'gemini') return 'Gemini';
-    return model;
-  };
-
-  const getTranslationOptions = () => {
-    if (translationModelPreference === AUTO_OPENROUTER_MODEL) {
-      return {
-        openRouterModels: activeOpenRouterModels
-      };
-    }
-    if (isCloudflareAiModelValue(translationModelPreference)) {
-      return {
-        model: 'cloudflare-ai' as const,
-        providerModel: getCloudflareAiProviderModel(translationModelPreference)
-      };
-    }
-    if (isDeepSeekDirectModel(translationModelPreference)) {
-      return {
-        model: 'deepseek' as const,
-        providerModel: getDeepSeekDirectProviderModel(translationModelPreference)
-      };
-    }
-    return {
-      model: 'openrouter' as const,
-      openRouterModel: translationModelPreference
-    };
-  };
-
-  const getDocumentQualityTranslationOptions = () => {
-    if (translationModelPreference !== AUTO_OPENROUTER_MODEL) {
-      if (isCloudflareAiModelValue(translationModelPreference)) {
-        return {
-          model: 'cloudflare-ai' as const,
-          providerModel: getCloudflareAiProviderModel(translationModelPreference),
-          profile: 'docx-manual' as const
-        };
-      }
-      if (isDeepSeekDirectModel(translationModelPreference)) {
-        return {
-          model: 'deepseek' as const,
-          providerModel: getDeepSeekDirectProviderModel(translationModelPreference),
-          profile: 'docx-manual' as const
-        };
-      }
-      return {
-        model: 'openrouter' as const,
-        openRouterModel: translationModelPreference,
-        profile: 'docx-manual' as const
-      };
-    }
-    return {
-      profile: 'docx-manual' as const,
-      openRouterModels: activeDocumentQualityOpenRouterModels
-    };
-  };
-
   const isUsingDeepSeekPro = () => isDeepSeekDirectProModel(translationModelPreference);
 
   const getSpreadsheetBatchSize = () => BATCH_SIZE;
-
-  const getDocumentBatchPolicy = () =>
-    isUsingDeepSeekPro()
-      ? {
-          maxItems: DEEPSEEK_PRO_DOCX_BATCH_SIZE,
-          maxChars: DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT,
-          label: 'DeepSeek Pro conservative'
-        }
-      : {
-          maxItems: DOCX_BATCH_SIZE,
-          maxChars: DOCX_BATCH_CHAR_LIMIT,
-          label: 'standard'
-        };
 
   const createTranslationMemoryStats = (): TranslationMemoryStats => ({
     hits: 0,
@@ -1772,6 +1603,19 @@ const App: React.FC = () => {
           : effectiveModelReviewStyle === 'auto'
             ? 'Style'
             : 'Manual';
+
+  const { applyLatestOpenRouterModelCooldowns, getFallbackPriority, getRetryAttemptModelLabel, getTranslationOptions, getDocumentQualityTranslationOptions, getDocumentBatchPolicy } = useModelRouting({
+    activeDocumentQualityOpenRouterModels,
+    activeOpenRouterModels,
+    addLog,
+    allOpenRouterModels,
+    capabilities,
+    isUsingDeepSeekPro,
+    openRouterModelCooldownsRef,
+    setOpenRouterModelCooldownVersion,
+    translationHub,
+    translationModelPreference
+  });
 
   const { runPdfTranslation, retryPdfSegments } = usePdfTranslation({
     addLog,

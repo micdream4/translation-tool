@@ -23,22 +23,10 @@ const ExportBar: React.FC<ExportBarProps> = ({
 }) => {
   const { t } = useI18n();
   const {
-    pageClass,
-    panelClass,
-    detailsCardClass,
-    sectionDividerClass,
-    headingMutedClass,
     mutedTextClass,
-    fieldClass,
-    textareaClass,
     disabledButtonClass,
-    neutralButtonClass,
-    primaryInlineButtonClass,
-    metricCardClass,
-    subCardClass,
-    nestedPanelClass
+    neutralButtonClass
   } = getUiClasses(isLight);
-  void [pageClass, panelClass, detailsCardClass, sectionDividerClass, headingMutedClass, mutedTextClass, fieldClass, textareaClass, disabledButtonClass, neutralButtonClass, primaryInlineButtonClass, metricCardClass, subCardClass, nestedPanelClass, t];
 
   return (
     <div className={`sticky bottom-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-5 py-3 backdrop-blur ${

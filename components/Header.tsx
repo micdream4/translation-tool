@@ -1,5 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 
 type ThemeMode = 'light' | 'dark';
 
@@ -22,17 +23,18 @@ const Header: React.FC<HeaderProps> = ({
   authStatus = 'anonymous',
   userEmail
 }) => {
+  const { lang, setLang, t } = useI18n();
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const guideRef = useRef<HTMLDivElement>(null);
   const isLight = theme === 'light';
   const authLabel =
     authStatus === 'checking'
-      ? 'Checking'
+      ? t('header.auth.loading')
       : authStatus === 'blocked'
-        ? 'Blocked'
+        ? t('header.auth.blocked')
         : authStatus === 'authenticated'
-          ? userEmail || 'Signed in'
-          : 'Guest';
+          ? userEmail || t('header.auth.authenticated')
+          : t('header.auth.anonymous');
 
   useEffect(() => {
     if (!isGuideOpen) return;
@@ -77,19 +79,19 @@ const Header: React.FC<HeaderProps> = ({
           isLight ? 'bg-indigo-100/90' : 'bg-indigo-300/10'
         }`}></div>
       </div>
-      <div className="relative z-10 max-w-7xl mx-auto px-4 h-[72px] flex items-center justify-between">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 min-h-[72px] py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.25)] ring-1 ring-white/20">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white"><path d="M4 19.5V5a2 2 0 0 1 2-2h9l5 5v11.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5z"/><path d="M14 3v5h5"/><path d="M8 13h8"/><path d="M8 17h5"/><path d="M8 9h2"/></svg>
           </div>
           <div className="flex flex-col justify-center leading-none">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className={`text-xl font-bold ${
+              <h1 className={`text-base sm:text-xl font-bold whitespace-nowrap ${
                 isLight
                   ? 'text-slate-950'
                   : 'bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-blue-400'
               }`}>
-                POCT Document Translator
+                {t('header.title')}
               </h1>
               {version && (
                 <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold leading-4 ${
@@ -101,10 +103,10 @@ const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
             </div>
-            <p className={`mt-1.5 text-xs font-medium tracking-tight ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>AI-Powered 1:1 Medical Data Translation</p>
+            <p className={`mt-1.5 hidden sm:block text-xs font-medium tracking-tight ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{t('header.tagline')}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className={`flex items-center gap-1 rounded-full border p-1 ${
             isLight ? 'border-slate-200 bg-white/75 shadow-sm' : 'border-white/[0.08] bg-white/[0.05]'
           }`}>
@@ -121,8 +123,8 @@ const Header: React.FC<HeaderProps> = ({
                     : 'text-slate-400 hover:text-slate-100'
               }`}
             >
-              <span className="hidden sm:inline">Translator</span>
-              <span className="sm:hidden">Translate</span>
+              <span className="hidden sm:inline">{t('header.nav.translator')}</span>
+              <span className="sm:hidden">{t('header.nav.translatorShort')}</span>
             </button>
             <button
               type="button"
@@ -137,8 +139,8 @@ const Header: React.FC<HeaderProps> = ({
                     : 'text-slate-400 hover:text-slate-100'
               }`}
             >
-              <span className="hidden sm:inline">Multi-AI Review Lab</span>
-              <span className="sm:hidden">Review</span>
+              <span className="hidden sm:inline">{t('header.nav.review')}</span>
+              <span className="sm:hidden">{t('header.nav.reviewShort')}</span>
             </button>
           </div>
           <div
@@ -176,48 +178,28 @@ const Header: React.FC<HeaderProps> = ({
                   : 'bg-white/[0.06] text-slate-300 border-white/[0.08] hover:border-indigo-500/40 hover:text-slate-100'
               }`}
             >
-              操作说明
+              {t('header.guide')}
             </button>
             {isGuideOpen && (
             <div className={`absolute right-0 mt-3 w-[min(460px,calc(100vw-2rem))] max-h-[calc(100vh-96px)] overflow-y-auto overscroll-contain rounded-xl border p-4 shadow-2xl ${
               isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-700 bg-slate-950 text-slate-400'
             }`}>
               <div className={`space-y-4 text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                <section>
-                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>基础设置</h3>
-                  <ol className="space-y-2 list-decimal list-inside">
-                    <li>上传 Excel 或 DOCX 文件。</li>
-                    <li>选择目标语言，支持英、法、西、德、意、土、俄、葡等 8 国语言翻译。</li>
-                    <li>Full Translation 会重写所有行，适合首次完整翻译或需要全部刷新译文时使用。</li>
-                    <li>Smart Fill 只处理疑似未翻译或非目标语言内容，适合补译、续翻和节省模型调用。</li>
-                    <li>Translation Model 选择 Auto 时会按 Gemini → Qwen → DeepSeek 顺序自动切换；手动选择模型时只使用所选模型。</li>
-                    <li>Protected Terms 用于保护品牌名、公司名、型号、专有术语等不被翻译；一行一个词，保存后会在本机自动记住。</li>
-                  </ol>
-                </section>
-                <section>
-                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>翻译运行</h3>
-                  <ol className="space-y-2 list-decimal list-inside">
-                    <li>点击 Run Global Translation 开始翻译。</li>
-                    <li>翻译中可点击 Pause 暂停，并下载查看翻译质量；暂停后可点击 Resume 继续。</li>
-                    <li>如检测到漏翻，可使用 Retry Missing Cells 只补译问题行。</li>
-                  </ol>
-                </section>
-                <section>
-                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>质检修复</h3>
-                  <ol className="space-y-2 list-decimal list-inside">
-                    <li>导出前建议运行 Run Quality Check，并在 Quality Report 查看摘要和问题详情。</li>
-                    <li>Excel 文件可使用 Apply Cleanup 自动修复常见空格、格式和术语清理问题。</li>
-                    <li>Excel 文件可使用 Retry Placeholder Cells 重译占位符异常单元格，例如坏 token 或残留占位符。</li>
-                  </ol>
-                </section>
-                <section>
-                  <h3 className={`mb-2 text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>抽样审查</h3>
-                  <ol className="space-y-2 list-decimal list-inside">
-                    <li>Start Sample Review 会生成抽样检查池。</li>
-                    <li>Run AI Review 会对抽样内容做只读 AI 审查，不会自动改写译文。</li>
-                    <li>Start Sample Review 和 Run AI Review 需要先完成翻译并运行 Quality Check 后才可用。</li>
-                  </ol>
-                </section>
+                {([
+                  ['basic', 6],
+                  ['run', 3],
+                  ['qc', 3],
+                  ['sample', 2]
+                ] as const).map(([section, count]) => (
+                  <section key={section}>
+                    <h3 className={`mb-2 text-[11px] font-semibold tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>{t(`guide.${section}.title`)}</h3>
+                    <ol className="space-y-2 list-decimal list-inside">
+                      {Array.from({ length: count }, (_, index) => (
+                        <li key={index}>{t(`guide.${section}.${index + 1}`)}</li>
+                      ))}
+                    </ol>
+                  </section>
+                ))}
               </div>
             </div>
             )}
@@ -230,11 +212,38 @@ const Header: React.FC<HeaderProps> = ({
                 ? 'border-indigo-200/80 bg-indigo-50/90 text-indigo-700 hover:bg-indigo-100'
                 : 'border-white/[0.08] bg-white/[0.06] text-slate-300 hover:border-indigo-500/40 hover:text-slate-100'
             }`}
-            aria-label="Toggle color theme"
+            aria-label={t('header.theme')}
           >
             <span className={`h-2 w-2 rounded-full ${isLight ? 'bg-indigo-500' : 'bg-slate-400'}`}></span>
-            {isLight ? 'Light' : 'Dark'}
+            {isLight ? t('common.light') : t('common.dark')}
           </button>
+          <div
+            className={`inline-flex items-center rounded-full border p-0.5 text-xs font-semibold ${
+              isLight ? 'border-slate-200 bg-white/75' : 'border-white/[0.08] bg-white/[0.05]'
+            }`}
+            role="group"
+            aria-label={t('header.language')}
+          >
+            {(['zh', 'en'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setLang(option)}
+                aria-pressed={lang === option}
+                className={`rounded-full px-2.5 py-1 transition-all ${
+                  lang === option
+                    ? isLight
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-white text-slate-950'
+                    : isLight
+                      ? 'text-slate-600 hover:text-slate-950'
+                      : 'text-slate-400 hover:text-slate-100'
+                }`}
+              >
+                {option === 'zh' ? '中文' : 'EN'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </header>

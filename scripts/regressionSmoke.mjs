@@ -309,11 +309,14 @@ test("Excel skip scope resolves row and column rules across sheets", async () =>
   assert.equal(report.issues.chinese.some((item) => item.rowIndex === 1 && item.columnKey === "Text"), true);
 });
 
+const readI18nSource = () => fs.readFileSync(path.join(repoRoot, "utils/i18n.ts"), "utf8");
+
 test("frontend upload copy stays aligned with supported formats", () => {
   const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
   assert.match(appSource, /accept="\.xlsx,\.docx,\.pdf"/);
   assert.match(appSource, /extension !== 'xlsx' && extension !== 'docx' && extension !== 'pdf'/);
-  assert.match(appSource, /Supports Excel \(\.xlsx\), Word \(\.docx\), and text-based PDF documents/);
+  assert.match(readI18nSource(), /Supports Excel \(\.xlsx\), Word \(\.docx\), and text-based PDF/);
+  assert.match(readI18nSource(), /支持 Excel（\.xlsx）、Word（\.docx）和文本型 PDF/);
   assert.doesNotMatch(appSource, /accept="[^"]*\.xls(?:,|")/);
 });
 
@@ -517,6 +520,100 @@ test("API functions reject oversized bodies, too many records and malformed mode
   assert.equal(aiCalls.length, 0);
 });
 
+const readUiKeys = () => {
+  const source = readI18nSource();
+  const extract = (name) => {
+    const start = source.indexOf(`const ${name}: Dictionary = {`);
+    const end = source.indexOf("\n};", start);
+    return new Set([...source.slice(start, end).matchAll(/^\s+'([\w.]+)':/gm)].map((match) => match[1]));
+  };
+  return { zh: extract("zh"), en: extract("en") };
+};
+
+test("UI dictionaries stay in sync and cover every key used by the interface", () => {
+  const { zh, en } = readUiKeys();
+  assert.ok(zh.size > 150);
+  assert.deepEqual([...zh].filter((key) => !en.has(key)), []);
+  assert.deepEqual([...en].filter((key) => !zh.has(key)), []);
+
+  const sources = ["App.tsx", "components/Header.tsx", "components/RunMonitor.tsx", "components/LogConsole.tsx", "components/QualityReportPanel.tsx"]
+    .map((file) => fs.readFileSync(path.join(repoRoot, file), "utf8"))
+    .join("\n");
+  const used = new Set([...sources.matchAll(/\bt\('([\w.]+)'/g)].map((match) => match[1]));
+  assert.ok(used.size > 100);
+  assert.deepEqual([...used].filter((key) => !zh.has(key)), []);
+
+  const dynamic = [
+    ...[1, 2, 3, 4].map((n) => `qc.flow.${n}`),
+    ...["running", "ok", "memory", "switched", "failed"].map((k) => `monitor.state.${k}`),
+    ...["all", "high", "medium", "low"].map((k) => `report.filter.${k}`),
+    ...["high", "medium", "low"].map((k) => `report.risk.${k}`),
+    ...["fail", "warning", "pass"].map((k) => `report.verdict.${k}`),
+    ...["basic", "run", "qc", "sample"].map((k) => `guide.${k}.title`)
+  ];
+  assert.deepEqual(dynamic.filter((key) => !zh.has(key)), []);
+});
+
+test("translator page uses one language at a time and drops the redundant quality buttons", () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const headerSource = fs.readFileSync(path.join(repoRoot, "components/Header.tsx"), "utf8");
+  assert.doesNotMatch(appSource, /applyQualityFixes/);
+  assert.doesNotMatch(appSource, />\s*Apply Cleanup\s*</);
+  assert.doesNotMatch(appSource, />\s*Retry Placeholder Cells\s*</);
+  assert.doesNotMatch(appSource, />\s*Run Quality Check\s*</);
+  assert.match(appSource, /const retryAllIssues = async/);
+  assert.match(appSource, /onClick=\{retryAllIssues\}/);
+  assert.match(appSource, /onClick=\{runQualityCheck\}/);
+  // Cleanup now runs inside the quality check path instead of a separate button.
+  assert.match(appSource, /const cleanupExcelRow =/);
+  assert.match(appSource, /cleanupExcelRow\(rowIndex, sourceRow\)/);
+  assert.match(headerSource, /useI18n/);
+  assert.match(headerSource, /setLang\(option\)/);
+  assert.doesNotMatch(headerSource, /Gemini → Qwen → DeepSeek/);
+});
+
+test("run monitor records per-batch model, elapsed time and failures for every document kind", () => {
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const pdfWorkflowSource = fs.readFileSync(path.join(repoRoot, "workflows/pdfTranslationWorkflow.ts"), "utf8");
+  const monitorSource = fs.readFileSync(path.join(repoRoot, "components/RunMonitor.tsx"), "utf8");
+  const logSource = fs.readFileSync(path.join(repoRoot, "components/LogConsole.tsx"), "utf8");
+  ["excel", "docx"].forEach((kind) => {
+    assert.match(appSource, new RegExp(`batchMonitor\\.begin\\(\\{ kind: '${kind}'`));
+    assert.match(appSource, new RegExp(`batchMonitor\\.end\\('${kind}', batchNum, 'ok'\\)`));
+    assert.match(appSource, new RegExp(`batchMonitor\\.end\\('${kind}', batchNum, 'failed', errMsg\\)`));
+    assert.match(appSource, new RegExp(`batchMonitor\\.end\\('${kind}', batchNum, 'memory'\\)`));
+  });
+  assert.match(pdfWorkflowSource, /batchMonitor\?\.begin\(\{ kind: 'pdf'/);
+  assert.match(pdfWorkflowSource, /batchMonitor\?\.end\('pdf', batchNum, 'failed', errMsg\)/);
+  assert.match(appSource, /translationHub\.getLastModel/);
+  assert.match(monitorSource, /SLOW_BATCH_WARNING_MS = 45_000/);
+  // Log timestamps are captured when the line is written, not when the console re-renders.
+  assert.match(appSource, /\{ time: Date\.now\(\), message: msg \}/);
+  assert.doesNotMatch(logSource, /new Date\(\)\.toLocaleTimeString/);
+});
+
+test("proxy translation service reports the model that actually served the batch", async () => {
+  const { ProxyTranslationService } = await bundleTsModule(path.join(repoRoot, "services/proxyService.ts"));
+  const service = new ProxyTranslationService("/api/translate");
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async () =>
+      new Response(
+        JSON.stringify({
+          engine: "cloudflare-ai",
+          model: "openai/gpt-5.4",
+          records: [{ content: "ok" }],
+          modelIssues: [{ model: "google/gemini-3-flash", status: "timeout", message: "timed out" }]
+        }),
+        { status: 200 }
+      )
+    );
+    await service.translateBatch([{ content: "中文" }], "English");
+  });
+  assert.equal(service.getLastEngine(), "cloudflare-ai");
+  assert.equal(service.getLastModel(), "openai/gpt-5.4");
+  assert.equal(service.getLastModelIssues()[0].model, "google/gemini-3-flash");
+});
+
 test("GitHub issue template captures debug packages with available labels", () => {
   const templateSource = fs.readFileSync(
     path.join(repoRoot, ".github/ISSUE_TEMPLATE/translation-bug.yml"),
@@ -548,8 +645,10 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(pdfSource, /getMultilingualFont/);
   assert.match(pdfSource, /standardText \? latinFont : await getMultilingualFont\(\)/);
   assert.doesNotMatch(pdfSource, /from 'jspdf'/);
-  assert.match(appSource, /Download Translated PDF/);
-  assert.match(appSource, /Download Review DOCX/);
+  assert.match(readI18nSource(), /Download translated PDF/);
+  assert.match(readI18nSource(), /Download review DOCX/);
+  assert.match(appSource, /t\('export\.pdf'\)/);
+  assert.match(appSource, /t\('export\.reviewDocx'\)/);
   assert.match(pdfSource, /ImageRun/);
   assert.match(pdfSource, /getPositionedPageSegments/);
   assert.match(pdfSource, /drawEmbeddedPdfText/);
@@ -592,12 +691,13 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   assert.match(appSource, /PDF download blocked/);
   assert.match(pdfSource, /已回填 .* 个可提取图片/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);
-  assert.match(appSource, /PDF 可运行质量检查并显示 Retry Missing PDF Segments/);
-  assert.match(appSource, /Retry Missing PDF Segments/);
+  assert.match(appSource, /retryPdfSegments/);
+  assert.match(appSource, /documentKind === 'pdf'\) \{\s*await retryPdfSegments\(\)/);
   assert.match(appSource, /documentKind === 'docx' \|\| documentKind === 'pdf'/);
   assert.match(appSource, /getTranslationOptions: getDocumentQualityTranslationOptions/);
   assert.match(appSource, /applyLatestModelCooldowns: applyLatestOpenRouterModelCooldowns/);
-  assert.match(appSource, /Auto \$\{documentKind\.toUpperCase\(\)\} Quality/);
+  assert.match(appSource, /settings\.model\.autoDoc/);
+  assert.match(readI18nSource(), /Auto \{kind\} quality/);
   assert.match(appSource, /activeDocumentQualityOpenRouterModels/);
   assert.match(appSource, /buildAdaptiveTextBatches/);
   assert.match(appSource, /const DOCX_BATCH_SIZE = 20/);
@@ -876,10 +976,11 @@ test("translation memory supports exact reuse and in-file dedupe", async () => {
   assert.match(memorySource, /saveTranslationMemoryPairs/);
   assert.match(appSource, /Translation Memory: 复用/);
   assert.match(appSource, /followers\.get\(leader\.memoryKey\)/);
-  assert.match(appSource, /Clear TM/);
+  assert.match(appSource, /settings\.tm\.clear/);
   assert.match(appSource, /translationMemoryEnabled/);
-  assert.match(appSource, /Use Translation Memory/);
-  assert.match(appSource, /不会复用，也不会写入新记忆/);
+  assert.match(appSource, /settings\.tm\.use/);
+  assert.match(readI18nSource(), /Use translation memory/);
+  assert.match(readI18nSource(), /关闭后本次不复用，也不写入新记忆/);
 });
 
 test("quality issue cases can be saved and exported from quality findings", async () => {
@@ -940,16 +1041,18 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   assert.match(serializeTranslationIssueCasesJsonl([issueCase]), /Список контрольных образцов/);
   assert.match(issueCaseSource, /poct\.translation_issue_cases\.v1/);
   assert.match(appSource, /<QualityReportPanel/);
-  assert.match(qualityPanelSource, /Save & Apply/);
+  assert.match(qualityPanelSource, /report\.finding\.save/);
   assert.match(qualityPanelSource, /findingSeverityFilter/);
   assert.match(qualityPanelSource, /\['all', 'high', 'medium', 'low'\]/);
-  assert.match(qualityPanelSource, /Export Cases/);
-  assert.match(qualityPanelSource, /Promote TM/);
-  assert.match(qualityPanelSource, /Asset JSON/);
-  assert.match(qualityPanelSource, /Debug Package/);
-  assert.match(qualityPanelSource, /Issue Draft/);
-  assert.match(qualityPanelSource, /Regression JSONL/);
-  assert.match(qualityPanelSource, /Quality Loop/);
+  assert.match(qualityPanelSource, /report\.exportCases/);
+  assert.match(qualityPanelSource, /report\.cases\.promote/);
+  assert.match(qualityPanelSource, /report\.cases\.asset/);
+  assert.match(qualityPanelSource, /report\.debug/);
+  assert.match(qualityPanelSource, /report\.issueDraft/);
+  assert.match(qualityPanelSource, /report\.cases\.regression/);
+  assert.match(qualityPanelSource, /report\.loop/);
+  assert.match(readI18nSource(), /Save and apply/);
+  assert.match(readI18nSource(), /Regression JSONL/);
   assert.match(appSource, /useQualityWorkflow/);
   assert.match(appSource, /exportDebugPackage/);
   assert.match(appSource, /exportIssueDraft/);
@@ -2812,7 +2915,7 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /String Resource[\s\S]*translationHub\.translateBatch\(\{[\s\S]*options: getTranslationOptions\(\)/);
   assert.match(appSource, /for \(const lang of targetLangs\)/);
   assert.doesNotMatch(appSource, /Promise\.allSettled\(targetLangs\.map/);
-  assert.match(appSource, /String Resource: 使用左侧 Translation Model/);
+  assert.match(appSource, /String Resource: 使用上方翻译模型/);
   assert.match(appSource, /applyOpenRouterModelCooldowns/);
   assert.match(appSource, /Auto 将跳过 30 分钟/);
   assert.match(appSource, /currentSkippedOpenRouterModels/);
@@ -2821,17 +2924,17 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /getSpreadsheetBatchSize/);
   assert.match(appSource, /const getSpreadsheetBatchSize = \(\) => BATCH_SIZE/);
   assert.match(appSource, /getDocumentBatchPolicy/);
-  assert.match(appSource, /Docx Batch \$\{batchNum\} 使用引擎: \$\{translationHub\.getLastEngine\(\)\}，模型: \$\{currentModelDisplayLabel\}，用时/);
-  assert.match(appSource, /Batch \$\{batchNum\} 使用引擎: \$\{translationHub\.getLastEngine\(\)\}，模型: \$\{currentModelDisplayLabel\}，用时/);
+  assert.match(appSource, /Docx Batch \$\{batchNum\} 使用引擎: \$\{translationHub\.getLastEngine\(\)\}，模型: \$\{getUsedModelLabel\(\)\}，用时/);
+  assert.match(appSource, /Batch \$\{batchNum\} 使用引擎: \$\{translationHub\.getLastEngine\(\)\}，模型: \$\{getUsedModelLabel\(\)\}，用时/);
   assert.match(appSource, /Translation warning: 批次 \$\{batchNum\} 行 \$\{rowLabel\} 失败，用时/);
-  assert.match(appSource, /Retry Missing Cells: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
+  assert.match(appSource, /重译问题项: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
   assert.match(appSource, /\$\{label\}: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
   assert.match(appSource, /isDeepSeekDirectProModel\(translationModelPreference\)/);
   assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS = \[[\s\S]*google\/gemini-3-flash[\s\S]*openai\/gpt-5\.4[\s\S]*anthropic\/claude-sonnet-4\.6/);
   assert.match(appSource, /const DEFAULT_OPENROUTER_MODELS: string\[\] = \[\]/);
   assert.match(appSource, /const DEFAULT_OPENROUTER_AUTO_MODELS: string\[\] = \[\]/);
-  assert.match(appSource, /String Resource 共用此处选择/);
-  assert.match(appSource, /这里只单独选择输出语言/);
+  assert.match(appSource, /strings\.modelHint/);
+  assert.match(readI18nSource(), /这里只选择输出语言/);
   assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);
   assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS/);
   assert.match(appSource, /DEEPSEEK_DIRECT_MODEL_LABEL/);

@@ -1,12 +1,18 @@
-
 import React, { useEffect, useRef } from 'react';
+import type { LogEntry } from '../types';
+import { useI18n } from '../hooks/useI18n';
 
 interface LogConsoleProps {
-  logs: string[];
+  logs: LogEntry[];
   theme?: 'light' | 'dark';
+  onClear?: () => void;
 }
 
-const LogConsole: React.FC<LogConsoleProps> = ({ logs, theme = 'dark' }) => {
+const formatTime = (time: number) =>
+  new Date(time).toLocaleTimeString([], { hour12: false });
+
+const LogConsole: React.FC<LogConsoleProps> = ({ logs, theme = 'dark', onClear }) => {
+  const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLight = theme === 'light';
 
@@ -16,37 +22,40 @@ const LogConsole: React.FC<LogConsoleProps> = ({ logs, theme = 'dark' }) => {
     }
   }, [logs]);
 
+  const toneFor = (message: string) => {
+    if (/error|失败|出错/i.test(message)) return isLight ? 'text-rose-600' : 'text-rose-300';
+    if (/warning|警告|跳过|超时|timeout/i.test(message)) return isLight ? 'text-amber-700' : 'text-amber-300';
+    if (/success|完成|成功/i.test(message)) return isLight ? 'text-emerald-700' : 'text-emerald-300';
+    return isLight ? 'text-slate-700' : 'text-slate-300';
+  };
+
   return (
-    <div className={`rounded-2xl border p-4 font-mono text-sm h-64 flex flex-col ${
-      isLight
-        ? 'bg-white/92 border-slate-200/80 shadow-[0_16px_40px_rgba(15,23,42,0.08)]'
-        : 'bg-slate-950/70 border-white/[0.07] shadow-2xl'
-    }`}>
-      <div className={`flex items-center justify-between mb-2 border-b pb-2 ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
-        <div className="flex gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-red-500/75"></div>
-          <div className="w-3 h-3 rounded-full bg-yellow-500/75"></div>
-          <div className="w-3 h-3 rounded-full bg-green-500/75"></div>
+    <div
+      className={`flex h-72 flex-col rounded-2xl border p-4 font-mono text-xs ${
+        isLight ? 'border-slate-200/80 bg-white' : 'border-white/[0.07] bg-slate-950/70'
+      }`}
+    >
+      {onClear && (
+        <div className={`mb-2 flex justify-end border-b pb-2 ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
+          <button
+            type="button"
+            onClick={onClear}
+            className={`text-xs ${isLight ? 'text-indigo-600 hover:text-indigo-800' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            {t('logs.clear')}
+          </button>
         </div>
-        <span className={`text-xs ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>PYTHON_KERNEL_POCT_MODULE</span>
-      </div>
-      <div 
-        ref={scrollRef}
-        className={`flex-1 overflow-y-auto space-y-1 scrollbar-thin ${isLight ? 'scrollbar-thumb-slate-200' : 'scrollbar-thumb-slate-800'}`}
-      >
-        {logs.length === 0 && <p className={`italic ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>Waiting for process initiation...</p>}
-        {logs.map((log, i) => (
-          <div key={i} className="flex gap-2">
-            <span className={`whitespace-nowrap ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>[{new Date().toLocaleTimeString()}]</span>
-            <span className={
-              log.includes('Error')
-                ? isLight ? 'text-rose-600' : 'text-red-400'
-                : log.includes('Success')
-                  ? isLight ? 'text-emerald-600' : 'text-green-400'
-                  : isLight ? 'text-slate-700' : 'text-slate-300'
-            }>
-              {log}
+      )}
+      <div ref={scrollRef} className="flex-1 space-y-1 overflow-y-auto">
+        {logs.length === 0 && (
+          <p className={`italic ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>{t('logs.waiting')}</p>
+        )}
+        {logs.map((log, index) => (
+          <div key={index} className="flex gap-2">
+            <span className={`whitespace-nowrap tabular-nums ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+              {formatTime(log.time)}
             </span>
+            <span className={`min-w-0 break-words ${toneFor(log.message)}`}>{log.message}</span>
           </div>
         ))}
       </div>

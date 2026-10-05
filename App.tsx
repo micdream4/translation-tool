@@ -4,6 +4,8 @@ import packageJson from './package.json';
 import Header from './components/Header';
 import LogConsole from './components/LogConsole';
 import QualityReportPanel from './components/QualityReportPanel';
+import RunMonitor from './components/RunMonitor';
+import { useI18n } from './hooks/useI18n';
 import { useAuth } from './hooks/useAuth';
 import { useQualityWorkflow } from './hooks/useQualityWorkflow';
 import { parseExcelFile, exportToExcelPreservingStyles, isExcelFormulaCell } from './utils/excel';
@@ -119,6 +121,9 @@ import {
   type QualitySeverity
 } from './utils/quality';
 import {
+  BatchMonitor,
+  BatchRun,
+  LogEntry,
   POCTRecord,
   ProcessingState,
   SampleReviewAIResult,
@@ -158,6 +163,8 @@ const MODEL_LABELS: Record<string, string> = {
   'cloudflare-ai:anthropic/claude-sonnet-4.6': 'Cloudflare Claude 4.6 Sonnet',
   'deepseek:deepseek-v4-flash': 'DeepSeek Direct v4 Flash',
   'deepseek:deepseek-v4-pro': 'DeepSeek Direct v4 Pro',
+  'deepseek-v4-flash': 'DeepSeek Direct v4 Flash',
+  'deepseek-v4-pro': 'DeepSeek Direct v4 Pro',
   'google/gemini-3-flash': 'Cloudflare Gemini 3 Flash',
   'openai/gpt-5.4': 'Cloudflare OpenAI GPT-5.4',
   'anthropic/claude-sonnet-4.6': 'Cloudflare Claude 4.6 Sonnet',
@@ -490,7 +497,10 @@ const App: React.FC = () => {
     if (typeof window === 'undefined') return 'light';
     return window.localStorage.getItem(UI_THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
   });
-  const [logs, setLogs] = useState<string[]>([]);
+  const { t, lang: uiLang } = useI18n();
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [batchRuns, setBatchRuns] = useState<BatchRun[]>([]);
+  const [resultTab, setResultTab] = useState<'preview' | 'quality' | 'logs' | 'strings'>('preview');
   const [showComparison, setShowComparison] = useState<boolean>(false); // New State for Comparison View
   const [workflowStages, setWorkflowStages] = useState<WorkflowStageState[]>(createInitialStages);
   const [translationIssues, setTranslationIssues] = useState<IssueSummaryState>(createIssueSummary());
@@ -537,7 +547,6 @@ const App: React.FC = () => {
   const docxContextRef = useRef<DocxContext | null>(null);
   const pdfContextRef = useRef<PdfContext | null>(null);
   const docxPlaceholderStore = useRef<Map<string, Record<string, string>>>(new Map());
-  const previewDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const previewSectionRef = useRef<HTMLElement | null>(null);
   const [docxIssueIndices, setDocxIssueIndices] = useState<number[]>([]);
   const [docxIssueDetails, setDocxIssueDetails] = useState<DocxIssueDetail[]>([]);
@@ -667,7 +676,53 @@ const App: React.FC = () => {
   );
 
   const addLog = (msg: string) => {
-    setLogs(prev => [...prev, msg]);
+    setLogs(prev => [...prev, { time: Date.now(), message: msg }]);
+  };
+
+  const getUsedModelLabel = () => {
+    const used = translationHub.getLastModel?.();
+    return used ? getModelLabel(used) : currentModelDisplayLabel;
+  };
+
+  const batchMonitor: BatchMonitor = {
+    begin: ({ kind, batchNum, totalBatches, items, unit }) => {
+      setBatchRuns(prev => [
+        ...prev.filter(run => !(run.kind === kind && run.batchNum === batchNum)),
+        {
+          id: `${kind}-${batchNum}-${Date.now()}`,
+          kind,
+          batchNum,
+          totalBatches,
+          items,
+          unit,
+          startedAt: Date.now(),
+          status: 'running'
+        }
+      ]);
+    },
+    end: (kind, batchNum, outcome, note) => {
+      const issues = outcome === 'ok' ? translationHub.getLastModelIssues?.() || [] : [];
+      const status = outcome === 'ok' && issues.length > 0 ? 'switched' : outcome;
+      const lastModel = translationHub.getLastModel?.();
+      const model =
+        outcome === 'ok'
+          ? lastModel
+            ? getModelLabel(lastModel)
+            : String(translationHub.getLastEngine())
+          : undefined;
+      const switchedNote = issues
+        .slice(0, 2)
+        .map(issue => `${getModelLabel(issue.model)} ${issue.status || issue.kind || 'error'}`)
+        .join(', ');
+      const noteText = note ? note.slice(0, 140) : status === 'switched' ? switchedNote : undefined;
+      setBatchRuns(prev =>
+        prev.map(run =>
+          run.kind === kind && run.batchNum === batchNum && run.status === 'running'
+            ? { ...run, status, elapsedMs: Date.now() - run.startedAt, model, note: noteText }
+            : run
+        )
+      );
+    }
   };
 
   const shouldCooldownOpenRouterModel = (issue: OpenRouterModelIssue) => {
@@ -1174,7 +1229,7 @@ const App: React.FC = () => {
         const translatedCount = flags.filter(Boolean).length;
         const remaining = Math.max(0, data.length - translatedCount);
         addLog(
-          `检测到本地进度：已翻译 ${translatedCount}/${data.length} 行，剩余 ${remaining} 行；未写入 ${writeFailed.length} 行。${snapshot.excelSkipScopeRaw ? '包含 Excel 跳过行/列设置。' : ''}点击 Load Saved Progress 可恢复，或直接 Run Global Translation 重新开始。`
+          `检测到本地进度：已翻译 ${translatedCount}/${data.length} 行，剩余 ${remaining} 行；未写入 ${writeFailed.length} 行。${snapshot.excelSkipScopeRaw ? '包含 Excel 跳过行/列设置。' : ''}点击“恢复进度”可恢复，或直接 Run Global Translation 重新开始。`
         );
         snapshotPromptKeyRef.current = promptKey;
       }
@@ -1438,21 +1493,58 @@ const App: React.FC = () => {
     return output;
   };
 
+  // Safe, model-free cleanup of translated Excel rows: terminology, spacing and ID restoration.
+  const cleanupExcelRow = (rowIndex: number, row: POCTRecord): POCTRecord => {
+    const original = data[rowIndex] || {};
+    const polished = applyPostprocessRow(original, row, targetLang);
+    const output: POCTRecord = { ...polished };
+    Object.entries(polished).forEach(([key, value]) => {
+      if (shouldSkipExcelCell(rowIndex, key)) {
+        output[key] = original[key];
+        return;
+      }
+      const originalValue = original[key];
+      if (shouldLockCell(key, originalValue) && typeof originalValue === 'string') {
+        output[key] = originalValue;
+        return;
+      }
+      if (typeof value === 'string' && hasSpacingIssue(value)) {
+        output[key] = polishTranslation(
+          typeof originalValue === 'string' ? originalValue : '',
+          value,
+          targetLang
+        );
+      }
+    });
+    return output;
+  };
+
   const autoRepairExcelPlaceholders = (
     records: POCTRecord[],
     options?: { mutateState?: boolean; logLabel?: string }
   ) => {
     if (documentKind !== 'excel' || !records.length) {
-      return { records, fixedCells: 0, remainingCells: 0, changed: false };
+      return { records, fixedCells: 0, cleanedCells: 0, remainingCells: 0, changed: false };
     }
 
     let fixedCells = 0;
+    let cleanedCells = 0;
     let remainingCells = 0;
     let changed = false;
 
-    const repaired = records.map((row, rowIndex) => {
+    const repaired = records.map((sourceRow, rowIndex) => {
       const originalRow = data[rowIndex] || {};
       let rowChanged = false;
+      const row = options?.mutateState ? cleanupExcelRow(rowIndex, sourceRow) : sourceRow;
+      if (row !== sourceRow) {
+        Object.keys(row).forEach((key) => {
+          if (String(row[key]) !== String(sourceRow[key])) {
+            cleanedCells += 1;
+            rowChanged = true;
+            changed = true;
+          }
+        });
+      }
       const nextRow: POCTRecord = { ...row };
 
       Object.entries(nextRow).forEach(([key, value]) => {
@@ -1492,73 +1584,20 @@ const App: React.FC = () => {
         persistProgress(repaired, [...translatedFlags], missingRowIndices, writeFailedRowIndices);
       }
       if (options.logLabel) {
-        addLog(`${options.logLabel}: 已自动修复 ${fixedCells} 个占位符单元格。`);
+        if (fixedCells > 0) addLog(`${options.logLabel}: 已自动修复 ${fixedCells} 个占位符单元格。`);
+        if (cleanedCells > 0) addLog(`${options.logLabel}: 已自动清理 ${cleanedCells} 个单元格的格式、术语或 ID。`);
       }
     }
 
-    return { records: repaired, fixedCells, remainingCells, changed };
+    return { records: repaired, fixedCells, cleanedCells, remainingCells, changed };
   };
 
   const jumpToPreviewCell = (rowIndex: number, columnKey: string) => {
-    if (previewDetailsRef.current) {
-      previewDetailsRef.current.open = true;
-    }
+    setResultTab('preview');
     setPreviewFocus({ rowIndex, columnKey });
-    window.requestAnimationFrame(() => {
-      previewDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      window.requestAnimationFrame(() => {
-        previewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
-    });
-  };
-
-  const applyQualityFixes = () => {
-    if (documentKind !== 'excel') {
-      addLog('Quality Fix: 当前仅支持 Excel 文档。');
-      return;
-    }
-    if (!processedData.length) {
-      addLog('Quality Fix: 没有可修复的翻译数据。');
-      return;
-    }
-    const fixed = processedData.map((row, idx) => {
-      const original = data[idx] || {};
-      const polished = applyPostprocessRow(original, row, targetLang);
-      const output: POCTRecord = { ...polished };
-      Object.entries(polished).forEach(([key, value]) => {
-        if (shouldSkipExcelCell(idx, key)) {
-          output[key] = original[key];
-          return;
-        }
-        const originalValue = original[key];
-        if (shouldLockCell(key, originalValue) && typeof originalValue === 'string') {
-          output[key] = originalValue;
-          return;
-        }
-        if (typeof value === 'string' && hasSpacingIssue(value)) {
-          output[key] = polishTranslation(
-            typeof originalValue === 'string' ? originalValue : '',
-            value,
-            targetLang
-          );
-        }
-      });
-      return output;
-    });
-    const flags =
-      translatedFlags.length === fixed.length
-        ? translatedFlags
-        : Array(fixed.length).fill(true);
-    const {
-      refreshedMissing,
-      refreshedWriteFailed
-    } = refreshTranslationIssues(fixed);
-    setProcessedData(fixed);
-    setTranslatedFlags(flags);
-    persistProgress(fixed, flags, refreshedMissing, refreshedWriteFailed);
-    setQualityReport(runQualityChecks(data, fixed, excelQualityOptions));
-    resetSampleReviewState();
-    addLog('Quality Fix: 已应用常见格式与 ID 修复。');
+    window.setTimeout(() => {
+      previewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
   };
 
   const shouldTranslateDocxText = (text: string) => {
@@ -2092,6 +2131,7 @@ const App: React.FC = () => {
             (segment) => getDocxSegmentText(segment) || segment.original
           );
           addLog(`Docx Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段，约 ${chunkChars} 字符`);
+          batchMonitor.begin({ kind: 'docx', batchNum, totalBatches, items: chunk.length, unit: 'segments' });
           const memoryStats = createTranslationMemoryStats();
           const memoryHits = await lookupReusableTranslations(
             chunk.map((segment) => getDocxSegmentText(segment) || segment.original)
@@ -2147,12 +2187,14 @@ const App: React.FC = () => {
               });
               applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
               addLog(
-                `Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
+                `Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${getUsedModelLabel()}，用时 ${formatElapsedSeconds(
                   Date.now() - batchStartedAt
                 )}`
               );
+              batchMonitor.end('docx', batchNum, 'ok');
             } else {
               addLog(`Docx Batch ${batchNum}: 全部命中本地翻译记忆。`);
+              batchMonitor.end('docx', batchNum, 'memory');
             }
           } catch (err) {
             applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
@@ -2162,6 +2204,7 @@ const App: React.FC = () => {
                 Date.now() - batchStartedAt
               )}：${errMsg}`
             );
+            batchMonitor.end('docx', batchNum, 'failed', errMsg);
             continue;
           }
 
@@ -2266,6 +2309,8 @@ const App: React.FC = () => {
       placeholderStore: docxPlaceholderStore.current,
       pauseRequestedRef,
       addLog,
+      batchMonitor,
+      getUsedModelLabel,
       modelLabel: currentModelDisplayLabel,
       shouldTranslateText: shouldTranslateDocxText,
       dedupeLeadingRepeat,
@@ -2800,7 +2845,7 @@ const App: React.FC = () => {
     addLog(
       `String Resource: 开始处理 ${entries.length} 行，输出 ${targetLangs.length} 个目标语言（${targetLangs.join(', ')}）。`
     );
-    addLog(`String Resource: 使用左侧 Translation Model - ${currentModelDisplayLabel}。`);
+    addLog(`String Resource: 使用上方翻译模型 - ${currentModelDisplayLabel}。`);
     if (translationModelPreference === AUTO_OPENROUTER_MODEL && currentSkippedOpenRouterModels.length > 0) {
       addLog(
         `String Resource: Auto 当前跳过冷却模型 ${currentSkippedOpenRouterModels.map(getModelLabel).join(', ')}。`
@@ -2831,7 +2876,7 @@ const App: React.FC = () => {
           results.push({ status: 'fulfilled', value: output });
           continue;
         }
-        const translatedBatch = Array.from({ length: payload.length }, () => ({ content: '' }));
+        const translatedBatch: POCTRecord[] = Array.from({ length: payload.length }, () => ({ content: '' }));
         const totalBatches = Math.ceil(payload.length / STRING_BATCH_SIZE);
 
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
@@ -3044,6 +3089,7 @@ const App: React.FC = () => {
   };
 
   const runTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
+    if (mode === 'fresh') setBatchRuns([]);
     if (documentKind === 'docx') {
       await runDocxTranslation(mode);
       return;
@@ -3120,7 +3166,7 @@ const App: React.FC = () => {
     const startIndex = firstPendingIndex === -1 ? data.length : firstPendingIndex;
 
     if (startIndex >= data.length && shouldResume) {
-      addLog('所有行均已翻译，如需重新翻译请使用 Run Global Translation。');
+      addLog('所有行均已翻译，如需重新翻译请使用“开始翻译”。');
       setTranslationStatus('completed');
       return;
     }
@@ -3153,6 +3199,7 @@ const App: React.FC = () => {
           const batchNum = Math.floor(i / spreadsheetBatchSize) + 1;
           const rowLabel = formatRowRanges(pendingIndices, 1);
           addLog(`Translating Batch ${batchNum}/${totalBatches} (${pendingIndices.length} records，行 ${rowLabel})...`);
+          batchMonitor.begin({ kind: 'excel', batchNum, totalBatches, items: pendingIndices.length, unit: 'rows' });
 
           let translatedBatch: POCTRecord[] = [];
           const memoryStats = createTranslationMemoryStats();
@@ -3260,12 +3307,14 @@ const App: React.FC = () => {
                 options: getTranslationOptions()
               });
               addLog(
-                `Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
+                `Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${getUsedModelLabel()}，用时 ${formatElapsedSeconds(
                   Date.now() - modelCallStartedAt
                 )}`
               );
+              batchMonitor.end('excel', batchNum, 'ok');
             } else {
               addLog(`Batch ${batchNum}: 全部命中本地翻译记忆或无需模型翻译。`);
+              batchMonitor.end('excel', batchNum, 'memory');
             }
           } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
@@ -3274,6 +3323,7 @@ const App: React.FC = () => {
                 Date.now() - modelCallStartedAt
               )} (${errMsg})，将跳过该批继续。`
             );
+            batchMonitor.end('excel', batchNum, 'failed', errMsg);
             pendingIndices.forEach(idx => writeFailedRows.add(idx));
             const missingSnapshot = Array.from(missingRows).sort((a, b) => a - b);
             const writeFailedSnapshot = Array.from(writeFailedRows).sort((a, b) => a - b);
@@ -3429,7 +3479,7 @@ const App: React.FC = () => {
             : '';
         const writeSuffix =
           writeFailedSnapshot.length > 0
-            ? ` 未写入 ${writeFailedSnapshot.length} 行，可使用 Retry Missing Cells。`
+            ? ` 未写入 ${writeFailedSnapshot.length} 行，可使用“重译问题项”。`
             : '';
         addLog(`${completionMsg}${statusSuffix}${writeSuffix}`.trim());
         setProcessingState(prev => ({
@@ -3488,7 +3538,7 @@ const App: React.FC = () => {
     baseSnapshot?: POCTRecord[]
   ) => {
     if (isRetryingMissing) {
-      addLog('Retry Missing Cells: 正在处理中，请等待当前重译完成。');
+      addLog('重译问题项: 正在处理中，请等待当前重译完成。');
       return;
     }
     setIsRetryingMissing(true);
@@ -3497,10 +3547,10 @@ const App: React.FC = () => {
       .filter(idx => idx >= 0 && idx < data.length)
       .sort((a, b) => a - b);
     if (uniqueIndices.length === 0) {
-      addLog('Retry Missing Cells: 无待重译的行。');
+      addLog('重译问题项: 无待重译的行。');
       return;
     }
-    addLog(`Retry Missing Cells: 针对 ${uniqueIndices.length} 行重新翻译...`);
+    addLog(`重译问题项: 针对 ${uniqueIndices.length} 行重新翻译...`);
 
     const fallbackPriority = getFallbackPriority(
       translationModelPreference !== AUTO_OPENROUTER_MODEL
@@ -3542,14 +3592,14 @@ const App: React.FC = () => {
       setTranslatedFlags(flagsSnapshot);
       setWriteFailedRowIndices(refreshedWriteFailed);
       persistProgress(synced, flagsSnapshot, refreshedMissing, refreshedWriteFailed);
-      addLog('Retry Missing Cells: 当前没有可重译的单元格。');
+      addLog('重译问题项: 当前没有可重译的单元格。');
       if (mergedRowIndices.length === 0) {
-        addLog('Retry Missing Cells: 状态已刷新，当前无待补译内容。');
+        addLog('重译问题项: 状态已刷新，当前无待补译内容。');
       } else {
-        addLog('Retry Missing Cells: 剩余项可能是锁定字段或纯符号单元格，请先执行 Quality Check / Apply Cleanup 后再试。');
+        addLog('重译问题项: 剩余项可能是锁定字段或纯符号单元格，请先运行“质量检查”后再试。');
         const preview = formatIssueLocationPreview(refreshedSummary.details || [], 6);
         if (preview) {
-          addLog(`Retry Missing Cells: 残留位置示例 -> ${preview}`);
+          addLog(`重译问题项: 残留位置示例 -> ${preview}`);
         }
       }
       return;
@@ -3572,7 +3622,7 @@ const App: React.FC = () => {
     for (let i = 0; i < retryItems.length; i += RETRY_BATCH_SIZE) {
       const chunk = retryItems.slice(i, i + RETRY_BATCH_SIZE);
       const batchNum = Math.floor(i / RETRY_BATCH_SIZE) + 1;
-      addLog(`Retry Missing Cells: Batch ${batchNum}/${totalBatches} 重译 ${chunk.length} 行...`);
+      addLog(`重译问题项: Batch ${batchNum}/${totalBatches} 重译 ${chunk.length} 行...`);
 
       let translatedBatch: POCTRecord[] | null = null;
       for (const model of fallbackPriority) {
@@ -3597,14 +3647,14 @@ const App: React.FC = () => {
             }
           });
           addLog(
-            `Retry Missing Cells: Batch ${batchNum} 使用 ${attemptLabel} 成功，用时 ${formatElapsedSeconds(
+            `重译问题项: Batch ${batchNum} 使用 ${attemptLabel} 成功，用时 ${formatElapsedSeconds(
               Date.now() - attemptStartedAt
             )}。`
           );
           break;
         } catch (err) {
           addLog(
-            `Retry Missing Cells: Batch ${batchNum} ${attemptLabel} 失败，用时 ${formatElapsedSeconds(
+            `重译问题项: Batch ${batchNum} ${attemptLabel} 失败，用时 ${formatElapsedSeconds(
               Date.now() - attemptStartedAt
             )} - ${err instanceof Error ? err.message : String(err)}`
           );
@@ -3612,7 +3662,7 @@ const App: React.FC = () => {
       }
 
       if (!translatedBatch) {
-        addLog(`Retry Missing Cells: Batch ${batchNum} 所有备用模型失败，已跳过。`);
+        addLog(`重译问题项: Batch ${batchNum} 所有备用模型失败，已跳过。`);
         chunk.forEach((item) => writeFailedSet.add(item.rowIdx));
         continue;
       }
@@ -3701,7 +3751,7 @@ const App: React.FC = () => {
     setWriteFailedRowIndices(writeFailedSnapshot);
     persistProgress(synced, flagsSnapshot, missingSnapshot, writeFailedSnapshot);
     if (retryAutoFixed > 0) {
-      addLog(`Retry Missing Cells: 已自动恢复 ${retryAutoFixed} 个坏 token。`);
+      addLog(`重译问题项: 已自动恢复 ${retryAutoFixed} 个坏 token。`);
     }
 
     const mergedRowIndices = Array.from(
@@ -3715,10 +3765,10 @@ const App: React.FC = () => {
     });
 
     if (mergedRowIndices.length === 0) {
-      addLog('Retry Missing Cells: 重译后所有单元格均为目标语言。');
+      addLog('重译问题项: 重译后所有单元格均为目标语言。');
     } else {
       addLog(
-        `Retry Missing Cells: 仍有 ${summary.cells} 个单元格或 ${missingSnapshot.length} 行未完全翻译，可继续重试。`
+        `重译问题项: 仍有 ${summary.cells} 个单元格或 ${missingSnapshot.length} 行未完全翻译，可继续重试。`
       );
     }
     } finally {
@@ -3914,19 +3964,19 @@ const App: React.FC = () => {
       documentKind === 'excel' && processedData.length > 0 ? processedData : data;
     const { records: target, fixedCells, remainingCells } = autoRepairExcelPlaceholders(rawTarget, {
       mutateState: processedData.length > 0,
-      logLabel: 'Retry Placeholder Cells'
+      logLabel: '重译占位符异常'
     });
     if (!target.length) {
-      addLog('Retry Placeholder Cells: 当前没有可扫描的数据。');
+      addLog('重译占位符异常: 当前没有可扫描的数据。');
       return;
     }
     const issues = collectPlaceholderIssues(data, target, excelQualityOptions);
     if (fixedCells > 0 && issues.length === 0) {
-      addLog('Retry Placeholder Cells: 坏 token 已自动恢复，无需重翻。');
+      addLog('重译占位符异常: 坏 token 已自动恢复，无需重翻。');
       return;
     }
     if (!issues.length) {
-      addLog('Retry Placeholder Cells: 未检测到占位符残留。');
+      addLog('重译占位符异常: 未检测到占位符残留。');
       return;
     }
     const rowMap = new Map<number, Set<string>>();
@@ -3940,12 +3990,41 @@ const App: React.FC = () => {
       rowIdx,
       keys
     }));
-    addLog(`Retry Placeholder Cells: 实时检测到 ${issues.length} 个占位符异常单元格。`);
+    addLog(`重译占位符异常: 实时检测到 ${issues.length} 个占位符异常单元格。`);
     if (fixedCells > 0) {
-      addLog(`Retry Placeholder Cells: 已先自动修复 ${fixedCells} 个，仅对剩余 ${remainingCells} 个执行重翻。`);
+      addLog(`重译占位符异常: 已先自动修复 ${fixedCells} 个，仅对剩余 ${remainingCells} 个执行重翻。`);
     }
-    await retryCellsByKeys(items, 'Retry Placeholder Cells', { forceTranslate: true });
+    await retryCellsByKeys(items, '重译占位符异常', { forceTranslate: true });
   };
+
+  const [queuedResidualRetry, setQueuedResidualRetry] = useState(false);
+
+  // One entry point for every kind of leftover problem. Excel placeholder errors are retried
+  // first; residual source text is queued for the next render so it sees the updated results.
+  const retryAllIssues = async () => {
+    if (documentKind === 'docx') {
+      await retryDocxSegments();
+      return;
+    }
+    if (documentKind === 'pdf') {
+      await retryPdfSegments();
+      return;
+    }
+    if (placeholderIssueCount > 0) {
+      await retryPlaceholderCells();
+      setQueuedResidualRetry(true);
+      return;
+    }
+    await retryMissingRows(currentIssueSummary.rowIndices);
+  };
+
+  useEffect(() => {
+    if (!queuedResidualRetry) return;
+    setQueuedResidualRetry(false);
+    if (currentIssueSummary.rows > 0 && !isRetryingMissing) {
+      void retryMissingRows(currentIssueSummary.rowIndices);
+    }
+  }, [queuedResidualRetry]);
 
   const runStage = async (
     key: WorkflowStageKey,
@@ -3989,7 +4068,7 @@ const App: React.FC = () => {
       const highPriorityCount = details.filter((item) => !item.lowPriority).length;
       if (details.length > 0) {
         addLog(
-          `Docx download warning: 仍有 ${details.length} 段待优化问题（高优先级 ${highPriorityCount} 段，严重问题 ${blockingCount} 段），建议先 Retry Missing Segments 再导出。`
+          `Docx download warning: 仍有 ${details.length} 段待优化问题（高优先级 ${highPriorityCount} 段，严重问题 ${blockingCount} 段），建议先“重译问题项”再导出。`
         );
       } else {
         addLog('Docx download gate: 审计通过，可导出。');
@@ -4208,6 +4287,13 @@ const App: React.FC = () => {
     return collectPlaceholderIssues(data, target, excelQualityOptions);
   }, [documentKind, data, processedData, excelQualityOptions]);
   const placeholderIssueCount = livePlaceholderIssues.length;
+  const fixableIssueCount =
+    documentKind === 'docx'
+      ? docxRetryableCount
+      : documentKind === 'pdf'
+        ? pdfHighPriorityCount
+        : retryableCellCount + placeholderIssueCount;
+  const canRetryIssues = fixableIssueCount > 0 && translationStatus !== 'running' && !isRetryingMissing;
   const formatSnapshot = excelContext
     ? {
         sheetName:
@@ -4431,14 +4517,16 @@ const App: React.FC = () => {
   };
   const runStatusLabel =
     translationStatus === 'running'
-      ? 'Running'
+      ? t('monitor.status.processing')
       : translationStatus === 'paused'
-        ? 'Paused'
+        ? t('monitor.status.paused')
         : processingState.status === 'completed'
-          ? 'Completed'
+          ? t('monitor.status.completed')
           : processingState.status === 'error'
-            ? 'Error'
-            : 'Idle';
+            ? t('monitor.status.error')
+            : processingState.status === 'analyzing'
+              ? t('monitor.status.analyzing')
+              : t('monitor.status.idle');
   const isLight = theme === 'light';
   const pageClass = isLight
     ? 'min-h-screen flex flex-col bg-[radial-gradient(circle_at_84%_4%,rgba(99,102,241,0.12)_0,rgba(99,102,241,0.04)_28%,transparent_58%),linear-gradient(180deg,#f8fafc_0%,#f5f7fb_46%,#eef2f7_100%)] text-slate-900'
@@ -4470,6 +4558,33 @@ const App: React.FC = () => {
   const metricCardClass = isLight
     ? 'bg-gradient-to-br from-white to-slate-50/90 rounded-xl p-3 border border-slate-200/75 shadow-[0_8px_22px_rgba(15,23,42,0.045)]'
     : 'bg-white/[0.035] rounded-xl p-3 border border-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]';
+  const fileExtension = file ? (file.name.split('.').pop() || '').toUpperCase() : '';
+  const fileSummaryLine = !file
+    ? t('settings.upload.hint')
+    : documentKind === 'docx' && docxContextRef.current
+      ? t('settings.docx.stats', { total: docxStats.total, translated: docxStats.translated })
+      : documentKind === 'pdf' && pdfContextRef.current
+        ? t('settings.pdf.stats', { pages: pdfStats.pages, total: pdfStats.total, translated: pdfStats.translated })
+        : documentKind === 'excel' && data.length > 0
+          ? `${data.length} ${t('common.rows')}`
+          : '';
+  const autoModelChainLabel = formatAutoModelChainLabel(
+    capabilities.cloudflareAi ? cloudflareAiModels : [],
+    usesDocumentQualityModels ? activeDocumentQualityOpenRouterModels : activeOpenRouterModels,
+    capabilities.deepseek
+  );
+  const isDocumentLoaded =
+    documentKind === 'docx'
+      ? docxContextRef.current !== null
+      : documentKind === 'pdf'
+        ? pdfContextRef.current !== null
+        : processedData.length > 0;
+  const resultTabs = [
+    { key: 'preview', label: t('tabs.preview'), badge: 0 },
+    { key: 'quality', label: t('tabs.quality'), badge: hasQualityReport ? qualityFindings.length : 0 },
+    { key: 'logs', label: t('tabs.logs'), badge: 0 },
+    { key: 'strings', label: t('tabs.strings'), badge: 0 }
+  ] as const;
   const subCardClass = isLight
     ? 'rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-sm'
     : 'rounded-xl border border-white/[0.07] bg-white/[0.035] p-3';
@@ -4826,176 +4941,215 @@ const App: React.FC = () => {
         )}
       </main>
       ) : (
-      <main className="flex-1 max-w-[1680px] mx-auto w-full p-4 lg:px-8 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-        <div className="lg:col-span-4 space-y-6">
-          <section className={panelClass}>
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span className="w-1.5 h-6 bg-indigo-500 rounded-full"></span>
-              Translation Settings
-            </h2>
-            
-            <div className="space-y-4">
-              <div className="space-y-4">
-                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Basics</h3>
-              <label className="block">
-                <div className={`mt-1 flex justify-center px-6 pt-6 pb-7 border-2 border-dashed rounded-2xl transition-colors group cursor-pointer relative ${
-                  isLight
-                    ? 'border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 hover:border-indigo-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]'
-                    : 'border-white/[0.08] bg-white/[0.025] hover:border-indigo-500/45'
-                }`}>
-                  <input
-                    type="file"
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                    accept=".xlsx,.docx,.pdf"
-                    onChange={handleFileUpload}
-                    disabled={processingState.status === 'processing'}
-                  />
-                  <div className="space-y-1 text-center">
-                    <svg className={`mx-auto h-12 w-12 transition-colors ${isLight ? 'text-indigo-300 group-hover:text-indigo-500' : 'text-slate-500 group-hover:text-indigo-400'}`} stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                      <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <div className="text-sm font-medium text-indigo-500">
-                      {file ? file.name : "Upload Source Document"}
-                    </div>
-                    <p className={`text-xs ${mutedTextClass}`}>
-                      Supports Excel (.xlsx), Word (.docx), and text-based PDF documents
-                    </p>
-                  </div>
-                </div>
-              </label>
+      <main className="flex-1 max-w-[1180px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-5">
+        <section className={`${panelClass} space-y-5`}>
+          <h2 className="sr-only">{t('settings.title')}</h2>
 
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>Target Language</label>
-                <select 
-                  className={fieldClass}
-                  value={targetLang}
-                  onChange={(e) => setTargetLang(e.target.value as TargetLanguage)}
-                  disabled={processingState.status === 'processing'}
-                >
-                  {TARGET_LANGUAGE_OPTIONS.map((lang) => (
-                    <option key={lang} value={lang}>
-                      {getTargetLanguageLabel(lang)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {documentKind === 'docx' && docxContextRef.current && (
-                <div className={`text-xs text-center space-y-1 ${mutedTextClass}`}>
-                  <p>DOCX 语义段：{docxStats.total}，本次已翻译 {docxStats.translated}</p>
-                  <p>覆盖范围：{formatDocxCoverageSummary(docxContextRef.current.coverage)}。</p>
-                  {docxContextRef.current.coverageWarnings.length > 0 && (
-                    <p>范围提示：{docxContextRef.current.coverageWarnings.join('；')}。</p>
-                  )}
-                </div>
+          <div
+            className={`relative flex flex-wrap items-center gap-4 rounded-2xl border-2 border-dashed px-4 py-3 transition-colors ${
+              isLight
+                ? 'border-indigo-100 bg-slate-50/70 hover:border-indigo-300'
+                : 'border-white/[0.08] bg-white/[0.025] hover:border-indigo-500/45'
+            }`}
+          >
+            <input
+              type="file"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              accept=".xlsx,.docx,.pdf"
+              onChange={handleFileUpload}
+              disabled={processingState.status === 'processing'}
+              aria-label={file ? t('settings.upload.replace') : t('settings.upload.cta')}
+            />
+            <div
+              className={`grid h-11 w-9 shrink-0 place-items-center rounded-md font-mono text-[11px] font-semibold ${
+                isLight ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-400/15 text-indigo-200'
+              }`}
+              aria-hidden="true"
+            >
+              {fileExtension || '+'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{file ? file.name : t('settings.upload.cta')}</p>
+              <p className={`truncate text-xs ${mutedTextClass}`}>{fileSummaryLine}</p>
+            </div>
+            <span
+              className={`pointer-events-none rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-white/[0.1] bg-white/[0.05] text-slate-200'
+              }`}
+            >
+              {file ? t('settings.upload.replace') : t('settings.upload.cta')}
+            </span>
+          </div>
+          {documentKind === 'docx' && docxContextRef.current && (
+            <div className={`space-y-1 text-xs ${mutedTextClass}`}>
+              <p>{t('settings.docx.coverage', { coverage: formatDocxCoverageSummary(docxContextRef.current.coverage) })}</p>
+              {docxContextRef.current.coverageWarnings.length > 0 && (
+                <p>{t('settings.scopeWarn', { warnings: docxContextRef.current.coverageWarnings.join('；') })}</p>
               )}
-              {documentKind === 'pdf' && pdfContextRef.current && (
-                <div className={`text-xs text-center space-y-1 ${mutedTextClass}`}>
-                  <p>PDF 页数：{pdfStats.pages}，文本段：{pdfStats.total}，本次已翻译 {pdfStats.translated}</p>
-                  {pdfContextRef.current.coverageWarnings.length > 0 && (
-                    <p>范围提示：{pdfContextRef.current.coverageWarnings.join('；')}。</p>
-                  )}
-                </div>
-              )}
+            </div>
+          )}
+          {documentKind === 'pdf' && pdfContextRef.current && pdfContextRef.current.coverageWarnings.length > 0 && (
+            <p className={`text-xs ${mutedTextClass}`}>
+              {t('settings.scopeWarn', { warnings: pdfContextRef.current.coverageWarnings.join('；') })}
+            </p>
+          )}
 
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>Translation Strategy</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTranslationMode('full')}
-                    disabled={isTranslating}
-                    className={`py-2.5 rounded-xl font-semibold border text-sm transition-all ${
-                      translationMode === 'full'
-                        ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white border-indigo-400/70 shadow-[0_10px_24px_rgba(79,70,229,0.22)]'
-                        : isLight
-                          ? 'bg-white text-slate-500 border-slate-200 hover:border-indigo-300 shadow-sm'
-                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-                    }`}
-                  >
-                    Full Translation
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTranslationMode('selective')}
-                    disabled={isTranslating}
-                    className={`py-2.5 rounded-xl font-semibold border text-sm transition-all ${
-                      translationMode === 'selective'
-                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400/70 shadow-[0_10px_24px_rgba(5,150,105,0.20)]'
-                        : isLight
-                          ? 'bg-white text-slate-500 border-slate-200 hover:border-emerald-300 shadow-sm'
-                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-                    }`}
-                  >
-                    Smart Fill
-                  </button>
-                </div>
-                <p className={`text-xs mt-1 ${mutedTextClass}`}>
-                  全量翻译会重写所有行；智能补译仅对检测到非目标语言内容的行调用模型。
-                </p>
-              </div>
-
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>Translation Model</label>
-                <select
-                  className={fieldClass}
-                  value={translationModelPreference}
-                  onChange={(e) => setTranslationModelPreference(e.target.value)}
-                  disabled={isTranslating || isStringTranslating}
+          {savedSnapshot && processedData.length === 0 && (
+            <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10'}`}>
+              <p className={`text-sm ${isLight ? 'text-amber-800' : 'text-amber-200'}`}>{t('settings.progress.found')}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={applySavedProgress}
+                  className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500"
                 >
-                  <option value={AUTO_OPENROUTER_MODEL}>
-                    {usesDocumentQualityModels
-                      ? `Auto ${documentKind.toUpperCase()} Quality (${formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], activeDocumentQualityOpenRouterModels, capabilities.deepseek)})`
-                      : `Auto (${formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], activeOpenRouterModels, capabilities.deepseek)})`}
+                  {t('settings.progress.restore')}
+                </button>
+                <button
+                  type="button"
+                  onClick={discardSavedProgress}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold ${neutralButtonClass}`}
+                >
+                  {t('settings.progress.discard')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.3fr)_auto] xl:items-start">
+            <div className="min-w-0">
+              <label htmlFor="target-language" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.targetLang')}</label>
+              <select
+                id="target-language"
+                className={fieldClass}
+                value={targetLang}
+                onChange={(e) => setTargetLang(e.target.value as TargetLanguage)}
+                disabled={processingState.status === 'processing'}
+              >
+                {TARGET_LANGUAGE_OPTIONS.map((langOption) => (
+                  <option key={langOption} value={langOption}>
+                    {getTargetLanguageLabel(langOption)}
                   </option>
-                  {availableTranslationModels.map((model) => (
-                    <option key={model} value={model}>
-                      {getTranslationModelLabel(model)}
-                    </option>
-                  ))}
-                </select>
-                <p className={`text-xs mt-1 ${mutedTextClass}`}>
-                  {usesDocumentQualityModels
-                    ? `${documentKind.toUpperCase()} Auto 顺序：${formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], activeDocumentQualityOpenRouterModels, capabilities.deepseek)}；手工选择时只使用当前模型。`
-                    : `Auto 会按 ${formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], activeOpenRouterModels, capabilities.deepseek)} 顺序自动切换；手工选择时只使用当前模型。String Resource 共用此处选择。`}
-                  {currentSkippedOpenRouterModels.length > 0
-                    ? ` 当前跳过：${currentSkippedOpenRouterModels.map(getModelLabel).join(', ')}。`
-                    : ''}
-                </p>
-              </div>
+                ))}
+              </select>
+            </div>
 
+            <div>
+              <p className={`mb-1.5 text-xs font-medium ${headingMutedClass}`}>{t('settings.strategy')}</p>
+              <div className={`inline-flex rounded-xl border p-0.5 ${isLight ? 'border-slate-200 bg-white' : 'border-white/[0.1] bg-white/[0.04]'}`} role="group" aria-label={t('settings.strategy')}>
+                {([
+                  ['full', t('settings.strategy.full')],
+                  ['selective', t('settings.strategy.selective')]
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setTranslationMode(mode)}
+                    disabled={isTranslating}
+                    aria-pressed={translationMode === mode}
+                    className={`rounded-[10px] px-4 py-2 text-sm font-semibold transition-all ${
+                      translationMode === mode
+                        ? 'bg-indigo-600 text-white'
+                        : isLight
+                          ? 'text-slate-600 hover:text-slate-900'
+                          : 'text-slate-400 hover:text-slate-100'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <label htmlFor="translation-model" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.model')}</label>
+              <select
+                id="translation-model"
+                className={fieldClass}
+                value={translationModelPreference}
+                onChange={(e) => setTranslationModelPreference(e.target.value)}
+                disabled={isTranslating || isStringTranslating}
+              >
+                <option value={AUTO_OPENROUTER_MODEL}>
+                  {usesDocumentQualityModels
+                    ? t('settings.model.autoDoc', { kind: documentKind.toUpperCase(), chain: autoModelChainLabel })
+                    : t('settings.model.auto', { chain: autoModelChainLabel })}
+                </option>
+                {availableTranslationModels.map((model) => (
+                  <option key={model} value={model}>
+                    {getTranslationModelLabel(model)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="md:col-span-2 xl:col-span-1">
+              <span className="mb-1.5 hidden text-xs xl:block" aria-hidden="true">&nbsp;</span>
+              <button
+                type="button"
+                onClick={() => runTranslation('fresh')}
+                disabled={!canRunTranslation || isTranslating}
+                className={`w-full whitespace-nowrap rounded-xl px-6 py-2.5 font-semibold transition-all ${
+                  !canRunTranslation || isTranslating
+                    ? disabledButtonClass
+                    : 'bg-indigo-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)] hover:bg-indigo-500 active:scale-[0.99]'
+                }`}
+              >
+                {isTranslating ? t('settings.starting') : t('settings.start')}
+              </button>
+            </div>
+          </div>
+
+          <div className={`space-y-1 text-xs ${mutedTextClass}`}>
+            <p>{t('settings.strategy.fullHint')}</p>
+            <p>
+              {usesDocumentQualityModels
+                ? t('settings.model.autoDocHint', { kind: documentKind.toUpperCase(), chain: autoModelChainLabel })
+                : t('settings.model.autoHint', { chain: autoModelChainLabel })}
+              {currentSkippedOpenRouterModels.length > 0
+                ? ` ${t('settings.model.skipped', { models: currentSkippedOpenRouterModels.map(getModelLabel).join(', ') })}`
+                : ''}
+            </p>
+          </div>
+
+          <details className={`rounded-xl border ${isLight ? 'border-slate-200' : 'border-white/[0.08]'}`}>
+            <summary className={`flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+              <span>{t('settings.more')}</span>
+              <span className={`text-xs font-normal ${mutedTextClass}`}>
+                {t('settings.more.summary', {
+                  terms: runtimeProtectedTermsCount,
+                  tm: translationMemoryEnabled ? t('common.on') : t('common.off')
+                })}
+              </span>
+            </summary>
+            <div className={`grid gap-5 border-t p-4 md:grid-cols-2 ${sectionDividerClass}`}>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>
-                  Protected Terms (Do Not Translate)
-                </label>
+                <label htmlFor="protected-terms" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.protected')}</label>
                 <textarea
+                  id="protected-terms"
                   className={textareaClass}
                   value={runtimeProtectedTermsRaw}
                   onChange={(e) => setRuntimeProtectedTermsRaw(e.target.value)}
                   disabled={isTranslating}
-                  placeholder={'One term per line. e.g.\nEhome Health Technology Co., Ltd.\nEHVT-75'}
+                  placeholder={t('settings.protected.placeholder')}
                 />
-                <p className={`text-xs mt-1 ${mutedTextClass}`}>
-                  本次生效 {runtimeProtectedTermsCount} 个自定义保护词；会自动保存到本地，下次继续使用。
-                </p>
+                <p className={`mt-1 text-xs ${mutedTextClass}`}>{t('settings.protected.hint', { count: runtimeProtectedTermsCount })}</p>
               </div>
 
               {documentKind === 'excel' && (
                 <div>
-                  <label className={`block text-sm font-medium mb-2 ${headingMutedClass}`}>
-                    Excel Skip Rows / Columns
-                  </label>
+                  <label htmlFor="excel-skip-scope" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.skip')}</label>
                   <textarea
+                    id="excel-skip-scope"
                     className={textareaClass}
                     value={excelSkipScopeRaw}
                     onChange={(e) => setExcelSkipScopeRaw(e.target.value)}
                     disabled={isTranslating}
-                    placeholder={'One rule per line. e.g.\nrows: 2-5, 8\ncols: A:C, F\nSheet2!rows: 10-12\nSheet2!cols: B, 检测项目'}
+                    placeholder={t('settings.skip.placeholder')}
                   />
-                  <p className={`text-xs mt-1 ${mutedTextClass}`}>
-                    {excelSkipScopeSummary} 跳过区域会保留源文，不调用模型、不进入补译和质量残留统计。
-                  </p>
+                  <p className={`mt-1 text-xs ${mutedTextClass}`}>{t('settings.skip.hint', { summary: excelSkipScopeSummary })}</p>
                   {excelSkipScope.errors.length > 0 && (
-                    <p className={`text-[11px] mt-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
+                    <p className={`mt-1 text-[11px] ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
                       {excelSkipScope.errors.slice(0, 3).join('；')}
                       {excelSkipScope.errors.length > 3 ? '；...' : ''}
                     </p>
@@ -5013,662 +5167,568 @@ const App: React.FC = () => {
                       disabled={isTranslating}
                       className="h-4 w-4 accent-indigo-500"
                     />
-                    <span>Use Translation Memory</span>
+                    <span>{t('settings.tm.use')}</span>
                   </label>
                   <button
                     type="button"
                     onClick={clearTranslationMemoryData}
                     disabled={isTranslating || translationMemoryCount === 0}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                      isTranslating || translationMemoryCount === 0
-                        ? disabledButtonClass
-                        : neutralButtonClass
+                    className={`rounded-lg px-3 py-1.5 font-semibold transition-all ${
+                      isTranslating || translationMemoryCount === 0 ? disabledButtonClass : neutralButtonClass
                     }`}
                   >
-                    Clear TM
+                    {t('settings.tm.clear')}
                   </button>
                 </div>
-                <p>
-                  Translation Memory: {translationMemoryCount} 条本地记忆；关闭后本次翻译不会复用，也不会写入新记忆。
-                </p>
+                <p>{t('settings.tm.count', { count: translationMemoryCount })}</p>
               </div>
-              </div>
-
-              <div className={`space-y-3 pt-4 border-t ${sectionDividerClass}`}>
-                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Primary Actions</h3>
-                {savedSnapshot && processedData.length === 0 && (
-                  <div className={`space-y-2 rounded-xl border p-3 ${isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10'}`}>
-                    <p className={`text-xs ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-                      Found saved translation progress for this file. You can restore it or ignore it and start over.
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={applySavedProgress}
-                        className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white text-sm font-semibold shadow-[0_10px_22px_rgba(217,119,6,0.18)]"
-                      >
-                        Restore Progress
-                      </button>
-                      <button
-                        type="button"
-                        onClick={discardSavedProgress}
-                        className={`w-full py-2 rounded-xl text-sm font-semibold ${isLight ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200' : 'bg-white/[0.06] hover:bg-white/[0.09] text-slate-100 border border-white/[0.08]'}`}
-                      >
-                        Start Over
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <button 
-                  onClick={() => runTranslation('fresh')}
-                  disabled={!canRunTranslation || isTranslating}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-all shadow-lg ${
-                    !canRunTranslation || isTranslating
-                    ? disabledButtonClass
-                    : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-[0_14px_28px_rgba(79,70,229,0.24)] active:scale-[0.99]'
-                  }`}
-                  >
-                    {isTranslating ? 'Translating...' : 'Run Global Translation'}
-                  </button>
-
-                {showPauseResume && (
-                  <button
-                    onClick={pauseResumeHandler}
-                    disabled={pauseResumeDisabled}
-                    className={`w-full py-3 rounded-xl font-semibold transition-all shadow-lg ${
-                      pauseResumeDisabled
-                        ? disabledButtonClass
-                        : isTranslating
-                          ? isLight ? 'bg-slate-900 hover:bg-slate-800 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'
-                          : 'bg-emerald-700 hover:bg-emerald-600 text-white'
-                    }`}
-                  >
-                    {pauseResumeLabel}
-                  </button>
-                )}
-
-                {(
-                  documentKind === 'docx'
-                    ? docxContextRef.current !== null
-                    : documentKind === 'pdf'
-                    ? pdfContextRef.current !== null
-                    : processedData.length > 0
-                ) && (
-                  <>
-                    <button
-                      onClick={handleDownload}
-                      disabled={!canDownload}
-                      className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold transition-all shadow-lg ${
-                        !canDownload
-                          ? disabledButtonClass
-                          : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white active:scale-[0.99] shadow-[0_14px_28px_rgba(5,150,105,0.20)]'
-                      }`}
-                    >
-                      {translationStatus === 'running'
-                        ? 'Wait for Translation...'
-                        : documentKind === 'pdf'
-                          ? 'Download Translated PDF'
-                          : 'Download Translated Document'}
-                    </button>
-                    {documentKind === 'pdf' && (
-                      <button
-                        onClick={handleDownloadPdfDocx}
-                        disabled={!canDownload}
-                        className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                          !canDownload
-                            ? disabledButtonClass
-                            : isLight
-                              ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600'
-                        }`}
-                      >
-                        Download Review DOCX
-                      </button>
-                    )}
-                    {documentKind === 'docx' && docxBlockingIssueCount > 0 && translationStatus !== 'running' && (
-                      <p className={`text-[11px] text-center ${isLight ? 'text-rose-600' : 'text-rose-300'}`}>
-                        检测到 {docxBlockingIssueCount} 段严重问题（源语言残留/占位符），建议先重译后再下载。
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {hasTranslationAlerts && (
-                <div className={`text-xs text-center space-y-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-                  {currentIssueSummary.cells > 0 && (
-                    <p>检测到 {currentIssueSummary.cells} 个非目标语言单元格（{currentIssueSummary.rows} 行）。</p>
-                  )}
-                  {currentIssueSummary.cells > 0 && (
-                    <p>
-                      可自动重译 {retryableCellCount} 个单元格（{retryCandidates.length} 行）。
-                    </p>
-                  )}
-                  {currentIssueSummary.cells > 0 && untranslatedLocationPreview && (
-                    <p className={`text-[11px] ${headingMutedClass}`}>
-                      定位示例：{untranslatedLocationPreview}
-                    </p>
-                  )}
-                  {writeFailedRowIndices.length > 0 && (
-                    <p>有 {writeFailedRowIndices.length} 行未写入（示例行：{writeFailedRowPreview || 'N/A'}）。</p>
-                  )}
-                  <button
-                    onClick={() => retryMissingRows(currentIssueSummary.rowIndices)}
-                    className="w-full py-3 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-xl font-semibold text-sm transition-all shadow-[0_12px_26px_rgba(217,119,6,0.18)]"
-                    disabled={translationStatus === 'running' || isRetryingMissing}
-                  >
-                    {isRetryingMissing ? 'Retrying...' : 'Retry Missing Cells'}
-                  </button>
-                  {retryCandidates.length === 0 && currentIssueSummary.cells > 0 && (
-                    <p className={`text-[11px] ${mutedTextClass}`}>当前缺失项多为锁定字段或符号列，无法自动重译。</p>
-                  )}
-                </div>
-              )}
-              {hasDocxIssues && (
-                <div className={`text-xs text-center space-y-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-                  <p>DOCX 审计：仍有 {docxIssueDetails.length} 个语义段存在异常。</p>
-                  <p className={`text-[11px] ${headingMutedClass}`}>
-                    建议重译 {docxRetryableCount} 段；低优先级短文本 {docxLowPriorityCount} 段。
-                  </p>
-                  {docxIssuePreview && (
-                    <p className={`text-[11px] ${headingMutedClass}`}>
-                      示例：{docxIssuePreview}
-                    </p>
-                  )}
-                  <button
-                    onClick={retryDocxSegments}
-                    className="w-full py-2 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-xl font-semibold transition-all shadow-[0_12px_26px_rgba(217,119,6,0.18)]"
-                    disabled={translationStatus === 'running'}
-                  >
-                    Retry Missing Segments
-                  </button>
-                </div>
-              )}
-              {hasPdfIssues && (
-                <div className={`text-xs text-center space-y-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-                  <p>PDF 审计：仍有 {pdfIssueDetails.length} 个文本段存在异常。</p>
-                  <p className={`text-[11px] ${headingMutedClass}`}>
-                    建议重译 {pdfHighPriorityCount} 段；低优先级短文本 {pdfLowPriorityCount} 段。
-                  </p>
-                  {pdfIssuePreview && (
-                    <p className={`text-[11px] ${headingMutedClass}`}>
-                      示例：{pdfIssuePreview}
-                    </p>
-                  )}
-                  <button
-                    onClick={retryPdfSegments}
-                    className="w-full py-2 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white rounded-xl font-semibold transition-all shadow-[0_12px_26px_rgba(217,119,6,0.18)]"
-                    disabled={translationStatus === 'running'}
-                  >
-                    Retry Missing PDF Segments
-                  </button>
-                </div>
-              )}
-
-              <div className={`space-y-2 pt-3 border-t ${sectionDividerClass}`}>
-                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Check</h3>
-                {documentKind === 'docx' && (
-                  <p className={`text-[11px] ${mutedTextClass}`}>
-                    DOCX 可运行质量检查并显示 Retry Missing Segments。
-                  </p>
-                )}
-                {documentKind === 'pdf' && (
-                  <p className={`text-[11px] ${mutedTextClass}`}>
-                    PDF 可运行质量检查并显示 Retry Missing PDF Segments。
-                  </p>
-                )}
-                <button
-                  onClick={runQualityCheck}
-                  disabled={!canRunQualityCheck}
-                  className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                    !canRunQualityCheck
-                      ? disabledButtonClass
-                      : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-[0_12px_26px_rgba(79,70,229,0.22)]'
-                  }`}
-                >
-                  Run Quality Check
-                </button>
-                {documentKind === 'excel' && (
-                <div className="grid grid-cols-1 gap-2">
-                  <button
-                    onClick={applyQualityFixes}
-                    disabled={processedData.length === 0}
-                    className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                      processedData.length === 0
-                        ? disabledButtonClass
-                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_12px_26px_rgba(5,150,105,0.18)]'
-                    }`}
-                  >
-                    Apply Cleanup
-                  </button>
-                  <button
-                    onClick={retryPlaceholderCells}
-                    disabled={!placeholderIssueCount || translationStatus === 'running'}
-                    className={`w-full py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                      !placeholderIssueCount || translationStatus === 'running'
-                        ? disabledButtonClass
-                        : 'bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white shadow-[0_12px_26px_rgba(217,119,6,0.18)]'
-                    }`}
-                  >
-                    Retry Placeholder Cells
-                  </button>
-                  {documentKind === 'excel' && placeholderIssueCount > 0 && (
-                    <p className={`text-[11px] text-center ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-                      当前结果中实时检测到 {placeholderIssueCount} 个占位符异常单元格，可直接重译，无需先运行 Quality Check。
-                    </p>
-                  )}
-                </div>
-                )}
-              </div>
-            </div>
-          </section>
-
-        </div>
-
-        <div className="lg:col-span-8 space-y-6">
-          <section className={`${panelClass} space-y-4`}>
-             <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-               <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>
-                  Run Monitor
-                </h2>
-                <p className={`text-xs mt-1 ${mutedTextClass}`}>Current status, batch progress, and live translation logs.</p>
-               </div>
-              <button onClick={() => setLogs([])} className={`text-xs ${isLight ? 'text-indigo-600 hover:text-indigo-800' : 'text-slate-500 hover:text-slate-300'}`}>Clear Logs</button>
-             </div>
-             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
-              <div className={metricCardClass}>
-                <p className={`text-[11px] ${mutedTextClass}`}>Status</p>
-                <p className={`text-lg font-semibold mt-1 ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>{runStatusLabel}</p>
-              </div>
-              <div className={metricCardClass}>
-                <p className={`text-[11px] ${mutedTextClass}`}>Batch</p>
-                <p className={`text-lg font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{processingState.currentBatch}</p>
-              </div>
-              <div className={metricCardClass}>
-                <p className={`text-[11px] ${mutedTextClass}`}>Processed</p>
-                <p className={`text-lg font-semibold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{processingState.progress}%</p>
-              </div>
-              <div className={metricCardClass}>
-                <p className={`text-[11px] ${mutedTextClass}`}>Model</p>
-                <p className={`text-lg font-semibold mt-1 truncate ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{currentModelDisplayLabel}</p>
-             </div>
-             </div>
-             <LogConsole logs={logs} theme={theme} />
-          </section>
-
-          <QualityReportPanel
-            qualityReport={qualityReport}
-            hasQualityReport={hasQualityReport}
-            formatSnapshot={formatSnapshot}
-            currentIssueSummary={currentIssueSummary}
-            issueCaseCount={issueCaseCount}
-            qualityFindings={qualityFindings}
-            sampleReviewCount={sampleReviewCount}
-            sampleReviewItems={sampleReviewItems}
-            sampleReviewAiSummary={sampleReviewAiSummary}
-            sampleReviewAiMeta={sampleReviewAiMeta}
-            sampleReviewAiResults={sampleReviewAiResults}
-            processedDataLength={processedData.length}
-            isRunningSampleReviewAi={isRunningSampleReviewAi}
-            isLight={isLight}
-            panelClass={panelClass}
-            metricCardClass={metricCardClass}
-            nestedPanelClass={nestedPanelClass}
-            subCardClass={subCardClass}
-            headingMutedClass={headingMutedClass}
-            mutedTextClass={mutedTextClass}
-            disabledButtonClass={disabledButtonClass}
-            neutralButtonClass={neutralButtonClass}
-            primaryInlineButtonClass={primaryInlineButtonClass}
-            sectionDividerClass={sectionDividerClass}
-            clearQualityReport={clearQualityReport}
-            exportQualityReport={exportQualityReport}
-            exportDebugPackage={exportDebugPackage}
-            exportIssueDraft={exportIssueDraft}
-            exportIssueCases={exportIssueCases}
-            exportRegressionCases={exportRegressionCases}
-            exportIssueAssetCandidates={exportIssueAssetCandidates}
-            promoteIssueCasesToTranslationMemory={promoteIssueCasesToTranslationMemory}
-            clearIssueCases={clearIssueCases}
-            saveQualityFindingCorrection={saveQualityFindingCorrection}
-            jumpToPreviewCell={jumpToPreviewCell}
-            setSampleReviewCount={setSampleReviewCount}
-            generateSampleReview={generateSampleReview}
-            runAiSampleReview={runAiSampleReview}
-            severityBadgeClass={severityBadgeClass}
-            reviewRiskBadgeClass={reviewRiskBadgeClass}
-            reviewVerdictBadgeClass={reviewVerdictBadgeClass}
-          />
-
-          <details ref={previewDetailsRef} className={detailsCardClass}>
-            <summary className={`cursor-pointer list-none px-6 py-4 flex items-center justify-between text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
-              <span>String Resource Translator</span>
-              <span className="text-[10px] text-slate-500">Optional</span>
-            </summary>
-            <div className={`px-6 pb-6 pt-2 border-t space-y-3 ${sectionDividerClass}`}>
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-slate-500 pr-3">
-                  仅翻译中文说明，保留占位符、缩写、型号与符号（如 %s / LIS / EHBT-75 / {0}）；`translatable="false"` 属性会保留，但中文内容仍会翻译。
-                </p>
-              </div>
-              <textarea
-                className={isLight ? 'w-full bg-white border border-slate-200 rounded-lg p-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px] shadow-sm' : 'w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]'}
-                placeholder="粘贴 <string name=...>中文</string> 文本；可输出全部语言，或只输出一个目标语言。"
-                value={stringInput}
-                onChange={(e) => setStringInput(e.target.value)}
-                disabled={isStringTranslating}
-              />
-              <div className="flex flex-col gap-2">
-                <label className="text-xs text-slate-400">字符串输出语言</label>
-                <select
-                  className={isLight ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 shadow-sm' : 'bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200'}
-                  value={stringOutputTarget}
-                  onChange={(e) => setStringOutputTarget(e.target.value)}
-                  disabled={isStringTranslating}
-                >
-                  <option value={ALL_STRING_TARGETS}>全部语言（{STRING_TARGET_LANGS.length} 种）</option>
-                  {STRING_TARGET_LANGS.map((lang) => (
-                    <option key={lang} value={lang}>
-                      仅输出 {getTargetLanguageLabel(lang)}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-slate-500">
-                  日期/时间格式模板（如 `M月d日E`、`yyyy年M月d日`）会按规则本地转换，不走模型。
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  使用左侧 Translation Model：{currentModelDisplayLabel}；这里只单独选择输出语言。
-                </p>
-              </div>
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    onClick={translateStringResources}
-                    disabled={!stringInput.trim() || isStringTranslating}
-                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
-                      !stringInput.trim() || isStringTranslating
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
-                    }`}
-                  >
-                    {isStringTranslating
-                      ? 'Translating...'
-                      : stringOutputTarget === ALL_STRING_TARGETS
-                        ? `输出全部语言（${STRING_TARGET_LANGS.length} 种）`
-                        : `输出 ${stringOutputTarget}`}
-                  </button>
-                  <button
-                    onClick={clearStringResources}
-                    disabled={isStringTranslating || (!stringInput.trim() && !hasStringOutputs)}
-                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                      isStringTranslating || (!stringInput.trim() && !hasStringOutputs)
-                        ? disabledButtonClass
-                        : 'bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/20'
-                    }`}
-                  >
-                    清空输入与结果
-                  </button>
-                </div>
-                <label className="flex items-center gap-2 text-xs text-slate-400">
-                  <input
-                    type="checkbox"
-                    checked={stringAutoFix}
-                    onChange={(e) => setStringAutoFix(e.target.checked)}
-                    disabled={isStringTranslating}
-                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
-                  />
-                  自动修复空格
-                </label>
-              </div>
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-                <span className="text-xs text-slate-500">
-                  本地历史：{stringHistoryCount} 条
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={exportCurrentStringOutput}
-                    disabled={!hasStringOutputs || isStringTranslating}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      !hasStringOutputs || isStringTranslating
-                        ? disabledButtonClass
-                        : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                    }`}
-                  >
-                    导出当前结果
-                  </button>
-                  <button
-                    onClick={exportStringHistory}
-                    disabled={stringHistoryCount === 0 || isStringTranslating}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      stringHistoryCount === 0 || isStringTranslating
-                        ? disabledButtonClass
-                        : neutralButtonClass
-                    }`}
-                  >
-                    导出历史记录
-                  </button>
-                  <button
-                    onClick={clearStringHistoryData}
-                    disabled={stringHistoryCount === 0 || isStringTranslating}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      stringHistoryCount === 0 || isStringTranslating
-                        ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                        : 'bg-rose-600/80 hover:bg-rose-500 text-white'
-                    }`}
-                  >
-                    清空历史
-                  </button>
-                </div>
-              </div>
-              {stringQualitySummary && (
-                <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
-                  {stringQualitySummary}
-                </div>
-              )}
-              {stringError && (
-                <div className="text-xs text-rose-300 space-y-1">
-                  <p>{stringError}</p>
-                  {stringErrorDetails && (
-                    <p className="text-rose-200/80">{stringErrorDetails}</p>
-                  )}
-                </div>
-              )}
-              {hasStringOutputs && (
-                <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t ${sectionDividerClass}`}>
-                  {selectedStringTargetLangs.map((lang) => (
-                    <div
-                      key={lang}
-                      className={isLight ? 'bg-slate-50 border border-slate-200 rounded-lg p-3' : 'bg-slate-950/50 border border-slate-800 rounded-lg p-3'}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-slate-400 uppercase">
-                          {lang}
-                        </span>
-                        <button
-                          onClick={() => copyStringOutput(lang)}
-                          className="text-[10px] text-slate-500 hover:text-slate-300"
-                          disabled={!stringOutputs[lang]}
-                        >
-                          Copy
-                        </button>
-                      </div>
-                      <textarea
-                        readOnly
-                        className={isLight ? 'w-full bg-white border border-slate-200 rounded-md p-2 text-xs text-slate-900 min-h-[120px] resize-vertical' : 'w-full bg-slate-900 border border-slate-800 rounded-md p-2 text-xs text-slate-200 min-h-[120px] resize-vertical'}
-                        value={stringOutputs[lang] || ''}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </details>
+        </section>
 
-          <details className={detailsCardClass}>
-            <summary className={`cursor-pointer list-none px-6 py-4 flex items-center justify-between text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
-              <span>Live Data Preview</span>
-              <span className="text-[10px] text-slate-500">
-                {previewData.length > 0 ? `${previewData.length} rows` : 'No data'}
-              </span>
-            </summary>
-          <section
-            ref={previewSectionRef}
-            className={`border-t overflow-hidden flex-1 max-h-[460px] ${sectionDividerClass}`}
-          >
-            <div className={`p-4 border-b flex justify-between items-center ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-900/50'}`}>
-              <div className="flex items-center gap-4">
-                <h2 className={`text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>Live Data Preview</h2>
-                {previewData.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={showComparison}
-                        onChange={() => setShowComparison(!showComparison)}
-                      />
-                      <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                      <span className={`ml-2 text-xs font-medium ${headingMutedClass}`}>Verify Mode (Show Original)</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {previewFocus && (
-                  <div className={`flex items-center gap-2 text-[10px] ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
-                    <span>Focused: {formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey)}</span>
-                    <button
-                      onClick={() => setPreviewFocus(null)}
-                      className={isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-300'}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-                <div className={`text-[10px] ${mutedTextClass}`}>
-                  {previewData.length > 0
-                    ? previewFocus
-                      ? `Showing ${previewRowIndices.length} focused rows`
-                      : `Showing last ${Math.min(10, previewData.length)} of ${previewData.length} rows`
-                    : 'No data'}
-                </div>
-              </div>
-            </div>
+        <RunMonitor
+          isLight={isLight}
+          statusLabel={runStatusLabel}
+          progress={processingState.progress}
+          modelLabel={translationModelPreference === AUTO_OPENROUTER_MODEL ? t('settings.model.autoShort') : currentModelDisplayLabel}
+          batchRuns={batchRuns}
+          showPauseResume={showPauseResume}
+          isTranslating={isTranslating}
+          pauseResumeDisabled={pauseResumeDisabled}
+          onPauseResume={pauseResumeHandler}
+          panelClass={panelClass}
+          metricCardClass={metricCardClass}
+          mutedTextClass={mutedTextClass}
+          neutralButtonClass={neutralButtonClass}
+          disabledButtonClass={disabledButtonClass}
+        />
 
-            {focusedPreviewCell && (
-              <div className={`px-4 py-3 border-b ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950/40'}`}>
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div>
-                    <p className={`text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>
-                      Focused Cell
-                    </p>
-                    <p className={`text-xs mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
-                  </div>
-                  <span className={`text-[10px] ${mutedTextClass}`}>
-                    {focusedPreviewCell.skipped
-                      ? 'Skipped: source text will be kept'
-                      : focusedPreviewCell.changed ? 'Showing translated value' : 'Original and translated are identical'}
+        <section className={`${panelClass} !p-0 overflow-hidden`}>
+          <div role="tablist" className={`flex gap-1 overflow-x-auto border-b px-3 ${sectionDividerClass}`}>
+            {resultTabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                id={`result-tab-${tab.key}`}
+                aria-selected={resultTab === tab.key}
+                aria-controls={`result-panel-${tab.key}`}
+                onClick={() => setResultTab(tab.key)}
+                className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+                  resultTab === tab.key
+                    ? isLight
+                      ? 'border-indigo-600 text-indigo-700'
+                      : 'border-indigo-400 text-indigo-200'
+                    : `border-transparent ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-400 hover:text-slate-100'}`
+                }`}
+              >
+                {tab.label}
+                {tab.badge > 0 && (
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${isLight ? 'bg-rose-50 text-rose-700' : 'bg-rose-500/15 text-rose-200'}`}>
+                    {tab.badge}
                   </span>
-                </div>
-                <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
-                  <div className={nestedPanelClass}>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Target</p>
-                    <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                      {focusedPreviewCell.translated || '(empty)'}
-                    </p>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-5" role="tabpanel" id={`result-panel-${resultTab}`} aria-labelledby={`result-tab-${resultTab}`}>
+            {resultTab === 'preview' && (
+                <section
+                  ref={previewSectionRef}
+                  className={`overflow-hidden rounded-xl border ${sectionDividerClass}`}
+                >
+                  <div className={`p-4 border-b flex justify-between items-center ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-900/50'}`}>
+                    <div className="flex items-center gap-4">
+                      <h2 className={`text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('preview.title')}</h2>
+                      {previewData.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              className="sr-only peer" 
+                              checked={showComparison}
+                              onChange={() => setShowComparison(!showComparison)}
+                            />
+                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                            <span className={`ml-2 text-xs font-medium ${headingMutedClass}`}>{t('preview.verify')}</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {previewFocus && (
+                        <div className={`flex items-center gap-2 text-[10px] ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
+                          <span>{t('preview.focused', { label: formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey) })}</span>
+                          <button
+                            onClick={() => setPreviewFocus(null)}
+                            className={isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-300'}
+                          >
+                            {t('preview.clearFocus')}
+                          </button>
+                        </div>
+                      )}
+                      <div className={`text-[10px] ${mutedTextClass}`}>
+                        {previewData.length > 0
+                          ? previewFocus
+                            ? t('preview.showingFocused', { count: previewRowIndices.length })
+                            : t('preview.showingLast', { shown: Math.min(10, previewData.length), total: previewData.length })
+                          : t('common.noData')}
+                      </div>
+                    </div>
                   </div>
-                  {showComparison && (
-                    <div className={nestedPanelClass}>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Source</p>
-                      <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                        {focusedPreviewCell.original || '(empty)'}
-                      </p>
+
+                  {focusedPreviewCell && (
+                    <div className={`px-4 py-3 border-b ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950/40'}`}>
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                          <p className={`text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>
+                            {t('preview.focusedCell')}
+                          </p>
+                          <p className={`text-xs mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
+                        </div>
+                        <span className={`text-[10px] ${mutedTextClass}`}>
+                          {focusedPreviewCell.skipped
+                            ? t('preview.skippedKept')
+                            : focusedPreviewCell.changed ? t('preview.changed') : t('preview.identical')}
+                        </span>
+                      </div>
+                      <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
+                        <div className={nestedPanelClass}>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{t('preview.target')}</p>
+                          <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                            {focusedPreviewCell.translated || t('common.empty')}
+                          </p>
+                        </div>
+                        {showComparison && (
+                          <div className={nestedPanelClass}>
+                            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{t('preview.source')}</p>
+                            <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                              {focusedPreviewCell.original || t('common.empty')}
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
             
-            <div className={`overflow-auto h-[410px] scrollbar-thin ${isLight ? 'scrollbar-thumb-slate-200' : 'scrollbar-thumb-slate-800'}`}>
-              {previewData.length === 0 ? (
-                <div className={`h-full flex items-center justify-center text-sm italic ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Waiting for data...
-                </div>
-              ) : (
-                <table className="w-full text-left border-collapse min-w-full table-fixed">
-                  <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-800 text-slate-400'}`}>
-                    <tr>
-                      <th className={`px-4 py-3 border-b w-20 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>Row</th>
-                      {previewColumnKeys.map(key => (
-                        <th key={key} className={`px-4 py-3 border-b truncate w-40 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{key}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-slate-800'}>
-                    {previewRowIndices.map((actualIndex) => {
-                      const record = previewData[actualIndex] || {};
-                      const originalRecord = previewSourceRows[actualIndex] || {};
-                      const isFocusedRow = previewFocus?.rowIndex === actualIndex;
+                  <div className={`overflow-auto h-[410px] scrollbar-thin ${isLight ? 'scrollbar-thumb-slate-200' : 'scrollbar-thumb-slate-800'}`}>
+                    {previewData.length === 0 ? (
+                      <div className={`h-full flex items-center justify-center text-sm italic ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {t('preview.waiting')}
+                      </div>
+                    ) : (
+                      <table className="w-full text-left border-collapse min-w-full table-fixed">
+                        <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-800 text-slate-400'}`}>
+                          <tr>
+                            <th className={`px-4 py-3 border-b w-20 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{t('preview.row')}</th>
+                            {previewColumnKeys.map(key => (
+                              <th key={key} className={`px-4 py-3 border-b truncate w-40 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{key}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-slate-800'}>
+                          {previewRowIndices.map((actualIndex) => {
+                            const record = previewData[actualIndex] || {};
+                            const originalRecord = previewSourceRows[actualIndex] || {};
+                            const isFocusedRow = previewFocus?.rowIndex === actualIndex;
 
-                      return (
-                        <tr
-                          key={actualIndex}
-                          className={`${isLight ? 'hover:bg-indigo-50/60' : 'hover:bg-slate-800/30'} transition-colors ${isFocusedRow ? 'bg-indigo-500/10' : ''}`}
-                        >
-                          <td className={`px-4 py-3 border-b text-[11px] text-slate-500 font-mono ${isLight ? 'border-slate-100' : 'border-slate-800/50'}`}>
-                            R{formatExcelRowNumber(actualIndex)}
-                          </td>
-                          {previewColumnKeys.map((key, j) => {
-                            const val = record[key];
-                            const origVal = originalRecord ? originalRecord[key] : '';
-                            const isDiff = hasChanged(origVal, val);
-                            const isFocusedCell =
-                              previewFocus?.rowIndex === actualIndex && previewFocus.columnKey === key;
-                            const isSkippedCell = shouldSkipExcelCell(actualIndex, key);
-                            
                             return (
-                              <td
-                                key={j}
-                                className={`px-4 py-3 border-b ${isLight ? 'border-slate-100' : 'border-slate-800/50'} ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
+                              <tr
+                                key={actualIndex}
+                                className={`${isLight ? 'hover:bg-indigo-50/60' : 'hover:bg-slate-800/30'} transition-colors ${isFocusedRow ? 'bg-indigo-500/10' : ''}`}
                               >
-                                <div className="flex flex-col gap-0.5">
-                                  <span
-                                    title={String(val)}
-                                    className={`text-xs truncate whitespace-nowrap ${isDiff ? (isLight ? 'text-indigo-700 font-medium' : 'text-indigo-300 font-medium') : (isLight ? 'text-slate-700' : 'text-slate-300')}`}
-                                  >
-                                    {String(val)}
-                                  </span>
-                                  
-                                  {showComparison && isDiff && (
-                                    <span
-                                      title={String(origVal)}
-                                      className={`text-[10px] text-slate-500 truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-white border-slate-200' : 'bg-slate-800/50 border-slate-700/50'}`}
+                                <td className={`px-4 py-3 border-b text-[11px] text-slate-500 font-mono ${isLight ? 'border-slate-100' : 'border-slate-800/50'}`}>
+                                  R{formatExcelRowNumber(actualIndex)}
+                                </td>
+                                {previewColumnKeys.map((key, j) => {
+                                  const val = record[key];
+                                  const origVal = originalRecord ? originalRecord[key] : '';
+                                  const isDiff = hasChanged(origVal, val);
+                                  const isFocusedCell =
+                                    previewFocus?.rowIndex === actualIndex && previewFocus.columnKey === key;
+                                  const isSkippedCell = shouldSkipExcelCell(actualIndex, key);
+                            
+                                  return (
+                                    <td
+                                      key={j}
+                                      className={`px-4 py-3 border-b ${isLight ? 'border-slate-100' : 'border-slate-800/50'} ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
                                     >
-                                      {String(origVal)}
-                                    </span>
-                                  )}
-                                  {isSkippedCell && (
-                                    <span className={`text-[10px] truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
-                                      Skipped
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
+                                      <div className="flex flex-col gap-0.5">
+                                        <span
+                                          title={String(val)}
+                                          className={`text-xs truncate whitespace-nowrap ${isDiff ? (isLight ? 'text-indigo-700 font-medium' : 'text-indigo-300 font-medium') : (isLight ? 'text-slate-700' : 'text-slate-300')}`}
+                                        >
+                                          {String(val)}
+                                        </span>
+                                  
+                                        {showComparison && isDiff && (
+                                          <span
+                                            title={String(origVal)}
+                                            className={`text-[10px] text-slate-500 truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-white border-slate-200' : 'bg-slate-800/50 border-slate-700/50'}`}
+                                          >
+                                            {String(origVal)}
+                                          </span>
+                                        )}
+                                        {isSkippedCell && (
+                                          <span className={`text-[10px] truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
+                                            {t('preview.skipped')}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
                             );
                           })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </section>
-          </details>
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </section>
+            )}
 
-        </div>
+            {resultTab === 'quality' && (
+              <div className="space-y-4">
+                <div className={`${nestedPanelClass} space-y-3`}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={runQualityCheck}
+                      disabled={!canRunQualityCheck || translationStatus === 'running'}
+                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+                        !canRunQualityCheck || translationStatus === 'running'
+                          ? disabledButtonClass
+                          : 'bg-indigo-600 text-white hover:bg-indigo-500'
+                      }`}
+                    >
+                      {t('qc.run')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={retryAllIssues}
+                      disabled={!canRetryIssues}
+                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+                        !canRetryIssues
+                          ? disabledButtonClass
+                          : isLight
+                            ? 'bg-amber-500 text-white hover:bg-amber-400'
+                            : 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                      }`}
+                    >
+                      {isRetryingMissing
+                        ? t('settings.starting')
+                        : fixableIssueCount > 0
+                          ? t('qc.fix.count', { count: fixableIssueCount })
+                          : t('qc.fix')}
+                    </button>
+                    <ol className="flex flex-wrap items-center gap-1.5 text-xs" aria-label={t('qc.flow')}>
+                      {[1, 2, 3, 4].map((step) => (
+                        <li
+                          key={step}
+                          className={`rounded-full border px-2.5 py-0.5 ${
+                            isLight ? 'border-slate-200 text-slate-500' : 'border-white/[0.1] text-slate-400'
+                          }`}
+                        >
+                          {step}. {t(`qc.flow.${step}`)}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  <div className={`space-y-1 text-xs ${mutedTextClass}`}>
+                    <p>{t('qc.help.run')}</p>
+                    <p>{t('qc.help.fix')}</p>
+                    {documentKind !== 'excel' && <p>{t('qc.help.docx')}</p>}
+                  </div>
+                  {(hasTranslationAlerts || hasDocxIssues || hasPdfIssues || placeholderIssueCount > 0) && (
+                    <div className={`space-y-1 border-t pt-3 text-xs ${sectionDividerClass} ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
+                      {documentKind === 'excel' && currentIssueSummary.cells > 0 && (
+                        <p>{t('qc.alert.nonTarget', { cells: currentIssueSummary.cells, rows: currentIssueSummary.rows })}</p>
+                      )}
+                      {documentKind === 'excel' && currentIssueSummary.cells > 0 && (
+                        <p>{t('qc.alert.retryable', { cells: retryableCellCount, rows: retryCandidates.length })}</p>
+                      )}
+                      {documentKind === 'excel' && currentIssueSummary.cells > 0 && untranslatedLocationPreview && (
+                        <p className={mutedTextClass}>{t('qc.alert.example', { preview: untranslatedLocationPreview })}</p>
+                      )}
+                      {documentKind === 'excel' && writeFailedRowIndices.length > 0 && (
+                        <p>{t('qc.alert.writeFailed', { count: writeFailedRowIndices.length, preview: writeFailedRowPreview || 'N/A' })}</p>
+                      )}
+                      {documentKind === 'excel' && placeholderIssueCount > 0 && (
+                        <p>{t('qc.alert.placeholder', { count: placeholderIssueCount })}</p>
+                      )}
+                      {documentKind === 'excel' && retryCandidates.length === 0 && currentIssueSummary.cells > 0 && (
+                        <p className={mutedTextClass}>{t('qc.alert.locked')}</p>
+                      )}
+                      {hasDocxIssues && (
+                        <>
+                          <p>{t('qc.alert.docx', { count: docxIssueDetails.length, retry: docxRetryableCount, low: docxLowPriorityCount })}</p>
+                          {docxIssuePreview && <p className={mutedTextClass}>{t('qc.alert.example2', { preview: docxIssuePreview })}</p>}
+                        </>
+                      )}
+                      {hasPdfIssues && (
+                        <>
+                          <p>{t('qc.alert.pdf', { count: pdfIssueDetails.length, retry: pdfHighPriorityCount, low: pdfLowPriorityCount })}</p>
+                          {pdfIssuePreview && <p className={mutedTextClass}>{t('qc.alert.example2', { preview: pdfIssuePreview })}</p>}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <QualityReportPanel
+                  qualityReport={qualityReport}
+                  hasQualityReport={hasQualityReport}
+                  formatSnapshot={formatSnapshot}
+                  currentIssueSummary={currentIssueSummary}
+                  issueCaseCount={issueCaseCount}
+                  qualityFindings={qualityFindings}
+                  sampleReviewCount={sampleReviewCount}
+                  sampleReviewItems={sampleReviewItems}
+                  sampleReviewAiSummary={sampleReviewAiSummary}
+                  sampleReviewAiMeta={sampleReviewAiMeta}
+                  sampleReviewAiResults={sampleReviewAiResults}
+                  processedDataLength={processedData.length}
+                  isRunningSampleReviewAi={isRunningSampleReviewAi}
+                  isLight={isLight}
+                  panelClass={panelClass}
+                  metricCardClass={metricCardClass}
+                  nestedPanelClass={nestedPanelClass}
+                  subCardClass={subCardClass}
+                  headingMutedClass={headingMutedClass}
+                  mutedTextClass={mutedTextClass}
+                  disabledButtonClass={disabledButtonClass}
+                  neutralButtonClass={neutralButtonClass}
+                  primaryInlineButtonClass={primaryInlineButtonClass}
+                  sectionDividerClass={sectionDividerClass}
+                  clearQualityReport={clearQualityReport}
+                  exportQualityReport={exportQualityReport}
+                  exportDebugPackage={exportDebugPackage}
+                  exportIssueDraft={exportIssueDraft}
+                  exportIssueCases={exportIssueCases}
+                  exportRegressionCases={exportRegressionCases}
+                  exportIssueAssetCandidates={exportIssueAssetCandidates}
+                  promoteIssueCasesToTranslationMemory={promoteIssueCasesToTranslationMemory}
+                  clearIssueCases={clearIssueCases}
+                  saveQualityFindingCorrection={saveQualityFindingCorrection}
+                  jumpToPreviewCell={jumpToPreviewCell}
+                  setSampleReviewCount={setSampleReviewCount}
+                  generateSampleReview={generateSampleReview}
+                  runAiSampleReview={runAiSampleReview}
+                  severityBadgeClass={severityBadgeClass}
+                  reviewRiskBadgeClass={reviewRiskBadgeClass}
+                  reviewVerdictBadgeClass={reviewVerdictBadgeClass}
+                />
+              </div>
+            )}
+
+            {resultTab === 'logs' && <LogConsole logs={logs} theme={theme} onClear={() => setLogs([])} />}
+
+            {resultTab === 'strings' && (
+              <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-500 pr-3">
+                {t('strings.desc')}
+              </p>
+            </div>
+            <textarea
+              className={isLight ? 'w-full bg-white border border-slate-200 rounded-lg p-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px] shadow-sm' : 'w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]'}
+              placeholder={t('strings.input.placeholder')}
+              value={stringInput}
+              onChange={(e) => setStringInput(e.target.value)}
+              disabled={isStringTranslating}
+            />
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-slate-400">{t('strings.outputLang')}</label>
+              <select
+                className={isLight ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 shadow-sm' : 'bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200'}
+                value={stringOutputTarget}
+                onChange={(e) => setStringOutputTarget(e.target.value)}
+                disabled={isStringTranslating}
+              >
+                <option value={ALL_STRING_TARGETS}>{t('strings.all', { count: STRING_TARGET_LANGS.length })}</option>
+                {STRING_TARGET_LANGS.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {t('strings.only', { lang: getTargetLanguageLabel(lang) })}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500">
+                {t('strings.dateHint')}</p>
+              <p className="text-[11px] text-slate-500">
+                {t('strings.modelHint', { model: currentModelDisplayLabel })}
+              </p>
+            </div>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={translateStringResources}
+                  disabled={!stringInput.trim() || isStringTranslating}
+                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
+                    !stringInput.trim() || isStringTranslating
+                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
+                  }`}
+                >
+                  {isStringTranslating
+                    ? t('strings.running')
+                    : stringOutputTarget === ALL_STRING_TARGETS
+                      ? t('strings.runAll', { count: STRING_TARGET_LANGS.length })
+                      : t('strings.runOne', { lang: stringOutputTarget })}
+                </button>
+                <button
+                  onClick={clearStringResources}
+                  disabled={isStringTranslating || (!stringInput.trim() && !hasStringOutputs)}
+                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+                    isStringTranslating || (!stringInput.trim() && !hasStringOutputs)
+                      ? disabledButtonClass
+                      : 'bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/20'
+                  }`}
+                >
+                  {t('strings.clearAll')}
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={stringAutoFix}
+                  onChange={(e) => setStringAutoFix(e.target.checked)}
+                  disabled={isStringTranslating}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
+                />
+                {t('strings.autoFix')}
+              </label>
+            </div>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+              <span className="text-xs text-slate-500">
+                {t('strings.history', { count: stringHistoryCount })}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={exportCurrentStringOutput}
+                  disabled={!hasStringOutputs || isStringTranslating}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    !hasStringOutputs || isStringTranslating
+                      ? disabledButtonClass
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                  }`}
+                >
+                  {t('strings.exportCurrent')}
+                </button>
+                <button
+                  onClick={exportStringHistory}
+                  disabled={stringHistoryCount === 0 || isStringTranslating}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    stringHistoryCount === 0 || isStringTranslating
+                      ? disabledButtonClass
+                      : neutralButtonClass
+                  }`}
+                >
+                  {t('strings.exportHistory')}
+                </button>
+                <button
+                  onClick={clearStringHistoryData}
+                  disabled={stringHistoryCount === 0 || isStringTranslating}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    stringHistoryCount === 0 || isStringTranslating
+                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                      : 'bg-rose-600/80 hover:bg-rose-500 text-white'
+                  }`}
+                >
+                  {t('strings.clearHistory')}
+                </button>
+              </div>
+            </div>
+            {stringQualitySummary && (
+              <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
+                {stringQualitySummary}
+              </div>
+            )}
+            {stringError && (
+              <div className="text-xs text-rose-300 space-y-1">
+                <p>{stringError}</p>
+                {stringErrorDetails && (
+                  <p className="text-rose-200/80">{stringErrorDetails}</p>
+                )}
+              </div>
+            )}
+            {hasStringOutputs && (
+              <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t ${sectionDividerClass}`}>
+                {selectedStringTargetLangs.map((lang) => (
+                  <div
+                    key={lang}
+                    className={isLight ? 'bg-slate-50 border border-slate-200 rounded-lg p-3' : 'bg-slate-950/50 border border-slate-800 rounded-lg p-3'}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-slate-400 uppercase">
+                        {lang}
+                      </span>
+                      <button
+                        onClick={() => copyStringOutput(lang)}
+                        className="text-[10px] text-slate-500 hover:text-slate-300"
+                        disabled={!stringOutputs[lang]}
+                      >
+                        {t('common.copy')}
+                      </button>
+                    </div>
+                    <textarea
+                      readOnly
+                      className={isLight ? 'w-full bg-white border border-slate-200 rounded-md p-2 text-xs text-slate-900 min-h-[120px] resize-vertical' : 'w-full bg-slate-900 border border-slate-800 rounded-md p-2 text-xs text-slate-200 min-h-[120px] resize-vertical'}
+                      value={stringOutputs[lang] || ''}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {isDocumentLoaded && (
+          <div className={`sticky bottom-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-5 py-3 backdrop-blur ${
+            isLight ? 'border-slate-200 bg-white/95 shadow-[0_16px_40px_rgba(15,23,42,0.12)]' : 'border-white/[0.1] bg-slate-900/90'
+          }`}>
+            <p className={`min-w-0 flex-1 text-sm ${
+              docxBlockingIssueCount > 0 && translationStatus !== 'running'
+                ? isLight ? 'text-rose-700' : 'text-rose-300'
+                : mutedTextClass
+            }`}>
+              {translationStatus === 'running'
+                ? t('export.wait')
+                : docxBlockingIssueCount > 0
+                  ? t('export.risk', { count: docxBlockingIssueCount })
+                  : ''}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {documentKind === 'pdf' && (
+                <button
+                  type="button"
+                  onClick={handleDownloadPdfDocx}
+                  disabled={!canDownload}
+                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+                    !canDownload ? disabledButtonClass : neutralButtonClass
+                  }`}
+                >
+                  {t('export.reviewDocx')}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={!canDownload}
+                className={`rounded-xl px-6 py-2.5 text-sm font-semibold transition-all ${
+                  !canDownload
+                    ? disabledButtonClass
+                    : 'bg-emerald-600 text-white shadow-[0_10px_24px_rgba(5,150,105,0.22)] hover:bg-emerald-500'
+                }`}
+              >
+                {documentKind === 'pdf' ? t('export.pdf') : t('export.doc')}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
       )}
     </div>

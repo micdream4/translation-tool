@@ -38,6 +38,7 @@ const getEnvValue = (key: string): string | undefined => {
 export class ProxyTranslationService {
   private lastEngine: "cloudflare-ai" | "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
   private lastModelIssues: ProxyModelIssue[] = [];
+  private lastModel = "";
   private readonly endpoint: string;
 
   constructor(endpoint?: string) {
@@ -56,6 +57,7 @@ export class ProxyTranslationService {
     } = {}
   ): Promise<POCTRecord[]> {
     this.lastModelIssues = [];
+    this.lastModel = "";
     const body = JSON.stringify({
       records,
       targetLang,
@@ -123,6 +125,10 @@ export class ProxyTranslationService {
     this.lastModelIssues = Array.isArray(payload?.modelIssues) ? payload.modelIssues : [];
     if (Array.isArray(payload)) return payload;
 
+    if (typeof payload?.model === "string") {
+      this.lastModel = payload.model;
+    }
+
     const engineUsed = payload?.engine;
     if (typeof engineUsed === "string") {
       if (
@@ -148,5 +154,9 @@ export class ProxyTranslationService {
 
   getLastModelIssues() {
     return this.lastModelIssues;
+  }
+
+  getLastModel() {
+    return this.lastModel;
   }
 }

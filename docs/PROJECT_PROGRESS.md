@@ -1,5 +1,18 @@
 # 项目进度
 
+## v0.2.0
+
+- 翻译页重做为"任务仪表盘"布局：文件与一行设置、运行监控、结果标签页（对照预览、质量检查、运行日志、字符串资源）、底部固定导出栏；保护词、Excel 跳过范围、翻译记忆收进"更多设置"。
+- 新增中文 / English 界面切换（`utils/i18n.ts` + `hooks/useI18n.tsx`，默认中文，选择记在本机）；导航、设置、监控、质量报告和使用说明统一为一种语言。运行日志仍由代码生成中文文本，暂未随界面语言切换。
+- 新增运行监控：按批次显示实际使用的模型、用时、状态（成功、命中翻译记忆、已切换备用模型、失败已跳过），单批等待超过 45 秒显示提示，失败批次说明后续处理方式；Excel、DOCX、PDF 共用。
+- 代理服务记录响应中的实际模型（`getLastModel`），批次日志不再显示所选模型而是实际模型。
+- 修复日志时间戳：此前在渲染时生成，所有行显示同一时间；现在在写入时记录。
+- 统一质量检查按钮：移除 `Apply Cleanup`、`Retry Placeholder Cells`、`Retry Missing Cells / Segments / PDF Segments`，改为"运行质量检查"和"重译问题项"。质量检查（Excel）在生成报告前自动执行无模型的格式、术语、ID 清理和占位符修复；"重译问题项"按文件类型重译残留原文、空白和占位符异常。
+- 补装 `@types/react` 与 `@types/react-dom`，`tsc` 现在会校验 JSX 属性；顺带修复 3 处暴露出的类型问题。
+- 使用说明更新：移除过时的 "Gemini → Qwen → DeepSeek" 描述。
+- 验证：`npm run typecheck`、`npm test`（44 项）；用 `local-data/inbox` 中的白细胞增高样本前 8 行，在 `wrangler pages dev` 真实函数 + DeepSeek 上端到端翻译，质检发现 3 个占位符异常，"重译问题项"后降为 0；批次监控、翻译记忆命中、慢批次提示均已实测。
+- 后续待办：给 Cloudflare AI 调用加超时、限制失败批次的二分重试放大、PDF 工作流改为按需加载、日志文本随界面语言切换、继续拆分 `App.tsx`。本地 issue 包：`local-data/issues/2026-10-05-translator-ui-run-monitor-qc-buttons/`。
+
 ## v0.1.0
 
 - 加固后端鉴权：配置 `CF_ACCESS_TEAM_DOMAIN` 和 `CF_ACCESS_AUD` 后，`/api/*` 会校验 Cloudflare Access JWT（RS256 签名、aud、iss、exp，JWKS 缓存 10 分钟），只使用 JWT 内的邮箱，忽略可被伪造的 `CF-Access-Authenticated-User-Email` 请求头；未配置时保持旧行为。部署前必须在 Cloudflare 配置这两个变量，并确认 Access 覆盖生产域名和所有预览域名。

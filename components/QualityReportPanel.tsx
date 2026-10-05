@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useI18n } from '../hooks/useI18n';
 import type { QualityReport, QualitySeverity } from '../utils/quality';
 import type { QualityFinding } from '../quality/report';
 import type { SampleReviewAIResult } from '../types';
@@ -126,6 +127,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   reviewRiskBadgeClass,
   reviewVerdictBadgeClass
 }) => {
+  const { t } = useI18n();
   const [findingSeverityFilter, setFindingSeverityFilter] = useState<'all' | QualitySeverity>('all');
   const residualCells = Math.max(currentIssueSummary.cells, qualityReport?.totals.nonTargetCells || 0);
   const residualRows = Math.max(currentIssueSummary.rows, qualityReport?.totals.nonTargetRows || 0);
@@ -146,9 +148,9 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
     <section className={`${panelClass} space-y-5`}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Report</h3>
+          <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('report.title')}</h3>
           <p className={`text-xs mt-2 ${mutedTextClass}`}>
-            Summary view for Quality Check results, issue navigation, export, and sample review.
+            {t('report.desc')}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -159,7 +161,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               !hasQualityReport ? disabledButtonClass : neutralButtonClass
             }`}
           >
-            Clear
+            {t('report.clear')}
           </button>
           <button
             onClick={exportQualityReport}
@@ -168,7 +170,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               !hasQualityReport ? disabledButtonClass : primaryInlineButtonClass
             }`}
           >
-            Export Report
+            {t('report.export')}
           </button>
           <button
             onClick={exportIssueCases}
@@ -177,26 +179,26 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
             }`}
           >
-            Export Cases
+            {t('report.exportCases')}
           </button>
           <button
             onClick={exportDebugPackage}
             className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
           >
-            Debug Package
+            {t('report.debug')}
           </button>
           <button
             onClick={exportIssueDraft}
             className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
           >
-            Issue Draft
+            {t('report.issueDraft')}
           </button>
         </div>
       </div>
 
       {!hasQualityReport && (
         <p className={`text-xs ${mutedTextClass}`}>
-          Run `Run Quality Check` to show summary cards, findings, and sample review controls.
+          {t('report.empty')}
         </p>
       )}
 
@@ -204,9 +206,9 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
         <>
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
             <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>Scanned</p>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.scanned')}</p>
               <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                {qualityReport.totals.rowsScanned} rows / {qualityReport.totals.cellsScanned} cells
+                {t('report.card.rowsCells', { rows: qualityReport.totals.rowsScanned, cells: qualityReport.totals.cellsScanned })}
               </p>
               {formatSnapshot && (
                 <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
@@ -215,42 +217,42 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               )}
             </div>
             <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>Residual</p>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.residual')}</p>
               <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                非目标语言 {residualCells} / 中文 {qualityReport.totals.chineseCells}
+                {t('report.card.nonTarget', { cells: residualCells, chinese: qualityReport.totals.chineseCells })}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                {residualRows} rows / {qualityReport.totals.chineseRows} rows
+                {t('report.card.nonTargetRows', { rows: residualRows, chineseRows: qualityReport.totals.chineseRows })}
               </p>
             </div>
             <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>Repair Targets</p>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.repair')}</p>
               <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                空白漏翻 {qualityReport.totals.emptyTranslations}
+                {t('report.card.empty', { count: qualityReport.totals.emptyTranslations })}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                占位符 {qualityReport.totals.placeholderCells} · ID {qualityReport.totals.idMismatches}
+                {t('report.card.placeholder', { placeholder: qualityReport.totals.placeholderCells, id: qualityReport.totals.idMismatches })}
               </p>
             </div>
             <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>Format & Structure</p>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.formatStructure')}</p>
               <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                格式 {qualityReport.totals.spacingIssues}
+                {t('report.card.format', { count: qualityReport.totals.spacingIssues })}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                H {qualityReport.totals.spacingHigh} · M {qualityReport.totals.spacingMedium} · L {qualityReport.totals.spacingLow}
+                {t('report.card.formatLevels', { high: qualityReport.totals.spacingHigh, medium: qualityReport.totals.spacingMedium, low: qualityReport.totals.spacingLow })}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                结构 {qualityReport.totals.structureMismatches}
+                {t('report.card.structure', { count: qualityReport.totals.structureMismatches })}
               </p>
             </div>
           </div>
 
           <div className={`${nestedPanelClass} flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between`}>
             <div>
-              <h4 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>Quality Loop</h4>
+              <h4 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('report.loop')}</h4>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                本地问题样本库：{issueCaseCount} 条。点击每条 finding 的 Save & Apply 可保存人工修正；DOCX/PDF 会同步写回当前文档。
+                {t('report.cases.hint', { count: issueCaseCount })}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -262,7 +264,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                 issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
               }`}
             >
-              Promote TM
+              {t('report.cases.promote')}
             </button>
             <button
               type="button"
@@ -272,7 +274,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                 issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
               }`}
             >
-              Asset JSON
+              {t('report.cases.asset')}
             </button>
             <button
               type="button"
@@ -282,7 +284,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                   issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
                 }`}
             >
-              Export JSONL
+              {t('report.cases.jsonl')}
             </button>
             <button
               type="button"
@@ -292,7 +294,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                 issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
               }`}
             >
-              Regression JSONL
+              {t('report.cases.regression')}
             </button>
             <button
               type="button"
@@ -302,20 +304,20 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                   issueCaseCount === 0 ? disabledButtonClass : neutralButtonClass
                 }`}
               >
-                Clear Cases
+                {t('report.cases.clear')}
               </button>
             </div>
           </div>
 
           <details className={`rounded-lg border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/30'}`}>
             <summary className="cursor-pointer list-none flex items-center justify-between">
-              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>Details & Sample Review</span>
-              <span className={`text-[11px] ${mutedTextClass}`}>{qualityFindings.length} findings</span>
+              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('report.details')}</span>
+              <span className={`text-[11px] ${mutedTextClass}`}>{t('report.findings.total', { count: qualityFindings.length })}</span>
             </summary>
             <div className="space-y-3 mt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Findings</h4>
+                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('report.findings')}</h4>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(['all', 'high', 'medium', 'low'] as const).map((filter) => (
                       <button
@@ -330,17 +332,17 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                               : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
                         }`}
                       >
-                        {filter} {findingCounts[filter]}
+                        {t(`report.filter.${filter}`)} {findingCounts[filter]}
                       </button>
                     ))}
                   </div>
                 </div>
                 <span className="text-[11px] text-slate-500">
-                  {filteredQualityFindings.length} / {qualityFindings.length} items
+                  {t('report.findings.count', { shown: filteredQualityFindings.length, total: qualityFindings.length })}
                 </span>
               </div>
               {filteredQualityFindings.length === 0 ? (
-                <p className="text-xs text-slate-500">当前未发现需要定位的问题。</p>
+                <p className="text-xs text-slate-500">{t('report.findings.none')}</p>
               ) : (
                 <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
                   {filteredQualityFindings.slice(0, 40).map((finding) => (
@@ -353,18 +355,18 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                             </p>
                             {finding.severity && (
                               <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${severityBadgeClass(finding.severity)}`}>
-                                {finding.severity}
+                                {t(`report.filter.${finding.severity}`)}
                               </span>
                             )}
                           </div>
                           <p className="text-[11px] text-slate-500">{finding.locationLabel}</p>
                           {finding.original && (
                             <p className="text-[11px] text-slate-400">
-                              原文：{finding.original.replace(/\s+/g, ' ').slice(0, 120)}
+                              {t('report.finding.original', { text: finding.original.replace(/\s+/g, ' ').slice(0, 120) })}
                             </p>
                           )}
                           <p className="text-[11px] text-slate-500">
-                            译文：{(finding.translated || '(empty)').replace(/\s+/g, ' ').slice(0, 120)}
+                            {t('report.finding.translated', { text: (finding.translated || t('common.empty')).replace(/\s+/g, ' ').slice(0, 120) })}
                           </p>
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
@@ -372,13 +374,13 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                             onClick={() => saveQualityFindingCorrection(finding)}
                             className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
                           >
-                            Save & Apply
+                            {t('report.finding.save')}
                           </button>
                           <button
                             onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}
                             className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all"
                           >
-                            Jump
+                            {t('common.jump')}
                           </button>
                         </div>
                       </div>
@@ -391,9 +393,9 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             <div className={`space-y-3 border-t pt-5 ${sectionDividerClass}`}>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Sample Review</h4>
+                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('report.sample.title')}</h4>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    先生成抽样池，再用 AI 做只读审核。不会自动改写译文。
+                    {t('report.sample.hint')}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -403,7 +405,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     onChange={(e) => setSampleReviewCount(Number(e.target.value))}
                   >
                     {[10, 20, 30, 50].map((value) => (
-                      <option key={value} value={value}>{value} samples</option>
+                      <option key={value} value={value}>{t('report.sample.count', { count: value })}</option>
                     ))}
                   </select>
                   <button
@@ -415,7 +417,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                     }`}
                   >
-                    Start Sample Review
+                    {t('report.sample.start')}
                   </button>
                   <button
                     onClick={runAiSampleReview}
@@ -426,7 +428,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                     }`}
                   >
-                    {isRunningSampleReviewAi ? 'AI Reviewing...' : 'Run AI Review'}
+                    {isRunningSampleReviewAi ? t('report.sample.aiRunning') : t('report.sample.ai')}
                   </button>
                 </div>
               </div>
@@ -436,28 +438,28 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[11px] text-slate-500">AI 审核结果</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('high')}`}>
-                      High {sampleReviewAiSummary.high}
+                      {t('report.risk.high')} {sampleReviewAiSummary.high}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('medium')}`}>
-                      Medium {sampleReviewAiSummary.medium}
+                      {t('report.risk.medium')} {sampleReviewAiSummary.medium}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('low')}`}>
-                      Low {sampleReviewAiSummary.low}
+                      {t('report.risk.low')} {sampleReviewAiSummary.low}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass('fail')}`}>
-                      Fail {sampleReviewAiSummary.fail}
+                      {t('report.verdict.fail')} {sampleReviewAiSummary.fail}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass('warning')}`}>
-                      Warning {sampleReviewAiSummary.warning}
+                      {t('report.verdict.warning')} {sampleReviewAiSummary.warning}
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass('pass')}`}>
-                      Pass {sampleReviewAiSummary.pass}
+                      {t('report.verdict.pass')} {sampleReviewAiSummary.pass}
                     </span>
                   </div>
                   {(sampleReviewAiMeta?.model || sampleReviewAiMeta?.engine) && (
                     <p className="text-[11px] text-slate-500 mt-2">
-                      审核模型：{sampleReviewAiMeta?.model || 'unknown'}
-                      {sampleReviewAiMeta?.engine ? ` · 引擎 ${sampleReviewAiMeta.engine}` : ''}
+                      {t('report.sample.model', { model: sampleReviewAiMeta?.model || t('common.unknown') })}
+                      {sampleReviewAiMeta?.engine ? t('report.sample.engine', { engine: sampleReviewAiMeta.engine }) : ''}
                     </p>
                   )}
                 </div>
@@ -476,10 +478,10 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                               {review && (
                                 <>
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass(review.risk)}`}>
-                                    {review.risk}
+                                    {t(`report.risk.${review.risk}`)}
                                   </span>
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewVerdictBadgeClass(review.verdict)}`}>
-                                    {review.verdict}
+                                    {t(`report.verdict.${review.verdict}`)}
                                   </span>
                                 </>
                               )}
@@ -487,7 +489,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                             <p className="text-[11px] text-slate-500 mt-1">抽样理由：{item.reason}</p>
                             {review?.issueTypes?.length ? (
                               <p className="text-[11px] text-slate-500 mt-1">
-                                问题类型：{review.issueTypes.join(' / ')}
+                                {t('report.sample.issueTypes', { types: review.issueTypes.join(' / ') })}
                               </p>
                             ) : null}
                           </div>
@@ -495,28 +497,28 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                             onClick={() => jumpToPreviewCell(item.rowIndex, item.columnKey)}
                             className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
                           >
-                            View In Table
+                            {t('report.sample.view')}
                           </button>
                         </div>
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
                           <div className={nestedPanelClass}>
-                            <p className="text-slate-500 uppercase tracking-wider mb-2">Source</p>
+                            <p className="text-slate-500 uppercase tracking-wider mb-2">{t('preview.source')}</p>
                             <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{item.original || '(empty)'}</p>
                           </div>
                           <div className={nestedPanelClass}>
-                            <p className="text-slate-500 uppercase tracking-wider mb-2">Target</p>
+                            <p className="text-slate-500 uppercase tracking-wider mb-2">{t('preview.target')}</p>
                             <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{item.translated || '(empty)'}</p>
                           </div>
                         </div>
                         {review && (
                           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
                             <div className={nestedPanelClass}>
-                              <p className="text-slate-500 uppercase tracking-wider mb-2">AI Comment</p>
-                              <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.comment || '未给出额外说明。'}</p>
+                              <p className="text-slate-500 uppercase tracking-wider mb-2">{t('report.sample.comment')}</p>
+                              <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.comment || t('report.sample.noComment')}</p>
                             </div>
                             <div className={nestedPanelClass}>
-                              <p className="text-slate-500 uppercase tracking-wider mb-2">Suggested Fix</p>
-                              <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.suggestion || '无需修改'}</p>
+                              <p className="text-slate-500 uppercase tracking-wider mb-2">{t('report.sample.suggestion')}</p>
+                              <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.suggestion || t('report.sample.noChange')}</p>
                             </div>
                           </div>
                         )}

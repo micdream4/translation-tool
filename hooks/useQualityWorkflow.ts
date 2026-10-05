@@ -61,7 +61,7 @@ type CurrentIssueSummary = {
   rows?: number;
   rowIndices?: number[];
   missingRows?: number[];
-  details: UntranslatedCell[];
+  details?: UntranslatedCell[];
 };
 
 type DocumentIssueDetail = {
@@ -82,6 +82,7 @@ type DocumentIssueResult = {
 type AutoRepairExcelPlaceholdersResult = {
   records: POCTRecord[];
   fixedCells: number;
+  cleanedCells?: number;
   remainingCells: number;
   changed: boolean;
 };

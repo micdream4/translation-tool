@@ -76,6 +76,7 @@ export class TranslationHub {
   };
   private lastEngine: "cloudflare-ai" | "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
   private lastModelIssues: ProxyModelIssue[] = [];
+  private lastModel = "";
 
   constructor() {
     if (isProxyMode()) {
@@ -210,6 +211,7 @@ export class TranslationHub {
         throw error;
       }
       this.lastEngine = this.proxy.getLastEngine();
+      this.lastModel = this.proxy.getLastModel();
       this.lastModelIssues = this.proxy.getLastModelIssues();
       if (!Array.isArray(translated) || translated.length !== req.records.length) {
         throw new Error(
@@ -356,6 +358,10 @@ export class TranslationHub {
 
   getLastEngine() {
     return this.lastEngine;
+  }
+
+  getLastModel() {
+    return this.lastModel;
   }
 
   getLastModelIssues() {

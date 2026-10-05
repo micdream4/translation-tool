@@ -1,5 +1,5 @@
 import type { TranslationHub, TranslationRequest } from "../services/translationHub";
-import type { POCTRecord, ProcessingState, TargetLanguage, WorkflowStageKey } from "../types";
+import type { BatchMonitor, POCTRecord, ProcessingState, TargetLanguage, WorkflowStageKey } from "../types";
 import { getPdfSegmentText, setPdfSegmentText, type PdfContext, type PdfSegment } from "../utils/pdf";
 import { polishTranslation } from "../utils/postprocess";
 import {
@@ -33,6 +33,8 @@ export interface PdfTranslationWorkflowOptions {
   placeholderStore: Map<string, Record<string, string>>;
   pauseRequestedRef: { current: boolean };
   addLog: (message: string) => void;
+  batchMonitor?: BatchMonitor;
+  getUsedModelLabel?: () => string;
   modelLabel?: string;
   shouldTranslateText: (text: string) => boolean;
   dedupeLeadingRepeat: (source: string, translated: string) => string;
@@ -68,6 +70,8 @@ export const runPdfTranslationWorkflow = async ({
   placeholderStore,
   pauseRequestedRef,
   addLog,
+  batchMonitor,
+  getUsedModelLabel,
   modelLabel,
   shouldTranslateText,
   dedupeLeadingRepeat,
@@ -133,6 +137,7 @@ export const runPdfTranslationWorkflow = async ({
           (segment) => getPdfSegmentText(segment) || segment.original
         );
         addLog(`PDF Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段，约 ${chunkChars} 字符`);
+        batchMonitor?.begin({ kind: 'pdf', batchNum, totalBatches, items: chunk.length, unit: 'segments' });
         const memoryStats = createTranslationMemoryStats();
         const memoryHits = await lookupReusableTranslations(
           chunk.map((segment) => getPdfSegmentText(segment) || segment.original)
@@ -188,12 +193,14 @@ export const runPdfTranslationWorkflow = async ({
             });
             applyLatestModelCooldowns?.(`PDF Batch ${batchNum}`);
             addLog(
-              `PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${modelLabel || "unknown"}，用时 ${formatElapsedSeconds(
+              `PDF Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${getUsedModelLabel?.() || modelLabel || "unknown"}，用时 ${formatElapsedSeconds(
                 Date.now() - batchStartedAt
               )}`
             );
+            batchMonitor?.end('pdf', batchNum, 'ok');
           } else {
             addLog(`PDF Batch ${batchNum}: 全部命中本地翻译记忆。`);
+            batchMonitor?.end('pdf', batchNum, 'memory');
           }
         } catch (err) {
           applyLatestModelCooldowns?.(`PDF Batch ${batchNum}`);
@@ -203,6 +210,7 @@ export const runPdfTranslationWorkflow = async ({
               Date.now() - batchStartedAt
             )}：${errMsg}`
           );
+          batchMonitor?.end('pdf', batchNum, 'failed', errMsg);
           continue;
         }
 

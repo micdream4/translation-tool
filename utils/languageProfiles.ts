@@ -761,7 +761,7 @@ export const collectTargetDiacriticRisks = (text: string, targetLang?: TargetLan
   const tokens = String(text || '').match(/\b[A-Za-zÀ-ÖØ-öø-ÿœŒ][A-Za-zÀ-ÖØ-öø-ÿœŒ'-]{2,}\b/g) || [];
   const risks: Array<{ token: string; preferred: string }> = [];
   tokens.forEach((token) => {
-    const candidates = Array.from(new Set([token, ...token.split(/['’]/g)])).filter(
+    const candidates = Array.from(new Set<string>([token, ...String(token).split(/['’]/g)])).filter(
       (item) => item.length >= 3
     );
     candidates.forEach((candidate) => {

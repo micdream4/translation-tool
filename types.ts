@@ -139,3 +139,29 @@ export interface SampleReviewAIResult {
   comment: string;
   suggestion?: string;
 }
+
+export type BatchRunStatus = 'running' | 'ok' | 'memory' | 'switched' | 'failed';
+
+export interface BatchRun {
+  id: string;
+  kind: 'excel' | 'docx' | 'pdf';
+  batchNum: number;
+  totalBatches: number;
+  items: number;
+  unit: 'rows' | 'segments';
+  startedAt: number;
+  elapsedMs?: number;
+  status: BatchRunStatus;
+  model?: string;
+  note?: string;
+}
+
+export interface BatchMonitor {
+  begin: (info: { kind: BatchRun['kind']; batchNum: number; totalBatches: number; items: number; unit: BatchRun['unit'] }) => void;
+  end: (kind: BatchRun['kind'], batchNum: number, outcome: 'ok' | 'memory' | 'failed', note?: string) => void;
+}
+
+export interface LogEntry {
+  time: number;
+  message: string;
+}

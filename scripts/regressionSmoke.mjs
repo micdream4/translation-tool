@@ -253,7 +253,7 @@ test("Excel formula cells are never translated or flattened during export", asyn
   assert.equal(preserved.stats.overwrittenFormulas, 0);
   assert.equal(preserved.stats.skippedFormulas, 1);
 
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   assert.doesNotMatch(appSource, /overwriteFormulas:\s*true/);
 });
 
@@ -309,10 +309,25 @@ test("Excel skip scope resolves row and column rules across sheets", async () =>
   assert.equal(report.issues.chinese.some((item) => item.rowIndex === 1 && item.columnKey === "Text"), true);
 });
 
+// App.tsx is being split into hooks and components, so source-level checks read all of them.
+const readAppSource = () => {
+  const dirs = ["components/translator", "hooks/translation"];
+  const files = ["App.tsx"];
+  dirs.forEach((dir) => {
+    const full = path.join(repoRoot, dir);
+    if (!fs.existsSync(full)) return;
+    fs.readdirSync(full)
+      .filter((name) => /\.(ts|tsx)$/.test(name))
+      .sort()
+      .forEach((name) => files.push(path.join(dir, name)));
+  });
+  return files.map((file) => fs.readFileSync(path.join(repoRoot, file), "utf8")).join("\n");
+};
+
 const readI18nSource = () => fs.readFileSync(path.join(repoRoot, "utils/i18n.ts"), "utf8");
 
 test("frontend upload copy stays aligned with supported formats", () => {
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   assert.match(appSource, /accept="\.xlsx,\.docx,\.pdf"/);
   assert.match(appSource, /extension !== 'xlsx' && extension !== 'docx' && extension !== 'pdf'/);
   assert.match(readI18nSource(), /Supports Excel \(\.xlsx\), Word \(\.docx\), and text-based PDF/);
@@ -321,7 +336,7 @@ test("frontend upload copy stays aligned with supported formats", () => {
 });
 
 test("frontend auth state is isolated in useAuth hook", () => {
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const authHookSource = fs.readFileSync(path.join(repoRoot, "hooks/useAuth.ts"), "utf8");
   const authFunctionSource = fs.readFileSync(path.join(repoRoot, "functions/_shared/auth.ts"), "utf8");
   const llmProviderSource = fs.readFileSync(path.join(repoRoot, "functions/_shared/llmProviders.ts"), "utf8");
@@ -555,7 +570,7 @@ test("UI dictionaries stay in sync and cover every key used by the interface", (
 });
 
 test("translator page uses one language at a time and drops the redundant quality buttons", () => {
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const headerSource = fs.readFileSync(path.join(repoRoot, "components/Header.tsx"), "utf8");
   assert.doesNotMatch(appSource, /applyQualityFixes/);
   assert.doesNotMatch(appSource, />\s*Apply Cleanup\s*</);
@@ -573,7 +588,7 @@ test("translator page uses one language at a time and drops the redundant qualit
 });
 
 test("run monitor records per-batch model, elapsed time and failures for every document kind", () => {
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const pdfWorkflowSource = fs.readFileSync(path.join(repoRoot, "workflows/pdfTranslationWorkflow.ts"), "utf8");
   const monitorSource = fs.readFileSync(path.join(repoRoot, "components/RunMonitor.tsx"), "utf8");
   const logSource = fs.readFileSync(path.join(repoRoot, "components/LogConsole.tsx"), "utf8");
@@ -745,7 +760,7 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   const pdfSource = fs.readFileSync(path.join(repoRoot, "utils/pdf.ts"), "utf8");
   const pdfWorkflowSource = fs.readFileSync(path.join(repoRoot, "workflows/pdfTranslationWorkflow.ts"), "utf8");
   const pdfTextLayerSource = fs.readFileSync(path.join(repoRoot, "utils/pdfTextLayer.ts"), "utf8");
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const { canDrawSelectablePdfText, normalizePdfTextLayerText } = await bundleTsModule(path.join(repoRoot, "utils/pdfTextLayer.ts"));
   assert.match(pdfSource, /getDocument\(\{ data \}\)/);
   assert.match(pdfSource, /getTextContent\(\)/);
@@ -916,7 +931,7 @@ test("local issue capture workflow prepares ignored self-iteration workspace", (
 
 test("DOCX parser covers body, headers, footers, footnotes, endnotes, and comments", async () => {
   const docxSource = fs.readFileSync(path.join(repoRoot, "utils/docx.ts"), "utf8");
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const { setDocxSegmentText, getDocxSegmentText, shouldNormalizeDocxNumbering } = await bundleTsModule(
     path.join(repoRoot, "utils/docx.ts")
   );
@@ -1071,7 +1086,7 @@ test("production proxy builds do not inject server-side model keys into the brow
 
 test("translation memory supports exact reuse and in-file dedupe", async () => {
   const memorySource = fs.readFileSync(path.join(repoRoot, "utils/translationMemory.ts"), "utf8");
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const { normalizeMemorySource, buildTranslationMemoryKey } = await transpileTsModule(
     path.join(repoRoot, "utils/translationMemory.ts")
   );
@@ -1098,7 +1113,7 @@ test("translation memory supports exact reuse and in-file dedupe", async () => {
 });
 
 test("quality issue cases can be saved and exported from quality findings", async () => {
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const qualityPanelSource = fs.readFileSync(path.join(repoRoot, "components/QualityReportPanel.tsx"), "utf8");
   const qualityHookSource = fs.readFileSync(path.join(repoRoot, "hooks/useQualityWorkflow.ts"), "utf8");
   const issueCaseSource = fs.readFileSync(path.join(repoRoot, "utils/issueCases.ts"), "utf8");
@@ -1476,7 +1491,7 @@ test("quality core adapters preserve existing row-based quality checks", async (
   } = await bundleTsModule(
     path.join(repoRoot, "utils/translationTokens.ts")
   );
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const checksSource = fs.readFileSync(path.join(repoRoot, "quality/checks.ts"), "utf8");
   const compatibilitySource = fs.readFileSync(path.join(repoRoot, "utils/quality.ts"), "utf8");
   assert.match(checksSource, /runQualityChecksOnUnits/);
@@ -1763,7 +1778,7 @@ test("retry target helpers reuse quality issue details across document kinds", a
     buildTextSegmentRetryPlan,
     shouldTranslateCellValue
   } = await bundleTsModule(path.join(repoRoot, "utils/retryTargets.ts"));
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
 
   const sourceRows = [
     { id: "A-001", content: "List контрольных образцов", unit: "2-8°C" },
@@ -1878,7 +1893,7 @@ test("retry target helpers reuse quality issue details across document kinds", a
 });
 
 test("Traditional Chinese Taiwan target has UI, prompt, and quality-check coverage", async () => {
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   const languageSource = fs.readFileSync(path.join(repoRoot, "utils/language.ts"), "utf8");
   const profileSource = fs.readFileSync(path.join(repoRoot, "utils/translationProfiles.ts"), "utf8");
   const modelReviewSource = fs.readFileSync(path.join(repoRoot, "functions/api/model-review.ts"), "utf8");
@@ -3024,7 +3039,7 @@ test("API translate auto model chain falls through when a model request times ou
 });
 
 test("Auto translation passes OpenRouter model chain through string and spreadsheet flows", () => {
-  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const appSource = readAppSource();
   assert.match(appSource, /const getTranslationOptions = \(\) => \{/);
   assert.match(appSource, /translationModelPreference === AUTO_OPENROUTER_MODEL[\s\S]*openRouterModels/);
   assert.match(appSource, /String Resource[\s\S]*translationHub\.translateBatch\(\{[\s\S]*options: getTranslationOptions\(\)/);

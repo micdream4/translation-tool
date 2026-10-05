@@ -5,8 +5,13 @@ import Header from './components/Header';
 import LogConsole from './components/LogConsole';
 import QualityReportPanel from './components/QualityReportPanel';
 import RunMonitor from './components/RunMonitor';
+import SettingsPanel from './components/translator/SettingsPanel';
+import PreviewPanel from './components/translator/PreviewPanel';
+import QualityTab from './components/translator/QualityTab';
+import StringResourcePanel from './components/translator/StringResourcePanel';
 import ExportBar from './components/translator/ExportBar';
 import { getUiClasses } from './components/translator/uiClasses';
+import type { DocxIssueDetail } from './components/translator/types';
 import { useI18n } from './hooks/useI18n';
 import { useAuth } from './hooks/useAuth';
 import { useQualityWorkflow } from './hooks/useQualityWorkflow';
@@ -349,16 +354,6 @@ type IssueSummaryState = {
   details: UntranslatedCell[];
 };
 
-type DocxIssueDetail = {
-  index: number;
-  id: string;
-  locationLabel?: string;
-  text: string;
-  snippet: string;
-  chineseChars: number;
-  lowPriority: boolean;
-  issueType: 'source' | 'placeholder' | 'glue';
-};
 
 type StringOutputDiagnostic = {
   lang: TargetLanguage;
@@ -4924,249 +4919,49 @@ const App: React.FC = () => {
       </main>
       ) : (
       <main className="flex-1 max-w-[1180px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-5">
-        <section className={`${panelClass} space-y-5`}>
-          <h2 className="sr-only">{t('settings.title')}</h2>
-
-          <div
-            className={`relative flex flex-wrap items-center gap-4 rounded-2xl border-2 border-dashed px-4 py-3 transition-colors ${
-              isLight
-                ? 'border-indigo-100 bg-slate-50/70 hover:border-indigo-300'
-                : 'border-white/[0.08] bg-white/[0.025] hover:border-indigo-500/45'
-            }`}
-          >
-            <input
-              type="file"
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              accept=".xlsx,.docx,.pdf"
-              onChange={handleFileUpload}
-              disabled={processingState.status === 'processing'}
-              aria-label={file ? t('settings.upload.replace') : t('settings.upload.cta')}
-            />
-            <div
-              className={`grid h-11 w-9 shrink-0 place-items-center rounded-md font-mono text-[11px] font-semibold ${
-                isLight ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-400/15 text-indigo-200'
-              }`}
-              aria-hidden="true"
-            >
-              {fileExtension || '+'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{file ? file.name : t('settings.upload.cta')}</p>
-              <p className={`truncate text-xs ${mutedTextClass}`}>{fileSummaryLine}</p>
-            </div>
-            <span
-              className={`pointer-events-none rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-                isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-white/[0.1] bg-white/[0.05] text-slate-200'
-              }`}
-            >
-              {file ? t('settings.upload.replace') : t('settings.upload.cta')}
-            </span>
-          </div>
-          {documentKind === 'docx' && docxContextRef.current && (
-            <div className={`space-y-1 text-xs ${mutedTextClass}`}>
-              <p>{t('settings.docx.coverage', { coverage: formatDocxCoverageSummary(docxContextRef.current.coverage) })}</p>
-              {docxContextRef.current.coverageWarnings.length > 0 && (
-                <p>{t('settings.scopeWarn', { warnings: docxContextRef.current.coverageWarnings.join('；') })}</p>
-              )}
-            </div>
-          )}
-          {documentKind === 'pdf' && pdfContextRef.current && pdfContextRef.current.coverageWarnings.length > 0 && (
-            <p className={`text-xs ${mutedTextClass}`}>
-              {t('settings.scopeWarn', { warnings: pdfContextRef.current.coverageWarnings.join('；') })}
-            </p>
-          )}
-
-          {savedSnapshot && processedData.length === 0 && (
-            <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10'}`}>
-              <p className={`text-sm ${isLight ? 'text-amber-800' : 'text-amber-200'}`}>{t('settings.progress.found')}</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={applySavedProgress}
-                  className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500"
-                >
-                  {t('settings.progress.restore')}
-                </button>
-                <button
-                  type="button"
-                  onClick={discardSavedProgress}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold ${neutralButtonClass}`}
-                >
-                  {t('settings.progress.discard')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.3fr)_auto] xl:items-start">
-            <div className="min-w-0">
-              <label htmlFor="target-language" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.targetLang')}</label>
-              <select
-                id="target-language"
-                className={fieldClass}
-                value={targetLang}
-                onChange={(e) => setTargetLang(e.target.value as TargetLanguage)}
-                disabled={processingState.status === 'processing'}
-              >
-                {TARGET_LANGUAGE_OPTIONS.map((langOption) => (
-                  <option key={langOption} value={langOption}>
-                    {getTargetLanguageLabel(langOption)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <p className={`mb-1.5 text-xs font-medium ${headingMutedClass}`}>{t('settings.strategy')}</p>
-              <div className={`inline-flex rounded-xl border p-0.5 ${isLight ? 'border-slate-200 bg-white' : 'border-white/[0.1] bg-white/[0.04]'}`} role="group" aria-label={t('settings.strategy')}>
-                {([
-                  ['full', t('settings.strategy.full')],
-                  ['selective', t('settings.strategy.selective')]
-                ] as const).map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setTranslationMode(mode)}
-                    disabled={isTranslating}
-                    aria-pressed={translationMode === mode}
-                    className={`rounded-[10px] px-4 py-2 text-sm font-semibold transition-all ${
-                      translationMode === mode
-                        ? 'bg-indigo-600 text-white'
-                        : isLight
-                          ? 'text-slate-600 hover:text-slate-900'
-                          : 'text-slate-400 hover:text-slate-100'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="min-w-0">
-              <label htmlFor="translation-model" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.model')}</label>
-              <select
-                id="translation-model"
-                className={fieldClass}
-                value={translationModelPreference}
-                onChange={(e) => setTranslationModelPreference(e.target.value)}
-                disabled={isTranslating || isStringTranslating}
-              >
-                <option value={AUTO_OPENROUTER_MODEL}>
-                  {usesDocumentQualityModels
-                    ? t('settings.model.autoDoc', { kind: documentKind.toUpperCase(), chain: autoModelChainLabel })
-                    : t('settings.model.auto', { chain: autoModelChainLabel })}
-                </option>
-                {availableTranslationModels.map((model) => (
-                  <option key={model} value={model}>
-                    {getTranslationModelLabel(model)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="md:col-span-2 xl:col-span-1">
-              <span className="mb-1.5 hidden text-xs xl:block" aria-hidden="true">&nbsp;</span>
-              <button
-                type="button"
-                onClick={() => runTranslation('fresh')}
-                disabled={!canRunTranslation || isTranslating}
-                className={`w-full whitespace-nowrap rounded-xl px-6 py-2.5 font-semibold transition-all ${
-                  !canRunTranslation || isTranslating
-                    ? disabledButtonClass
-                    : 'bg-indigo-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)] hover:bg-indigo-500 active:scale-[0.99]'
-                }`}
-              >
-                {isTranslating ? t('settings.starting') : t('settings.start')}
-              </button>
-            </div>
-          </div>
-
-          <div className={`space-y-1 text-xs ${mutedTextClass}`}>
-            <p>{t('settings.strategy.fullHint')}</p>
-            <p>
-              {usesDocumentQualityModels
-                ? t('settings.model.autoDocHint', { kind: documentKind.toUpperCase(), chain: autoModelChainLabel })
-                : t('settings.model.autoHint', { chain: autoModelChainLabel })}
-              {currentSkippedOpenRouterModels.length > 0
-                ? ` ${t('settings.model.skipped', { models: currentSkippedOpenRouterModels.map(getModelLabel).join(', ') })}`
-                : ''}
-            </p>
-          </div>
-
-          <details className={`rounded-xl border ${isLight ? 'border-slate-200' : 'border-white/[0.08]'}`}>
-            <summary className={`flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-              <span>{t('settings.more')}</span>
-              <span className={`text-xs font-normal ${mutedTextClass}`}>
-                {t('settings.more.summary', {
-                  terms: runtimeProtectedTermsCount,
-                  tm: translationMemoryEnabled ? t('common.on') : t('common.off')
-                })}
-              </span>
-            </summary>
-            <div className={`grid gap-5 border-t p-4 md:grid-cols-2 ${sectionDividerClass}`}>
-              <div>
-                <label htmlFor="protected-terms" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.protected')}</label>
-                <textarea
-                  id="protected-terms"
-                  className={textareaClass}
-                  value={runtimeProtectedTermsRaw}
-                  onChange={(e) => setRuntimeProtectedTermsRaw(e.target.value)}
-                  disabled={isTranslating}
-                  placeholder={t('settings.protected.placeholder')}
-                />
-                <p className={`mt-1 text-xs ${mutedTextClass}`}>{t('settings.protected.hint', { count: runtimeProtectedTermsCount })}</p>
-              </div>
-
-              {documentKind === 'excel' && (
-                <div>
-                  <label htmlFor="excel-skip-scope" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.skip')}</label>
-                  <textarea
-                    id="excel-skip-scope"
-                    className={textareaClass}
-                    value={excelSkipScopeRaw}
-                    onChange={(e) => setExcelSkipScopeRaw(e.target.value)}
-                    disabled={isTranslating}
-                    placeholder={t('settings.skip.placeholder')}
-                  />
-                  <p className={`mt-1 text-xs ${mutedTextClass}`}>{t('settings.skip.hint', { summary: excelSkipScopeSummary })}</p>
-                  {excelSkipScope.errors.length > 0 && (
-                    <p className={`mt-1 text-[11px] ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-                      {excelSkipScope.errors.slice(0, 3).join('；')}
-                      {excelSkipScope.errors.length > 3 ? '；...' : ''}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className={`space-y-2 text-xs ${mutedTextClass}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <label className="flex items-center gap-2 font-semibold">
-                    <input
-                      type="checkbox"
-                      checked={translationMemoryEnabled}
-                      onChange={(e) => setTranslationMemoryEnabled(e.target.checked)}
-                      disabled={isTranslating}
-                      className="h-4 w-4 accent-indigo-500"
-                    />
-                    <span>{t('settings.tm.use')}</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={clearTranslationMemoryData}
-                    disabled={isTranslating || translationMemoryCount === 0}
-                    className={`rounded-lg px-3 py-1.5 font-semibold transition-all ${
-                      isTranslating || translationMemoryCount === 0 ? disabledButtonClass : neutralButtonClass
-                    }`}
-                  >
-                    {t('settings.tm.clear')}
-                  </button>
-                </div>
-                <p>{t('settings.tm.count', { count: translationMemoryCount })}</p>
-              </div>
-            </div>
-          </details>
-        </section>
+        <SettingsPanel
+          isLight={isLight}
+          AUTO_OPENROUTER_MODEL={AUTO_OPENROUTER_MODEL}
+          applySavedProgress={applySavedProgress}
+          autoModelChainLabel={autoModelChainLabel}
+          availableTranslationModels={availableTranslationModels}
+          canRunTranslation={canRunTranslation}
+          clearTranslationMemoryData={clearTranslationMemoryData}
+          currentSkippedOpenRouterModels={currentSkippedOpenRouterModels}
+          discardSavedProgress={discardSavedProgress}
+          documentKind={documentKind}
+          docxContextRef={docxContextRef}
+          excelSkipScope={excelSkipScope}
+          excelSkipScopeRaw={excelSkipScopeRaw}
+          excelSkipScopeSummary={excelSkipScopeSummary}
+          file={file}
+          fileExtension={fileExtension}
+          fileSummaryLine={fileSummaryLine}
+          getModelLabel={getModelLabel}
+          getTranslationModelLabel={getTranslationModelLabel}
+          handleFileUpload={handleFileUpload}
+          isStringTranslating={isStringTranslating}
+          isTranslating={isTranslating}
+          pdfContextRef={pdfContextRef}
+          processedData={processedData}
+          processingState={processingState}
+          runTranslation={runTranslation}
+          runtimeProtectedTermsCount={runtimeProtectedTermsCount}
+          runtimeProtectedTermsRaw={runtimeProtectedTermsRaw}
+          savedSnapshot={savedSnapshot}
+          setExcelSkipScopeRaw={setExcelSkipScopeRaw}
+          setRuntimeProtectedTermsRaw={setRuntimeProtectedTermsRaw}
+          setTargetLang={setTargetLang}
+          setTranslationMemoryEnabled={setTranslationMemoryEnabled}
+          setTranslationMode={setTranslationMode}
+          setTranslationModelPreference={setTranslationModelPreference}
+          targetLang={targetLang}
+          translationMemoryCount={translationMemoryCount}
+          translationMemoryEnabled={translationMemoryEnabled}
+          translationMode={translationMode}
+          translationModelPreference={translationModelPreference}
+          usesDocumentQualityModels={usesDocumentQualityModels}
+        />
 
         <RunMonitor
           isLight={isLight}
@@ -5216,454 +5011,115 @@ const App: React.FC = () => {
 
           <div className="p-5" role="tabpanel" id={`result-panel-${resultTab}`} aria-labelledby={`result-tab-${resultTab}`}>
             {resultTab === 'preview' && (
-                <section
-                  ref={previewSectionRef}
-                  className={`overflow-hidden rounded-xl border ${sectionDividerClass}`}
-                >
-                  <div className={`p-4 border-b flex justify-between items-center ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-900/50'}`}>
-                    <div className="flex items-center gap-4">
-                      <h2 className={`text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('preview.title')}</h2>
-                      {previewData.length > 0 && (
-                        <div className="flex items-center gap-2">
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only peer" 
-                              checked={showComparison}
-                              onChange={() => setShowComparison(!showComparison)}
-                            />
-                            <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                            <span className={`ml-2 text-xs font-medium ${headingMutedClass}`}>{t('preview.verify')}</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {previewFocus && (
-                        <div className={`flex items-center gap-2 text-[10px] ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
-                          <span>{t('preview.focused', { label: formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey) })}</span>
-                          <button
-                            onClick={() => setPreviewFocus(null)}
-                            className={isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-300'}
-                          >
-                            {t('preview.clearFocus')}
-                          </button>
-                        </div>
-                      )}
-                      <div className={`text-[10px] ${mutedTextClass}`}>
-                        {previewData.length > 0
-                          ? previewFocus
-                            ? t('preview.showingFocused', { count: previewRowIndices.length })
-                            : t('preview.showingLast', { shown: Math.min(10, previewData.length), total: previewData.length })
-                          : t('common.noData')}
-                      </div>
-                    </div>
-                  </div>
-
-                  {focusedPreviewCell && (
-                    <div className={`px-4 py-3 border-b ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950/40'}`}>
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div>
-                          <p className={`text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>
-                            {t('preview.focusedCell')}
-                          </p>
-                          <p className={`text-xs mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
-                        </div>
-                        <span className={`text-[10px] ${mutedTextClass}`}>
-                          {focusedPreviewCell.skipped
-                            ? t('preview.skippedKept')
-                            : focusedPreviewCell.changed ? t('preview.changed') : t('preview.identical')}
-                        </span>
-                      </div>
-                      <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
-                        <div className={nestedPanelClass}>
-                          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{t('preview.target')}</p>
-                          <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                            {focusedPreviewCell.translated || t('common.empty')}
-                          </p>
-                        </div>
-                        {showComparison && (
-                          <div className={nestedPanelClass}>
-                            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{t('preview.source')}</p>
-                            <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                              {focusedPreviewCell.original || t('common.empty')}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-            
-                  <div className={`overflow-auto h-[410px] scrollbar-thin ${isLight ? 'scrollbar-thumb-slate-200' : 'scrollbar-thumb-slate-800'}`}>
-                    {previewData.length === 0 ? (
-                      <div className={`h-full flex items-center justify-center text-sm italic ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {t('preview.waiting')}
-                      </div>
-                    ) : (
-                      <table className="w-full text-left border-collapse min-w-full table-fixed">
-                        <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-800 text-slate-400'}`}>
-                          <tr>
-                            <th className={`px-4 py-3 border-b w-20 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{t('preview.row')}</th>
-                            {previewColumnKeys.map(key => (
-                              <th key={key} className={`px-4 py-3 border-b truncate w-40 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{key}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-slate-800'}>
-                          {previewRowIndices.map((actualIndex) => {
-                            const record = previewData[actualIndex] || {};
-                            const originalRecord = previewSourceRows[actualIndex] || {};
-                            const isFocusedRow = previewFocus?.rowIndex === actualIndex;
-
-                            return (
-                              <tr
-                                key={actualIndex}
-                                className={`${isLight ? 'hover:bg-indigo-50/60' : 'hover:bg-slate-800/30'} transition-colors ${isFocusedRow ? 'bg-indigo-500/10' : ''}`}
-                              >
-                                <td className={`px-4 py-3 border-b text-[11px] text-slate-500 font-mono ${isLight ? 'border-slate-100' : 'border-slate-800/50'}`}>
-                                  R{formatExcelRowNumber(actualIndex)}
-                                </td>
-                                {previewColumnKeys.map((key, j) => {
-                                  const val = record[key];
-                                  const origVal = originalRecord ? originalRecord[key] : '';
-                                  const isDiff = hasChanged(origVal, val);
-                                  const isFocusedCell =
-                                    previewFocus?.rowIndex === actualIndex && previewFocus.columnKey === key;
-                                  const isSkippedCell = shouldSkipExcelCell(actualIndex, key);
-                            
-                                  return (
-                                    <td
-                                      key={j}
-                                      className={`px-4 py-3 border-b ${isLight ? 'border-slate-100' : 'border-slate-800/50'} ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
-                                    >
-                                      <div className="flex flex-col gap-0.5">
-                                        <span
-                                          title={String(val)}
-                                          className={`text-xs truncate whitespace-nowrap ${isDiff ? (isLight ? 'text-indigo-700 font-medium' : 'text-indigo-300 font-medium') : (isLight ? 'text-slate-700' : 'text-slate-300')}`}
-                                        >
-                                          {String(val)}
-                                        </span>
-                                  
-                                        {showComparison && isDiff && (
-                                          <span
-                                            title={String(origVal)}
-                                            className={`text-[10px] text-slate-500 truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-white border-slate-200' : 'bg-slate-800/50 border-slate-700/50'}`}
-                                          >
-                                            {String(origVal)}
-                                          </span>
-                                        )}
-                                        {isSkippedCell && (
-                                          <span className={`text-[10px] truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
-                                            {t('preview.skipped')}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </section>
+                <PreviewPanel
+                  isLight={isLight}
+                  focusedPreviewCell={focusedPreviewCell}
+                  formatExcelRowNumber={formatExcelRowNumber}
+                  formatLocationLabel={formatLocationLabel}
+                  hasChanged={hasChanged}
+                  previewColumnKeys={previewColumnKeys}
+                  previewData={previewData}
+                  previewFocus={previewFocus}
+                  previewRowIndices={previewRowIndices}
+                  previewSectionRef={previewSectionRef}
+                  previewSourceRows={previewSourceRows}
+                  setPreviewFocus={setPreviewFocus}
+                  setShowComparison={setShowComparison}
+                  shouldSkipExcelCell={shouldSkipExcelCell}
+                  showComparison={showComparison}
+                />
             )}
 
             {resultTab === 'quality' && (
-              <div className="space-y-4">
-                <div className={`${nestedPanelClass} space-y-3`}>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={runQualityCheck}
-                      disabled={!canRunQualityCheck || translationStatus === 'running'}
-                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
-                        !canRunQualityCheck || translationStatus === 'running'
-                          ? disabledButtonClass
-                          : 'bg-indigo-600 text-white hover:bg-indigo-500'
-                      }`}
-                    >
-                      {t('qc.run')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={retryAllIssues}
-                      disabled={!canRetryIssues}
-                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
-                        !canRetryIssues
-                          ? disabledButtonClass
-                          : isLight
-                            ? 'bg-amber-500 text-white hover:bg-amber-400'
-                            : 'bg-amber-500 text-slate-950 hover:bg-amber-400'
-                      }`}
-                    >
-                      {isRetryingMissing
-                        ? t('settings.starting')
-                        : fixableIssueCount > 0
-                          ? t('qc.fix.count', { count: fixableIssueCount })
-                          : t('qc.fix')}
-                    </button>
-                    <ol className="flex flex-wrap items-center gap-1.5 text-xs" aria-label={t('qc.flow')}>
-                      {[1, 2, 3, 4].map((step) => (
-                        <li
-                          key={step}
-                          className={`rounded-full border px-2.5 py-0.5 ${
-                            isLight ? 'border-slate-200 text-slate-500' : 'border-white/[0.1] text-slate-400'
-                          }`}
-                        >
-                          {step}. {t(`qc.flow.${step}`)}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                  <div className={`space-y-1 text-xs ${mutedTextClass}`}>
-                    <p>{t('qc.help.run')}</p>
-                    <p>{t('qc.help.fix')}</p>
-                    {documentKind !== 'excel' && <p>{t('qc.help.docx')}</p>}
-                  </div>
-                  {(hasTranslationAlerts || hasDocxIssues || hasPdfIssues || placeholderIssueCount > 0) && (
-                    <div className={`space-y-1 border-t pt-3 text-xs ${sectionDividerClass} ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
-                      {documentKind === 'excel' && currentIssueSummary.cells > 0 && (
-                        <p>{t('qc.alert.nonTarget', { cells: currentIssueSummary.cells, rows: currentIssueSummary.rows })}</p>
-                      )}
-                      {documentKind === 'excel' && currentIssueSummary.cells > 0 && (
-                        <p>{t('qc.alert.retryable', { cells: retryableCellCount, rows: retryCandidates.length })}</p>
-                      )}
-                      {documentKind === 'excel' && currentIssueSummary.cells > 0 && untranslatedLocationPreview && (
-                        <p className={mutedTextClass}>{t('qc.alert.example', { preview: untranslatedLocationPreview })}</p>
-                      )}
-                      {documentKind === 'excel' && writeFailedRowIndices.length > 0 && (
-                        <p>{t('qc.alert.writeFailed', { count: writeFailedRowIndices.length, preview: writeFailedRowPreview || 'N/A' })}</p>
-                      )}
-                      {documentKind === 'excel' && placeholderIssueCount > 0 && (
-                        <p>{t('qc.alert.placeholder', { count: placeholderIssueCount })}</p>
-                      )}
-                      {documentKind === 'excel' && retryCandidates.length === 0 && currentIssueSummary.cells > 0 && (
-                        <p className={mutedTextClass}>{t('qc.alert.locked')}</p>
-                      )}
-                      {hasDocxIssues && (
-                        <>
-                          <p>{t('qc.alert.docx', { count: docxIssueDetails.length, retry: docxRetryableCount, low: docxLowPriorityCount })}</p>
-                          {docxIssuePreview && <p className={mutedTextClass}>{t('qc.alert.example2', { preview: docxIssuePreview })}</p>}
-                        </>
-                      )}
-                      {hasPdfIssues && (
-                        <>
-                          <p>{t('qc.alert.pdf', { count: pdfIssueDetails.length, retry: pdfHighPriorityCount, low: pdfLowPriorityCount })}</p>
-                          {pdfIssuePreview && <p className={mutedTextClass}>{t('qc.alert.example2', { preview: pdfIssuePreview })}</p>}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <QualityReportPanel
-                  qualityReport={qualityReport}
-                  hasQualityReport={hasQualityReport}
-                  formatSnapshot={formatSnapshot}
-                  currentIssueSummary={currentIssueSummary}
-                  issueCaseCount={issueCaseCount}
-                  qualityFindings={qualityFindings}
-                  sampleReviewCount={sampleReviewCount}
-                  sampleReviewItems={sampleReviewItems}
-                  sampleReviewAiSummary={sampleReviewAiSummary}
-                  sampleReviewAiMeta={sampleReviewAiMeta}
-                  sampleReviewAiResults={sampleReviewAiResults}
-                  processedDataLength={processedData.length}
-                  isRunningSampleReviewAi={isRunningSampleReviewAi}
-                  isLight={isLight}
-                  panelClass={panelClass}
-                  metricCardClass={metricCardClass}
-                  nestedPanelClass={nestedPanelClass}
-                  subCardClass={subCardClass}
-                  headingMutedClass={headingMutedClass}
-                  mutedTextClass={mutedTextClass}
-                  disabledButtonClass={disabledButtonClass}
-                  neutralButtonClass={neutralButtonClass}
-                  primaryInlineButtonClass={primaryInlineButtonClass}
-                  sectionDividerClass={sectionDividerClass}
-                  clearQualityReport={clearQualityReport}
-                  exportQualityReport={exportQualityReport}
-                  exportDebugPackage={exportDebugPackage}
-                  exportIssueDraft={exportIssueDraft}
-                  exportIssueCases={exportIssueCases}
-                  exportRegressionCases={exportRegressionCases}
-                  exportIssueAssetCandidates={exportIssueAssetCandidates}
-                  promoteIssueCasesToTranslationMemory={promoteIssueCasesToTranslationMemory}
-                  clearIssueCases={clearIssueCases}
-                  saveQualityFindingCorrection={saveQualityFindingCorrection}
-                  jumpToPreviewCell={jumpToPreviewCell}
-                  setSampleReviewCount={setSampleReviewCount}
-                  generateSampleReview={generateSampleReview}
-                  runAiSampleReview={runAiSampleReview}
-                  severityBadgeClass={severityBadgeClass}
-                  reviewRiskBadgeClass={reviewRiskBadgeClass}
-                  reviewVerdictBadgeClass={reviewVerdictBadgeClass}
-                />
-              </div>
+              <QualityTab
+                isLight={isLight}
+                canRetryIssues={canRetryIssues}
+                canRunQualityCheck={canRunQualityCheck}
+                clearIssueCases={clearIssueCases}
+                clearQualityReport={clearQualityReport}
+                currentIssueSummary={currentIssueSummary}
+                documentKind={documentKind}
+                docxIssueDetails={docxIssueDetails}
+                docxIssuePreview={docxIssuePreview}
+                docxLowPriorityCount={docxLowPriorityCount}
+                docxRetryableCount={docxRetryableCount}
+                exportDebugPackage={exportDebugPackage}
+                exportIssueAssetCandidates={exportIssueAssetCandidates}
+                exportIssueCases={exportIssueCases}
+                exportIssueDraft={exportIssueDraft}
+                exportQualityReport={exportQualityReport}
+                exportRegressionCases={exportRegressionCases}
+                fixableIssueCount={fixableIssueCount}
+                formatSnapshot={formatSnapshot}
+                generateSampleReview={generateSampleReview}
+                hasDocxIssues={hasDocxIssues}
+                hasPdfIssues={hasPdfIssues}
+                hasQualityReport={hasQualityReport}
+                hasTranslationAlerts={hasTranslationAlerts}
+                isRetryingMissing={isRetryingMissing}
+                isRunningSampleReviewAi={isRunningSampleReviewAi}
+                issueCaseCount={issueCaseCount}
+                jumpToPreviewCell={jumpToPreviewCell}
+                pdfHighPriorityCount={pdfHighPriorityCount}
+                pdfIssueDetails={pdfIssueDetails}
+                pdfIssuePreview={pdfIssuePreview}
+                pdfLowPriorityCount={pdfLowPriorityCount}
+                placeholderIssueCount={placeholderIssueCount}
+                processedData={processedData}
+                promoteIssueCasesToTranslationMemory={promoteIssueCasesToTranslationMemory}
+                qualityFindings={qualityFindings}
+                qualityReport={qualityReport}
+                retryAllIssues={retryAllIssues}
+                retryCandidates={retryCandidates}
+                retryableCellCount={retryableCellCount}
+                reviewRiskBadgeClass={reviewRiskBadgeClass}
+                reviewVerdictBadgeClass={reviewVerdictBadgeClass}
+                runAiSampleReview={runAiSampleReview}
+                runQualityCheck={runQualityCheck}
+                sampleReviewAiMeta={sampleReviewAiMeta}
+                sampleReviewAiResults={sampleReviewAiResults}
+                sampleReviewAiSummary={sampleReviewAiSummary}
+                sampleReviewCount={sampleReviewCount}
+                sampleReviewItems={sampleReviewItems}
+                saveQualityFindingCorrection={saveQualityFindingCorrection}
+                setSampleReviewCount={setSampleReviewCount}
+                severityBadgeClass={severityBadgeClass}
+                translationStatus={translationStatus}
+                untranslatedLocationPreview={untranslatedLocationPreview}
+                writeFailedRowIndices={writeFailedRowIndices}
+                writeFailedRowPreview={writeFailedRowPreview}
+              />
             )}
 
             {resultTab === 'logs' && <LogConsole logs={logs} theme={theme} onClear={() => setLogs([])} />}
 
             {resultTab === 'strings' && (
-              <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500 pr-3">
-                {t('strings.desc')}
-              </p>
-            </div>
-            <textarea
-              className={isLight ? 'w-full bg-white border border-slate-200 rounded-lg p-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px] shadow-sm' : 'w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]'}
-              placeholder={t('strings.input.placeholder')}
-              value={stringInput}
-              onChange={(e) => setStringInput(e.target.value)}
-              disabled={isStringTranslating}
+            <StringResourcePanel
+              isLight={isLight}
+              ALL_STRING_TARGETS={ALL_STRING_TARGETS}
+              STRING_TARGET_LANGS={STRING_TARGET_LANGS}
+              clearStringHistoryData={clearStringHistoryData}
+              clearStringResources={clearStringResources}
+              copyStringOutput={copyStringOutput}
+              currentModelDisplayLabel={currentModelDisplayLabel}
+              exportCurrentStringOutput={exportCurrentStringOutput}
+              exportStringHistory={exportStringHistory}
+              hasStringOutputs={hasStringOutputs}
+              isStringTranslating={isStringTranslating}
+              selectedStringTargetLangs={selectedStringTargetLangs}
+              setStringAutoFix={setStringAutoFix}
+              setStringInput={setStringInput}
+              setStringOutputTarget={setStringOutputTarget}
+              stringAutoFix={stringAutoFix}
+              stringError={stringError}
+              stringErrorDetails={stringErrorDetails}
+              stringHistoryCount={stringHistoryCount}
+              stringInput={stringInput}
+              stringOutputTarget={stringOutputTarget}
+              stringOutputs={stringOutputs}
+              stringQualitySummary={stringQualitySummary}
+              translateStringResources={translateStringResources}
             />
-            <div className="flex flex-col gap-2">
-              <label className="text-xs text-slate-400">{t('strings.outputLang')}</label>
-              <select
-                className={isLight ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 shadow-sm' : 'bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200'}
-                value={stringOutputTarget}
-                onChange={(e) => setStringOutputTarget(e.target.value)}
-                disabled={isStringTranslating}
-              >
-                <option value={ALL_STRING_TARGETS}>{t('strings.all', { count: STRING_TARGET_LANGS.length })}</option>
-                {STRING_TARGET_LANGS.map((lang) => (
-                  <option key={lang} value={lang}>
-                    {t('strings.only', { lang: getTargetLanguageLabel(lang) })}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-slate-500">
-                {t('strings.dateHint')}</p>
-              <p className="text-[11px] text-slate-500">
-                {t('strings.modelHint', { model: currentModelDisplayLabel })}
-              </p>
-            </div>
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={translateStringResources}
-                  disabled={!stringInput.trim() || isStringTranslating}
-                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
-                    !stringInput.trim() || isStringTranslating
-                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
-                  }`}
-                >
-                  {isStringTranslating
-                    ? t('strings.running')
-                    : stringOutputTarget === ALL_STRING_TARGETS
-                      ? t('strings.runAll', { count: STRING_TARGET_LANGS.length })
-                      : t('strings.runOne', { lang: stringOutputTarget })}
-                </button>
-                <button
-                  onClick={clearStringResources}
-                  disabled={isStringTranslating || (!stringInput.trim() && !hasStringOutputs)}
-                  className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-                    isStringTranslating || (!stringInput.trim() && !hasStringOutputs)
-                      ? disabledButtonClass
-                      : 'bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/20'
-                  }`}
-                >
-                  {t('strings.clearAll')}
-                </button>
-              </div>
-              <label className="flex items-center gap-2 text-xs text-slate-400">
-                <input
-                  type="checkbox"
-                  checked={stringAutoFix}
-                  onChange={(e) => setStringAutoFix(e.target.checked)}
-                  disabled={isStringTranslating}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
-                />
-                {t('strings.autoFix')}
-              </label>
-            </div>
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-              <span className="text-xs text-slate-500">
-                {t('strings.history', { count: stringHistoryCount })}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={exportCurrentStringOutput}
-                  disabled={!hasStringOutputs || isStringTranslating}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    !hasStringOutputs || isStringTranslating
-                      ? disabledButtonClass
-                      : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                  }`}
-                >
-                  {t('strings.exportCurrent')}
-                </button>
-                <button
-                  onClick={exportStringHistory}
-                  disabled={stringHistoryCount === 0 || isStringTranslating}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    stringHistoryCount === 0 || isStringTranslating
-                      ? disabledButtonClass
-                      : neutralButtonClass
-                  }`}
-                >
-                  {t('strings.exportHistory')}
-                </button>
-                <button
-                  onClick={clearStringHistoryData}
-                  disabled={stringHistoryCount === 0 || isStringTranslating}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    stringHistoryCount === 0 || isStringTranslating
-                      ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                      : 'bg-rose-600/80 hover:bg-rose-500 text-white'
-                  }`}
-                >
-                  {t('strings.clearHistory')}
-                </button>
-              </div>
-            </div>
-            {stringQualitySummary && (
-              <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
-                {stringQualitySummary}
-              </div>
-            )}
-            {stringError && (
-              <div className="text-xs text-rose-300 space-y-1">
-                <p>{stringError}</p>
-                {stringErrorDetails && (
-                  <p className="text-rose-200/80">{stringErrorDetails}</p>
-                )}
-              </div>
-            )}
-            {hasStringOutputs && (
-              <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t ${sectionDividerClass}`}>
-                {selectedStringTargetLangs.map((lang) => (
-                  <div
-                    key={lang}
-                    className={isLight ? 'bg-slate-50 border border-slate-200 rounded-lg p-3' : 'bg-slate-950/50 border border-slate-800 rounded-lg p-3'}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-slate-400 uppercase">
-                        {lang}
-                      </span>
-                      <button
-                        onClick={() => copyStringOutput(lang)}
-                        className="text-[10px] text-slate-500 hover:text-slate-300"
-                        disabled={!stringOutputs[lang]}
-                      >
-                        {t('common.copy')}
-                      </button>
-                    </div>
-                    <textarea
-                      readOnly
-                      className={isLight ? 'w-full bg-white border border-slate-200 rounded-md p-2 text-xs text-slate-900 min-h-[120px] resize-vertical' : 'w-full bg-slate-900 border border-slate-800 rounded-md p-2 text-xs text-slate-200 min-h-[120px] resize-vertical'}
-                      value={stringOutputs[lang] || ''}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-              </div>
             )}
           </div>
         </section>

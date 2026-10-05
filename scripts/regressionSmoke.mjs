@@ -614,6 +614,120 @@ test("proxy translation service reports the model that actually served the batch
   assert.equal(service.getLastModelIssues()[0].model, "google/gemini-3-flash");
 });
 
+test("API translate times out a hung Cloudflare AI model and falls back to the next model", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const attempts = [];
+  const response = await onRequestPost(
+    functionContext(
+      { records: [{ id: "seg-1", content: "打开仪器" }], targetLang: "English", engine: "auto" },
+      {
+        AI: {
+          run: (model, _input, options) => {
+            attempts.push(model);
+            if (model === "google/gemini-3-flash") {
+              // Never settles on its own; only the timeout can end this call.
+              return new Promise((_resolve, reject) => {
+                options.signal.addEventListener("abort", () => reject(new Error("aborted")));
+              });
+            }
+            return Promise.resolve({ response: JSON.stringify({ records: [{ id: "seg-1", content: "Turn on the instrument." }] }) });
+          }
+        },
+        CLOUDFLARE_AI_MODELS: "google/gemini-3-flash,openai/gpt-5.4",
+        CLOUDFLARE_AI_PRIMARY_MODELS: "google/gemini-3-flash",
+        CLOUDFLARE_AI_FALLBACK_MODELS: "openai/gpt-5.4",
+        CLOUDFLARE_AI_REQUEST_TIMEOUT_MS: "300"
+      }
+    )
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(attempts, ["google/gemini-3-flash", "openai/gpt-5.4"]);
+  assert.equal(payload.model, "openai/gpt-5.4");
+  assert.equal(payload.modelIssues[0].model, "google/gemini-3-flash");
+  assert.equal(payload.modelIssues[0].status, "timeout");
+});
+
+test("API translate stops trying models once the request time budget is spent", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  let aiCalled = false;
+  const response = await onRequestPost(
+    functionContext(
+      { records: [{ id: "seg-1", content: "打开仪器" }], targetLang: "English", engine: "auto" },
+      {
+        AI: { run: async () => { aiCalled = true; return {}; } },
+        CLOUDFLARE_AI_MODELS: "google/gemini-3-flash",
+        TRANSLATE_TOTAL_BUDGET_MS: "1000"
+      }
+    )
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 500);
+  assert.match(payload.error, /timed out after the 1s time budget/);
+  assert.equal(aiCalled, false);
+});
+
+test("proxy translation service aborts a hung request instead of waiting forever", async () => {
+  const { ProxyTranslationService } = await bundleTsModule(path.join(repoRoot, "services/proxyService.ts"));
+  const originalTimeout = process.env.VITE_PROXY_REQUEST_TIMEOUT_MS;
+  process.env.VITE_PROXY_REQUEST_TIMEOUT_MS = "1000";
+  try {
+    await withMockedFetch(async (setFetch) => {
+      let calls = 0;
+      setFetch((_url, init) => {
+        calls += 1;
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        });
+      });
+      const started = Date.now();
+      await assert.rejects(
+        new ProxyTranslationService("/api/translate").translateBatch([{ content: "中文" }], "English"),
+        /Proxy translate timed out after 1s/
+      );
+      assert.ok(Date.now() - started < 3000);
+      assert.equal(calls, 1);
+    });
+  } finally {
+    if (originalTimeout === undefined) delete process.env.VITE_PROXY_REQUEST_TIMEOUT_MS;
+    else process.env.VITE_PROXY_REQUEST_TIMEOUT_MS = originalTimeout;
+  }
+});
+
+test("TranslationHub stops splitting a batch when the provider is down instead of fanning out", async () => {
+  const { TranslationHub } = await bundleTsModule(path.join(repoRoot, "services/translationHub.ts"), {
+    external: ["@google/genai"]
+  });
+  const originalMode = process.env.VITE_TRANSLATION_MODE;
+  const calls = [];
+  try {
+    process.env.VITE_TRANSLATION_MODE = "proxy";
+    await withMockedFetch(async (setFetch) => {
+      setFetch(async (_url, init) => {
+        calls.push(JSON.parse(String(init.body)).records.length);
+        return new Response(
+          JSON.stringify({ error: "All translation engines failed. google/gemini-3-flash: timed out after 60000ms" }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      });
+      const hub = new TranslationHub();
+      await assert.rejects(
+        hub.translateBatch({
+          records: Array.from({ length: 20 }, (_, i) => ({ content: `row ${i}` })),
+          targetLang: "English",
+          options: { model: "openrouter" }
+        }),
+        /All translation engines failed/
+      );
+    });
+    // 20 -> 10 -> 5 -> 3 and then the breaker trips, instead of up to 39 requests.
+    assert.deepEqual(calls, [20, 10, 5, 3]);
+  } finally {
+    if (originalMode === undefined) delete process.env.VITE_TRANSLATION_MODE;
+    else process.env.VITE_TRANSLATION_MODE = originalMode;
+  }
+});
+
 test("GitHub issue template captures debug packages with available labels", () => {
   const templateSource = fs.readFileSync(
     path.join(repoRoot, ".github/ISSUE_TEMPLATE/translation-bug.yml"),
@@ -2533,7 +2647,8 @@ test("API translate auto uses Cloudflare AI Gateway Gemini before OpenRouter", a
     assert.equal(aiCalls[0].model, "google/gemini-3-flash");
     assert.equal(aiCalls[0].input.max_tokens, 2048);
     assert.equal(aiCalls[0].input.response_format, undefined);
-    assert.deepEqual(aiCalls[0].options, { gateway: { id: "default" } });
+    assert.deepEqual(aiCalls[0].options.gateway, { id: "default" });
+    assert.ok(aiCalls[0].options.signal instanceof AbortSignal);
   });
 });
 

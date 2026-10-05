@@ -60,6 +60,13 @@ Access JWT verification (strongly recommended):
   - `CF_ACCESS_AUD=<Access Application 的 Application Audience (AUD) Tag>`
 - 未配置时保持旧行为（只读邮箱请求头），所以上线前必须在 Cloudflare Zero Trust 确认 Access Application 覆盖了生产域名和所有预览域名。
 
+Timeouts and retries (optional overrides, defaults shown):
+- `CLOUDFLARE_AI_REQUEST_TIMEOUT_MS=60000`：单个 Cloudflare AI 模型的超时。超时后记为 `timeout` 并切换到下一个模型，而不是一直等待。
+- `TRANSLATE_TOTAL_BUDGET_MS=90000`：`/api/translate` 单次请求内整条模型回退链的总时间预算。Cloudflare 约 100 秒会关闭代理请求，超出预算时服务端直接返回明确错误，而不是让客户端收到 524。
+- `VITE_PROXY_REQUEST_TIMEOUT_MS=120000`：浏览器端单次翻译请求的超时（构建时变量），应大于服务端预算。
+- DeepSeek、OpenRouter 保持原有的单模型超时变量；各模型实际超时取自身超时与剩余预算中较小者。
+- 客户端遇到服务商不可用类错误（超时、过载、网络、500）时，最多连续拆分 4 次且没有成功就停止，不再拆到每条记录一个请求；JSON 解析和对齐类错误仍会拆到单条。
+
 Request limits (optional overrides, defaults shown):
 - `MAX_REQUEST_BYTES=4194304`：单次请求体上限。
 - `MAX_RECORDS_PER_REQUEST=200`：`/api/translate` 单次记录数上限（前端单批最多 40 条）。

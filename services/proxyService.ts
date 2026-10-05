@@ -11,6 +11,8 @@ export type ProxyModelIssue = {
 };
 
 const PROXY_NETWORK_RETRIES = 2;
+// The server stops trying models after about 90 s, so 120 s means the request is hung.
+const DEFAULT_PROXY_REQUEST_TIMEOUT_MS = 120_000;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -46,6 +48,12 @@ export class ProxyTranslationService {
       (endpoint || getEnvValue("VITE_TRANSLATION_PROXY_URL") || "/api/translate").trim();
   }
 
+  private getRequestTimeoutMs() {
+    const raw = Number(getEnvValue("VITE_PROXY_REQUEST_TIMEOUT_MS"));
+    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_PROXY_REQUEST_TIMEOUT_MS;
+    return Math.min(300_000, Math.max(1_000, Math.round(raw)));
+  }
+
   async translateBatch(
     records: POCTRecord[],
     targetLang: TargetLanguage,
@@ -55,6 +63,32 @@ export class ProxyTranslationService {
       models?: string[];
       profile?: TranslationProfile;
     } = {}
+  ): Promise<POCTRecord[]> {
+    const timeoutMs = this.getRequestTimeoutMs();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await this.translateBatchOnce(records, targetLang, engine, model, options, controller.signal);
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`Proxy translate timed out after ${Math.round(timeoutMs / 1000)}s`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async translateBatchOnce(
+    records: POCTRecord[],
+    targetLang: TargetLanguage,
+    engine: ProxyEngine,
+    model: string | undefined,
+    options: {
+      models?: string[];
+      profile?: TranslationProfile;
+    },
+    signal: AbortSignal
   ): Promise<POCTRecord[]> {
     this.lastModelIssues = [];
     this.lastModel = "";
@@ -74,7 +108,8 @@ export class ProxyTranslationService {
         response = await fetch(this.endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body
+          body,
+          signal
         });
 
         if (
@@ -85,6 +120,7 @@ export class ProxyTranslationService {
           break;
         }
       } catch (error) {
+        if (signal.aborted) throw error;
         if (!isNetworkFetchError(error) || attempt >= PROXY_NETWORK_RETRIES) {
           throw new Error(
             `Proxy translate network error after ${attempt + 1} attempt(s): ${

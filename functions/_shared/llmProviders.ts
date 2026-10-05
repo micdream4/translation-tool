@@ -14,6 +14,44 @@ export type CloudflareAiBinding = {
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 
+export const DEFAULT_CLOUDFLARE_AI_TIMEOUT_MS = 60_000;
+export const DEFAULT_DEEPSEEK_CHAT_TIMEOUT_MS = 90_000;
+
+const clampTimeout = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(180_000, Math.max(200, Math.round(parsed)));
+};
+
+export const getCloudflareAiTimeoutMs = (env: FunctionEnv) =>
+  clampTimeout(env.CLOUDFLARE_AI_REQUEST_TIMEOUT_MS, DEFAULT_CLOUDFLARE_AI_TIMEOUT_MS);
+
+/**
+ * Rejects when the work does not settle in time so the caller can move on to the next model.
+ * The underlying request is aborted when the runtime supports it, but the race alone is what
+ * guarantees that a hung provider cannot hold the whole fallback chain.
+ */
+export const raceWithTimeout = async <T>(
+  start: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> => {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // Reject first so the timeout, not the abort it triggers, is what the caller sees.
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+      controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([start(controller.signal), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 export const getDeepSeekKey = (env: FunctionEnv) =>
   String(env.DEEPSEEK_API_KEY || env.Deepseek_API_KEY || "").trim();
 
@@ -139,7 +177,8 @@ export const callCloudflareAiChat = async ({
   system,
   user,
   maxTokens = 8192,
-  json = true
+  json = true,
+  timeoutMs = DEFAULT_CLOUDFLARE_AI_TIMEOUT_MS
 }: {
   ai: CloudflareAiBinding;
   gatewayId: string;
@@ -148,13 +187,16 @@ export const callCloudflareAiChat = async ({
   user: string;
   maxTokens?: number;
   json?: boolean;
+  timeoutMs?: number;
 }) => {
-  const result = await ai.run(
-    model,
-    buildCloudflareAiInput({ model, system, user, maxTokens, json }),
-    {
-      gateway: { id: gatewayId }
-    }
+  const result = await raceWithTimeout(
+    (signal) =>
+      ai.run(model, buildCloudflareAiInput({ model, system, user, maxTokens, json }), {
+        gateway: { id: gatewayId },
+        signal
+      }),
+    timeoutMs,
+    `Cloudflare AI ${model}`
   );
   const text = extractChatText(result);
   if (!text) {
@@ -174,7 +216,8 @@ export const callDeepSeekChat = async ({
   system,
   user,
   maxTokens = 8192,
-  json = true
+  json = true,
+  timeoutMs = DEFAULT_DEEPSEEK_CHAT_TIMEOUT_MS
 }: {
   apiKey: string;
   model: string;
@@ -182,26 +225,34 @@ export const callDeepSeekChat = async ({
   user: string;
   maxTokens?: number;
   json?: boolean;
+  timeoutMs?: number;
 }) => {
-  const response = await fetch(DEEPSEEK_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
+  const { response, text } = await raceWithTimeout(
+    async (signal) => {
+      const res = await fetch(DEEPSEEK_API_URL, {
+        signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0,
+          max_tokens: maxTokens,
+          thinking: { type: "disabled" },
+          ...(json ? { response_format: { type: "json_object" } } : {}),
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user }
+          ]
+        })
+      });
+      return { response: res, text: await res.text() };
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      max_tokens: maxTokens,
-      thinking: { type: "disabled" },
-      ...(json ? { response_format: { type: "json_object" } } : {}),
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user }
-      ]
-    })
-  });
-  const text = await response.text();
+    timeoutMs,
+    `DeepSeek ${model}`
+  );
   if (!response.ok) {
     let message = text.slice(0, 300);
     try {

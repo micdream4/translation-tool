@@ -11,7 +11,9 @@
 - 补装 `@types/react` 与 `@types/react-dom`，`tsc` 现在会校验 JSX 属性；顺带修复 3 处暴露出的类型问题。
 - 使用说明更新：移除过时的 "Gemini → Qwen → DeepSeek" 描述。
 - 验证：`npm run typecheck`、`npm test`（44 项）；用 `local-data/inbox` 中的白细胞增高样本前 8 行，在 `wrangler pages dev` 真实函数 + DeepSeek 上端到端翻译，质检发现 3 个占位符异常，"重译问题项"后降为 0；批次监控、翻译记忆命中、慢批次提示均已实测。
-- 后续待办：给 Cloudflare AI 调用加超时、限制失败批次的二分重试放大、PDF 工作流改为按需加载、日志文本随界面语言切换、继续拆分 `App.tsx`。本地 issue 包：`local-data/issues/2026-10-05-translator-ui-run-monitor-qc-buttons/`。
+- 修复 API 链路：Cloudflare AI 调用新增单模型超时（默认 60 秒，`ai.run` 此前没有超时）；`/api/translate` 新增 90 秒总时间预算，回退链不会再超过 Cloudflare 的边缘上限，超出时返回明确的超时错误；DeepSeek 对话调用同样加超时；浏览器端翻译请求新增 120 秒超时并可中止。
+- 修复失败批次重试放大：服务商不可用类错误（超时、过载、网络、500）连续 4 次拆分仍无成功时停止，整批失败时请求数从最多 2N-1 次降为 4 次；JSON 解析和对齐类错误仍拆到单条。
+- 后续待办：PDF 工作流改为按需加载、日志文本随界面语言切换、继续拆分 `App.tsx`、评估 Excel 批次并发。本地 issue 包：`local-data/issues/2026-10-05-translator-ui-run-monitor-qc-buttons/`。
 
 ## v0.1.0
 

@@ -19,6 +19,7 @@ import {
   extractChatText,
   getCloudflareAiBinding,
   getCloudflareAiGatewayId,
+  getCloudflareAiTimeoutMs,
   getDeepSeekKey
 } from "../_shared/llmProviders";
 
@@ -34,6 +35,17 @@ const DEFAULT_CLOUDFLARE_AI_PRIMARY_MODELS = "google/gemini-3-flash";
 const DEFAULT_CLOUDFLARE_AI_FALLBACK_MODELS = "openai/gpt-5.4,anthropic/claude-sonnet-4.6";
 const DEFAULT_CLOUDFLARE_AI_MODELS = `${DEFAULT_CLOUDFLARE_AI_PRIMARY_MODELS},${DEFAULT_CLOUDFLARE_AI_FALLBACK_MODELS}`;
 const DEFAULT_CLOUDFLARE_AI_MAX_OUTPUT_TOKENS = 8192;
+
+const DEFAULT_TOTAL_BUDGET_MS = 90_000;
+const MIN_MODEL_ATTEMPT_MS = 4_000;
+
+// Cloudflare closes a proxied request after about 100 s, so the whole fallback chain has to
+// finish inside one budget. Past it the client gets a clear error instead of a 524.
+const parseTotalBudgetMs = (env: Record<string, unknown>) => {
+  const raw = Number(env.TRANSLATE_TOTAL_BUDGET_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_TOTAL_BUDGET_MS;
+  return Math.min(95_000, Math.max(1_000, Math.round(raw)));
+};
 
 const sanitizeResponse = (text: string) =>
   sanitizeModelJson(text.replace(/```json|```/gi, ""));
@@ -297,6 +309,19 @@ export const onRequestPost = async (context: any) => {
     }
 
     const prompt = buildOpenRouterPrompt(records, targetLang, profile);
+    const requestStartedAt = Date.now();
+    const totalBudgetMs = parseTotalBudgetMs(env);
+    const remainingMs = () => totalBudgetMs - (Date.now() - requestStartedAt);
+    let budgetExceeded = false;
+    const hasBudgetForAnotherModel = () => {
+      if (remainingMs() >= MIN_MODEL_ATTEMPT_MS) return true;
+      budgetExceeded = true;
+      return false;
+    };
+    const buildFailureMessage = () =>
+      `All translation engines failed.${
+        budgetExceeded ? ` Request timed out after the ${Math.round(totalBudgetMs / 1000)}s time budget.` : ""
+      } ${allErrors.join(" | ")}`.slice(0, 1500);
 
     const translateWithCloudflareAi = async (modelsOverride?: string[]) => {
       if (!cloudflareAi) throw new Error("Cloudflare AI binding missing.");
@@ -306,6 +331,7 @@ export const onRequestPost = async (context: any) => {
       const maxOutputTokens = parseCloudflareAiMaxOutputTokens(env);
 
       for (const model of models) {
+        if (!hasBudgetForAnotherModel()) break;
         try {
           const text = sanitizeResponse(
             await callCloudflareAiChat({
@@ -315,7 +341,8 @@ export const onRequestPost = async (context: any) => {
               system: buildOpenRouterSystemPrompt(profile),
               user: prompt,
               maxTokens: maxOutputTokens,
-              json: true
+              json: true,
+              timeoutMs: Math.min(getCloudflareAiTimeoutMs(env), remainingMs())
             })
           );
           const parsed = parseModelJsonArray(text);
@@ -330,7 +357,7 @@ export const onRequestPost = async (context: any) => {
           allErrors.push(`${model}: ${message}`);
           allModelIssues.push({
             model,
-            status: "exception",
+            status: /timed out/i.test(message) ? "timeout" : "exception",
             message,
             kind: "exception"
           });
@@ -358,10 +385,12 @@ export const onRequestPost = async (context: any) => {
         env.OPENROUTER_SITE ||
         context.request.headers.get("Origin") ||
         "https://poct-translator.local";
-      const requestTimeoutMs = parseOpenRouterTimeoutMs(env);
+      const configuredTimeoutMs = parseOpenRouterTimeoutMs(env);
       const provider = buildOpenRouterProviderRouting(env);
 
       for (const model of models) {
+        if (!hasBudgetForAnotherModel()) break;
+        const requestTimeoutMs = Math.min(configuredTimeoutMs, remainingMs());
         try {
           const response = await fetchWithTimeout(
             OPENROUTER_API_URL,
@@ -444,7 +473,8 @@ export const onRequestPost = async (context: any) => {
       const models = requestedModel ? [requestedModel] : parseDeepSeekModels(env);
 
       for (const model of models) {
-        const requestTimeoutMs = parseDeepSeekTimeoutMs(env, model);
+        if (!hasBudgetForAnotherModel()) break;
+        const requestTimeoutMs = Math.min(parseDeepSeekTimeoutMs(env, model), remainingMs());
         const maxTokens = parseDeepSeekMaxOutputTokens(env, model);
         try {
           const response = await fetchWithTimeout(
@@ -555,7 +585,7 @@ export const onRequestPost = async (context: any) => {
 
       return jsonResponse(
         {
-          error: `All translation engines failed. ${allErrors.join(" | ").slice(0, 1500)}`,
+          error: buildFailureMessage(),
           modelIssues: allModelIssues
         },
         500
@@ -574,7 +604,7 @@ export const onRequestPost = async (context: any) => {
 
     return jsonResponse(
       {
-        error: `All translation engines failed. ${allErrors.join(" | ").slice(0, 1500)}`,
+        error: buildFailureMessage(),
         modelIssues: allModelIssues
       },
       500

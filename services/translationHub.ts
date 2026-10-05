@@ -59,6 +59,9 @@ const parseProxyCapabilities = () => {
   };
 };
 
+// Stop splitting after this many provider failures in a row without a single success.
+const MAX_CONSECUTIVE_AVAILABILITY_FAILURES = 4;
+
 export class TranslationHub {
   private readonly deepseek: DeepseekService;
   private readonly gemini: MedicalAIService;
@@ -135,9 +138,9 @@ export class TranslationHub {
     return Boolean(key);
   }
 
-  private isRecoverableBatchError(error: unknown) {
-    const message =
-      error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  // Failures caused by the model output (bad JSON, wrong length, misaligned ids) are fixed by
+  // translating smaller pieces, so splitting is always worth trying.
+  private isStructuralBatchError(message: string) {
     return (
       message.includes("failed to parse model json") ||
       message.includes("expected ':' after property name") ||
@@ -148,7 +151,15 @@ export class TranslationHub {
       message.includes("length mismatch") ||
       message.includes("invalid payload") ||
       message.includes("invalid record data") ||
-      message.includes("translation alignment mismatch") ||
+      message.includes("translation alignment mismatch")
+    );
+  }
+
+  // Failures caused by the provider (overload, timeouts, network, rate limits) may be size
+  // related, so a few splits are allowed, but a provider outage must not fan out into
+  // one request per record.
+  private isAvailabilityBatchError(message: string) {
+    return (
       message.includes("proxy translate network error") ||
       message.includes("proxy translate error 500") ||
       message.includes("deepseek error 429") ||
@@ -164,27 +175,38 @@ export class TranslationHub {
     );
   }
 
-  private async translateWithRecovery(req: TranslationRequest): Promise<POCTRecord[]> {
+  private classifyBatchError(error: unknown): "structural" | "availability" | "fatal" {
+    const message =
+      error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    if (this.isStructuralBatchError(message)) return "structural";
+    if (this.isAvailabilityBatchError(message)) return "availability";
+    return "fatal";
+  }
+
+  private async translateWithRecovery(
+    req: TranslationRequest,
+    state: { availabilityFailures: number } = { availabilityFailures: 0 }
+  ): Promise<POCTRecord[]> {
     try {
       const translated = await this.translateDirect(req);
-      return isTranslationEnvelopeBatch(req.records)
+      const aligned = isTranslationEnvelopeBatch(req.records)
         ? alignTranslationEnvelopes(req.records, translated)
         : translated;
+      state.availabilityFailures = 0;
+      return aligned;
     } catch (error) {
-      if (!this.isRecoverableBatchError(error) || req.records.length <= 1) {
-        throw error;
+      if (req.records.length <= 1) throw error;
+      const kind = this.classifyBatchError(error);
+      if (kind === "fatal") throw error;
+      if (kind === "availability") {
+        state.availabilityFailures += 1;
+        if (state.availabilityFailures >= MAX_CONSECUTIVE_AVAILABILITY_FAILURES) {
+          throw error;
+        }
       }
       const mid = Math.ceil(req.records.length / 2);
-      const leftRecords = req.records.slice(0, mid);
-      const rightRecords = req.records.slice(mid);
-      const left = await this.translateWithRecovery({
-        ...req,
-        records: leftRecords
-      });
-      const right = await this.translateWithRecovery({
-        ...req,
-        records: rightRecords
-      });
+      const left = await this.translateWithRecovery({ ...req, records: req.records.slice(0, mid) }, state);
+      const right = await this.translateWithRecovery({ ...req, records: req.records.slice(mid) }, state);
       return [...left, ...right];
     }
   }

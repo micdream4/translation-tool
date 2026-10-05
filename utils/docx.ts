@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { scanDocxEmbeddedVisuals, type EmbeddedVisualSummary } from "./embeddedVisuals";
 import type { TargetLanguage } from "../types";
 import { isChineseTarget } from "./targetLanguage";
 
@@ -47,6 +48,7 @@ export interface DocxContext {
   fileName: string;
   coverage: DocxCoverage;
   coverageWarnings: string[];
+  embeddedVisuals?: EmbeddedVisualSummary;
 }
 
 const DOCUMENT_XML_PATH = "word/document.xml";
@@ -230,7 +232,8 @@ export async function parseDocxFile(file: File): Promise<DocxContext> {
     segments,
     fileName: file.name,
     coverage,
-    coverageWarnings: getDocxCoverageWarnings(zip)
+    coverageWarnings: getDocxCoverageWarnings(zip),
+    embeddedVisuals: await scanDocxEmbeddedVisuals(zip).catch(() => undefined)
   };
 }
 

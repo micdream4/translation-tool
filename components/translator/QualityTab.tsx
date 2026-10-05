@@ -1,4 +1,6 @@
 import React from 'react';
+import EmbeddedVisualsNotice from './EmbeddedVisualsNotice';
+import type { EmbeddedVisualSummary } from '../../utils/embeddedVisuals';
 import { useI18n } from '../../hooks/useI18n';
 import { getUiClasses } from './uiClasses';
 import QualityReportPanel from '../QualityReportPanel';
@@ -10,6 +12,7 @@ import type { SampleReviewAiSummary, SampleReviewItem } from '../../hooks/useQua
 import type { QualitySeverity } from '../../utils/quality';
 export interface QualityTabProps {
   isLight: boolean;
+  embeddedVisuals?: EmbeddedVisualSummary | null;
   canRetryIssues: boolean;
   canRunQualityCheck: boolean;
   clearIssueCases: () => void;
@@ -69,6 +72,7 @@ export interface QualityTabProps {
 
 const QualityTab: React.FC<QualityTabProps> = ({
   isLight,
+  embeddedVisuals,
   canRetryIssues,
   canRunQualityCheck,
   clearIssueCases,
@@ -141,6 +145,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
 
   return (
     <div className="space-y-4">
+      <EmbeddedVisualsNotice isLight={isLight} summary={embeddedVisuals} />
       <div className={`${nestedPanelClass} space-y-3`}>
         <div className="flex flex-wrap items-center gap-3">
           <button

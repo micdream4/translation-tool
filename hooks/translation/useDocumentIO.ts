@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { describeEmbeddedVisualsForLog, hasEmbeddedVisuals } from '../../utils/embeddedVisuals';
 import type { DocxIssueDetail } from '../../components/translator/types';
 import type { QualityReport } from '../../quality/types';
 import {
@@ -177,6 +178,7 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
       try {
         const context = await parseDocxFile(uploadedFile);
         docxContextRef.current = context;
+        if (hasEmbeddedVisuals(context.embeddedVisuals)) addLog(describeEmbeddedVisualsForLog(context.embeddedVisuals!));
         setDocxStats({ total: context.segments.length, translated: 0 });
         setDocxIssueIndices([]);
         setDocxIssueDetails([]);
@@ -226,6 +228,7 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
         const { parsePdfFile } = await import('../../utils/pdf');
         const context = await parsePdfFile(uploadedFile);
         pdfContextRef.current = context;
+        if (hasEmbeddedVisuals(context.embeddedVisuals)) addLog(describeEmbeddedVisualsForLog(context.embeddedVisuals!));
         setPdfStats({ pages: context.pageCount, total: context.segments.length, translated: 0 });
         setPdfIssueIndices([]);
         setPdfIssueDetails([]);
@@ -263,6 +266,7 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
       const { records, context } = await parseExcelFile(uploadedFile);
       setData(records);
       setExcelContext(context);
+      if (hasEmbeddedVisuals(context.embeddedVisuals)) addLog(describeEmbeddedVisualsForLog(context.embeddedVisuals!));
       setProcessedData([]);
       setTranslationIssues(createIssueSummary());
       setTranslatedFlags(Array(records.length).fill(false));

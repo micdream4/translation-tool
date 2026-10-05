@@ -330,4 +330,6 @@ npm run build
 - 重要约定：hook 调用放在 `App` 组件末尾 `return` 之前，因为 hook 输出在渲染期之前不存在；渲染期（`useMemo`、`useState` 初始值）里不能引用它们，否则白屏。`regressionSmoke` 里有扫描测试。
 - PDF 重代码（`utils/pdf.ts`）只通过动态 `import()` 加载，不要在其他文件静态导入它；只读段落文本用 `utils/pdfSegments.ts`。
 - 超时与重试：Cloudflare AI 单模型 60 秒，`/api/translate` 总预算 90 秒，浏览器请求 120 秒；服务商不可用类错误连续拆分最多 4 次。详见 `docs/CLOUDFLARE_PAGES_DEPLOY.md`。
+- 图片提示（v0.2.2）：`utils/embeddedVisuals.ts` 在解析 DOCX、Excel、PDF 时检测图片、图表、绘图形状文字，结果放在各自上下文的 `embeddedVisuals`，由 `EmbeddedVisualsNotice` 展示。图片内文字目前不翻译。
+- 术语资产清单见 `docs/terminology-assets.md`；用户会陆续补充术语，补充前先看该文档的缺口和模板。
 

@@ -16,6 +16,7 @@ import {
 
 export { getPdfSegmentText, setPdfSegmentText } from './pdfSegments';
 import { getPdfSegmentText } from './pdfSegments';
+import { summarizePdfVisuals, type EmbeddedVisualSummary } from './embeddedVisuals';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -63,6 +64,7 @@ export interface PdfContext {
   segments: PdfSegment[];
   images: PdfImage[];
   coverageWarnings: string[];
+  embeddedVisuals?: EmbeddedVisualSummary;
 }
 
 type TextItemLike = {
@@ -630,12 +632,8 @@ export async function parsePdfFile(file: File): Promise<PdfContext> {
     throw new Error('PDF 中没有可抽取的文本。扫描版 PDF 需要先做 OCR。');
   }
 
+  // Text inside pictures is not translated; the page shows a dedicated notice from this summary.
   const coverageWarnings: string[] = [];
-  if (totalImages > 0) {
-    coverageWarnings.push(
-      `检测到 ${totalImages} 个图片对象，已回填 ${images.length} 个可提取图片；图片内文字暂不翻译`
-    );
-  }
 
   return {
     fileName: file.name,
@@ -644,7 +642,8 @@ export async function parsePdfFile(file: File): Promise<PdfContext> {
     pages,
     segments,
     images,
-    coverageWarnings
+    coverageWarnings,
+    embeddedVisuals: summarizePdfVisuals(pages)
   };
 }
 

@@ -1,9 +1,12 @@
 import React from 'react';
+import { useEmbeddedVisualText } from './EmbeddedVisualsNotice';
+import { hasEmbeddedVisuals, type EmbeddedVisualSummary } from '../../utils/embeddedVisuals';
 import { useI18n } from '../../hooks/useI18n';
 import { getUiClasses } from './uiClasses';
 
 export interface ExportBarProps {
   isLight: boolean;
+  embeddedVisuals?: EmbeddedVisualSummary | null;
   canDownload: boolean;
   documentKind: "pdf" | "excel" | "docx";
   docxBlockingIssueCount: number;
@@ -14,6 +17,7 @@ export interface ExportBarProps {
 
 const ExportBar: React.FC<ExportBarProps> = ({
   isLight,
+  embeddedVisuals,
   canDownload,
   documentKind,
   docxBlockingIssueCount,
@@ -22,6 +26,7 @@ const ExportBar: React.FC<ExportBarProps> = ({
   translationStatus
 }) => {
   const { t } = useI18n();
+  const { describeParts } = useEmbeddedVisualText();
   const {
     mutedTextClass,
     disabledButtonClass,
@@ -41,7 +46,9 @@ const ExportBar: React.FC<ExportBarProps> = ({
           ? t('export.wait')
           : docxBlockingIssueCount > 0
             ? t('export.risk', { count: docxBlockingIssueCount })
-            : ''}
+            : hasEmbeddedVisuals(embeddedVisuals)
+              ? t('visuals.export', { parts: describeParts(embeddedVisuals!) })
+              : ''}
       </p>
       <div className="flex flex-wrap gap-2">
         {documentKind === 'pdf' && (

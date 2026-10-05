@@ -1,4 +1,6 @@
 import React from 'react';
+import EmbeddedVisualsNotice from './EmbeddedVisualsNotice';
+import type { EmbeddedVisualSummary } from '../../utils/embeddedVisuals';
 import { useI18n } from '../../hooks/useI18n';
 import { getUiClasses } from './uiClasses';
 import type { DocxContext } from '../../utils/docx';
@@ -11,6 +13,7 @@ import { TargetLanguage } from '../../types';
 import { formatDocxCoverageSummary } from '../../utils/docx';
 export interface SettingsPanelProps {
   isLight: boolean;
+  embeddedVisuals?: EmbeddedVisualSummary | null;
   AUTO_OPENROUTER_MODEL: "__AUTO_OPENROUTER__";
   applySavedProgress: () => void;
   autoModelChainLabel: string;
@@ -55,6 +58,7 @@ export interface SettingsPanelProps {
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   isLight,
+  embeddedVisuals,
   AUTO_OPENROUTER_MODEL,
   applySavedProgress,
   autoModelChainLabel,
@@ -160,6 +164,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           {t('settings.scopeWarn', { warnings: pdfContextRef.current.coverageWarnings.join('；') })}
         </p>
       )}
+
+      <EmbeddedVisualsNotice isLight={isLight} summary={embeddedVisuals} />
 
       {savedSnapshot && processedData.length === 0 && (
         <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10'}`}>

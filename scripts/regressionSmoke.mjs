@@ -133,9 +133,7 @@ const withMockedFetch = async (handler) => {
 };
 
 test("Excel parser flattens multiple sheets and export writes each row back to its source sheet", async () => {
-  const { parseExcelWorkbook, exportToExcel, buildStylePreservingExcelBuffer } = await transpileTsModule(
-    path.join(repoRoot, "utils/excel.ts")
-  );
+  const { parseExcelWorkbook, exportToExcel, buildStylePreservingExcelBuffer } = await bundleTsModule(path.join(repoRoot, "utils/excel.ts"), { external: ["xlsx", "jszip", "@xmldom/xmldom"] });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
     workbook,
@@ -213,7 +211,7 @@ test("Excel parser flattens multiple sheets and export writes each row back to i
 
 test("Excel formula cells are never translated or flattened during export", async () => {
   const { parseExcelWorkbook, exportToExcel, buildStylePreservingExcelBuffer, isExcelFormulaCell } =
-    await transpileTsModule(path.join(repoRoot, "utils/excel.ts"));
+    await bundleTsModule(path.join(repoRoot, "utils/excel.ts"), { external: ["xlsx", "jszip", "@xmldom/xmldom"] });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
     workbook,
@@ -259,7 +257,7 @@ test("Excel formula cells are never translated or flattened during export", asyn
 
 
 test("Excel skip scope resolves row and column rules across sheets", async () => {
-  const { parseExcelWorkbook } = await transpileTsModule(path.join(repoRoot, "utils/excel.ts"));
+  const { parseExcelWorkbook } = await bundleTsModule(path.join(repoRoot, "utils/excel.ts"), { external: ["xlsx", "jszip", "@xmldom/xmldom"] });
   const { parseExcelSkipScope, isExcelCellSkipped, isExcelRowFullySkipped } = await transpileTsModule(
     path.join(repoRoot, "utils/excelSkipScope.ts")
   );
@@ -551,7 +549,8 @@ test("UI dictionaries stay in sync and cover every key used by the interface", (
   assert.deepEqual([...zh].filter((key) => !en.has(key)), []);
   assert.deepEqual([...en].filter((key) => !zh.has(key)), []);
 
-  const sources = ["App.tsx", "components/Header.tsx", "components/RunMonitor.tsx", "components/LogConsole.tsx", "components/QualityReportPanel.tsx"]
+  const translatorFiles = fs.readdirSync(path.join(repoRoot, "components/translator")).filter((f) => f.endsWith(".tsx")).map((f) => `components/translator/${f}`);
+  const sources = ["App.tsx", "components/Header.tsx", "components/RunMonitor.tsx", "components/LogConsole.tsx", "components/QualityReportPanel.tsx", ...translatorFiles]
     .map((file) => fs.readFileSync(path.join(repoRoot, file), "utf8"))
     .join("\n");
   const used = new Set([...sources.matchAll(/\bt\('([\w.]+)'/g)].map((match) => match[1]));
@@ -564,7 +563,8 @@ test("UI dictionaries stay in sync and cover every key used by the interface", (
     ...["all", "high", "medium", "low"].map((k) => `report.filter.${k}`),
     ...["high", "medium", "low"].map((k) => `report.risk.${k}`),
     ...["fail", "warning", "pass"].map((k) => `report.verdict.${k}`),
-    ...["basic", "run", "qc", "sample"].map((k) => `guide.${k}.title`)
+    ...["basic", "run", "qc", "sample"].map((k) => `guide.${k}.title`),
+    ...["body", "header", "footer", "footnotes", "endnotes"].map((k) => `visuals.area.${k}`)
   ];
   assert.deepEqual(dynamic.filter((key) => !zh.has(key)), []);
 });
@@ -816,6 +816,88 @@ test("App.tsx never reads a later declaration while rendering (hook outputs are 
   assert.deepEqual(offenders, []);
 });
 
+test("embedded pictures, charts and drawing text are detected so the user can be told they are not translated", async () => {
+  const { scanDocxEmbeddedVisuals, scanXlsxEmbeddedVisuals, summarizePdfVisuals, describeEmbeddedVisualsForReport, hasEmbeddedVisuals } =
+    await bundleTsModule(path.join(repoRoot, "utils/embeddedVisuals.ts"));
+
+  const docx = new JSZip();
+  docx.file("word/document.xml", '<w:document><w:p><w:drawing><a:blip r:embed="rId5"/></w:drawing></w:p><w:p><w:drawing><a:blip r:embed="rId6"/></w:drawing></w:p><w:p><w:drawing><c:chart r:id="rId7"/></w:drawing></w:p></w:document>');
+  docx.file("word/header1.xml", '<w:hdr><w:p><w:pict><v:imagedata r:id="rId1"/></w:pict></w:p></w:hdr>');
+  docx.file("word/footer1.xml", "<w:ftr><w:p><w:r><w:t>text only</w:t></w:r></w:p></w:ftr>");
+  const docxSummary = await scanDocxEmbeddedVisuals(docx);
+  assert.equal(docxSummary.images, 3);
+  assert.equal(docxSummary.charts, 1);
+  assert.deepEqual(
+    docxSummary.areas.map((area) => [area.area, area.images, area.charts]),
+    [["body", 2, 1], ["header", 1, 0]]
+  );
+
+  const textOnly = new JSZip();
+  textOnly.file("word/document.xml", "<w:document><w:p><w:r><w:t>hello</w:t></w:r></w:p></w:document>");
+  assert.equal(hasEmbeddedVisuals(await scanDocxEmbeddedVisuals(textOnly)), false);
+
+  const xlsx = new JSZip();
+  xlsx.file("xl/workbook.xml", '<workbook><sheets><sheet name="检测结果" sheetId="1" r:id="rId1"/><sheet name="Plain" sheetId="2" r:id="rId2"/></sheets></workbook>');
+  xlsx.file("xl/_rels/workbook.xml.rels", '<Relationships><Relationship Id="rId1" Type="http://x/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://x/worksheet" Target="worksheets/sheet2.xml"/></Relationships>');
+  xlsx.file("xl/worksheets/_rels/sheet1.xml.rels", '<Relationships><Relationship Id="rId1" Type="http://x/drawing" Target="../drawings/drawing1.xml"/></Relationships>');
+  xlsx.file(
+    "xl/drawings/drawing1.xml",
+    '<xdr:wsDr><xdr:twoCellAnchor><xdr:pic/></xdr:twoCellAnchor><xdr:twoCellAnchor><xdr:pic/></xdr:twoCellAnchor>' +
+      '<xdr:twoCellAnchor><xdr:graphicFrame><c:chart r:id="rId2"/></xdr:graphicFrame></xdr:twoCellAnchor>' +
+      '<xdr:twoCellAnchor><xdr:sp><xdr:txBody><a:p><a:r><a:t>注意事项</a:t></a:r></a:p></xdr:txBody></xdr:sp></xdr:twoCellAnchor>' +
+      '<xdr:twoCellAnchor><xdr:sp><xdr:txBody><a:p><a:r><a:t>   </a:t></a:r></a:p></xdr:txBody></xdr:sp></xdr:twoCellAnchor></xdr:wsDr>'
+  );
+  xlsx.file("xl/media/image1.png", "x");
+  xlsx.file("xl/media/image2.png", "x");
+  xlsx.file("xl/media/image3.png", "x");
+  const xlsxSummary = await scanXlsxEmbeddedVisuals(xlsx);
+  assert.deepEqual(
+    xlsxSummary.areas.map((area) => [area.kind, area.area, area.images, area.charts, area.shapes]),
+    [["sheet", "检测结果", 2, 1, 1], ["cell", "", 1, 0, 0]]
+  );
+  assert.equal(xlsxSummary.images, 3);
+
+  const pdfSummary = summarizePdfVisuals([
+    { pageNumber: 1, imageCount: 0 },
+    { pageNumber: 2, imageCount: 3 },
+    { pageNumber: 5, imageCount: 1 }
+  ]);
+  assert.deepEqual(pdfSummary.areas.map((area) => area.area), ["2", "5"]);
+  assert.equal(pdfSummary.images, 4);
+
+  assert.match(describeEmbeddedVisualsForReport(docxSummary), /3 images, 1 charts\. Text inside them is not translated/);
+  assert.equal(describeEmbeddedVisualsForReport(undefined), "");
+});
+
+test("quality report text lists untranslated embedded content", async () => {
+  const { buildQualityReportText } = await bundleTsModule(path.join(repoRoot, "utils/qualityReport.ts"));
+  const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "utils/quality.ts"));
+  const report = runQualityChecks([{ a: "你好" }], [{ a: "Hello" }], { targetLang: "English" });
+  const base = {
+    qualityReport: report,
+    nonTargetDetails: [],
+    qualityRows: { sourceRows: [{ a: "你好" }], targetRows: [{ a: "Hello" }] },
+    targetLang: "English",
+    formatLocationLabel: () => "A1"
+  };
+  const withImages = buildQualityReportText({ ...base, embeddedVisuals: { images: 2, charts: 0, shapes: 0, areas: [] } });
+  assert.match(withImages, /- Untranslated embedded content: 2 images\./);
+  assert.doesNotMatch(buildQualityReportText(base), /Untranslated embedded content/);
+});
+
+test("pages show the image notice in settings, quality and export and log it on import", () => {
+  const appSource = readAppSource();
+  assert.match(fs.readFileSync(path.join(repoRoot, "components/translator/SettingsPanel.tsx"), "utf8"), /<EmbeddedVisualsNotice/);
+  assert.match(fs.readFileSync(path.join(repoRoot, "components/translator/QualityTab.tsx"), "utf8"), /<EmbeddedVisualsNotice/);
+  assert.match(fs.readFileSync(path.join(repoRoot, "components/translator/ExportBar.tsx"), "utf8"), /visuals\.export/);
+  assert.match(appSource, /embeddedVisuals,\n/);
+  const io = fs.readFileSync(path.join(repoRoot, "hooks/translation/useDocumentIO.ts"), "utf8");
+  assert.equal((io.match(/describeEmbeddedVisualsForLog/g) || []).length >= 4, true);
+  ["utils/docx.ts", "utils/excel.ts", "utils/pdf.ts"].forEach((file) => {
+    assert.match(fs.readFileSync(path.join(repoRoot, file), "utf8"), /embeddedVisuals/);
+  });
+});
+
 test("GitHub issue template captures debug packages with available labels", () => {
   const templateSource = fs.readFileSync(
     path.join(repoRoot, ".github/ISSUE_TEMPLATE/translation-bug.yml"),
@@ -891,7 +973,7 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   }
   fs.rmSync(pdfOut, { force: true });
   assert.match(appSource, /PDF download blocked/);
-  assert.match(pdfSource, /已回填 .* 个可提取图片/);
+  assert.match(pdfSource, /embeddedVisuals: summarizePdfVisuals\(pages\)/);
   assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);
   assert.match(appSource, /retryPdfSegments/);
   assert.match(appSource, /documentKind === 'pdf'\) \{\s*await retryPdfSegments\(\)/);
@@ -1198,9 +1280,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
   const { buildTranslationIssueCase, serializeTranslationIssueCasesJsonl } = await transpileTsModule(
     path.join(repoRoot, "utils/issueCases.ts")
   );
-  const { buildQualityFindings, buildQualityReportText, mapQualityFindingToIssueType } = await transpileTsModule(
-    path.join(repoRoot, "utils/qualityReport.ts")
-  );
+  const { buildQualityFindings, buildQualityReportText, mapQualityFindingToIssueType } = await bundleTsModule(path.join(repoRoot, "utils/qualityReport.ts"));
   const { buildIssueAssetPackage, buildQaRuleCandidatesFromIssueCases, buildTerminologyCandidatesFromIssueCases, buildTranslationMemoryPairsFromIssueCases } = await transpileTsModule(
     path.join(repoRoot, "utils/issueAssets.ts")
   );

@@ -1,3 +1,4 @@
+import { describeEmbeddedVisualsForReport, type EmbeddedVisualSummary } from './embeddedVisuals';
 import type { POCTRecord, TargetLanguage } from '../types';
 import type { QualityRows } from '../quality/types';
 import type { UntranslatedCell } from './language';
@@ -163,6 +164,7 @@ export const buildQualityReportText = ({
   qualityRows,
   targetLang,
   formatLocationLabel,
+  embeddedVisuals,
   generatedAt = new Date()
 }: {
   qualityReport: QualityReport;
@@ -170,6 +172,7 @@ export const buildQualityReportText = ({
   qualityRows: QualityRows;
   targetLang: TargetLanguage;
   formatLocationLabel: FormatLocationLabel;
+  embeddedVisuals?: EmbeddedVisualSummary | null;
   generatedAt?: Date;
 }) => {
   const nonTargetIssueList = qualityReport.issues.nonTargetLanguage || [];
@@ -259,6 +262,9 @@ export const buildQualityReportText = ({
     `  - Medium: ${qualityReport.totals.spacingMedium}`,
     `  - Low: ${qualityReport.totals.spacingLow}`,
     `- Structure mismatch: ${qualityReport.totals.structureMismatches} cells / ${qualityReport.totals.structureMismatchRows} rows`,
+    ...(describeEmbeddedVisualsForReport(embeddedVisuals)
+      ? [`- ${describeEmbeddedVisualsForReport(embeddedVisuals)}`]
+      : []),
     '',
     'Findings'
   ];

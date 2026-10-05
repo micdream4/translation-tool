@@ -1,3 +1,4 @@
+import type { EmbeddedVisualSummary } from '../utils/embeddedVisuals';
 import { useEffect, useMemo, useState } from 'react';
 import { SampleReviewAuditService } from '../services/sampleReviewAuditService';
 import type { QualityRows } from '../quality/types';
@@ -110,6 +111,7 @@ type UseQualityWorkflowParams = {
   formatSnapshot: DebugFormatSnapshot;
   currentModelLabel: string;
   fileName?: string;
+  embeddedVisuals?: EmbeddedVisualSummary | null;
   translationModelPreference: string;
   autoModelValue: string;
   addLog: (message: string) => void;
@@ -169,6 +171,7 @@ export const useQualityWorkflow = ({
   formatSnapshot,
   currentModelLabel,
   fileName,
+  embeddedVisuals,
   translationModelPreference,
   autoModelValue,
   addLog,
@@ -358,7 +361,8 @@ export const useQualityWorkflow = ({
         nonTargetDetails: currentIssueSummary.details,
         qualityRows,
         targetLang,
-        formatLocationLabel
+        formatLocationLabel,
+        embeddedVisuals
       })
     );
     addLog('Quality Report: 已导出当前检查报告。');

@@ -3,6 +3,7 @@ import React,{ useEffect,useMemo,useRef,useState } from 'react';
 import Header from './components/Header';
 import LogConsole from './components/LogConsole';
 import RunMonitor from './components/RunMonitor';
+import type { EmbeddedVisualSummary } from './utils/embeddedVisuals';
 import ExportBar from './components/translator/ExportBar';
 import ModelReviewView from './components/translator/ModelReviewView';
 import PreviewPanel from './components/translator/PreviewPanel';
@@ -1229,6 +1230,13 @@ const App: React.FC = () => {
     translationModelPreference === AUTO_OPENROUTER_MODEL
       ? `Auto (${currentModelChainLabel})`
       : currentModelLabel;
+  // Pictures, charts and drawing text are not translated; the page and the report say so.
+  const embeddedVisuals: EmbeddedVisualSummary | undefined =
+    documentKind === 'docx'
+      ? docxContextRef.current?.embeddedVisuals
+      : documentKind === 'pdf'
+        ? pdfContextRef.current?.embeddedVisuals
+        : excelContext?.embeddedVisuals;
   const {
     qualityReport,
     setQualityReport,
@@ -1269,6 +1277,7 @@ const App: React.FC = () => {
     formatSnapshot,
     currentModelLabel,
     fileName: file?.name,
+    embeddedVisuals,
     translationModelPreference,
     autoModelValue: AUTO_OPENROUTER_MODEL,
     addLog,
@@ -1749,6 +1758,7 @@ const App: React.FC = () => {
       <main className="flex-1 max-w-[1180px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-5">
         <SettingsPanel
           isLight={isLight}
+          embeddedVisuals={embeddedVisuals}
           AUTO_OPENROUTER_MODEL={AUTO_OPENROUTER_MODEL}
           applySavedProgress={applySavedProgress}
           autoModelChainLabel={autoModelChainLabel}
@@ -1861,6 +1871,7 @@ const App: React.FC = () => {
             {resultTab === 'quality' && (
               <QualityTab
                 isLight={isLight}
+                embeddedVisuals={embeddedVisuals}
                 canRetryIssues={canRetryIssues}
                 canRunQualityCheck={canRunQualityCheck}
                 clearIssueCases={clearIssueCases}
@@ -1955,6 +1966,7 @@ const App: React.FC = () => {
         {isDocumentLoaded && (
           <ExportBar
             isLight={isLight}
+            embeddedVisuals={embeddedVisuals}
             canDownload={canDownload}
             documentKind={documentKind}
             docxBlockingIssueCount={docxBlockingIssueCount}

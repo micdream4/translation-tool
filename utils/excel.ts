@@ -1,6 +1,7 @@
 
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { scanXlsxEmbeddedVisuals, type EmbeddedVisualSummary } from './embeddedVisuals';
 import type { POCTRecord } from '../types';
 
 const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
@@ -10,6 +11,7 @@ export interface ExcelContext {
   worksheet: XLSX.WorkSheet;
   sheetName: string;
   sourceArrayBuffer?: ArrayBuffer;
+  embeddedVisuals?: EmbeddedVisualSummary;
   headerRow: number;
   dataStartRow: number;
   headerKeys: string[];
@@ -63,13 +65,17 @@ const detectDataStartRow = (headerRow: number) => {
 export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
         const data = new Uint8Array(arrayBuffer);
         const workbook = XLSX.read(data, { type: 'array', cellStyles: true });
         const parsed = parseExcelWorkbook(workbook);
         parsed.context.sourceArrayBuffer = arrayBuffer.slice(0);
+        // Pictures, charts and drawing text are not translated; find them so the user is told.
+        parsed.context.embeddedVisuals = await JSZip.loadAsync(arrayBuffer.slice(0))
+          .then((zip) => scanXlsxEmbeddedVisuals(zip))
+          .catch(() => undefined);
         resolve(parsed);
       } catch (err) {
         reject(err);

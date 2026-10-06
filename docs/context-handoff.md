@@ -332,3 +332,4 @@ npm run build
 - 图片提示（v0.2.2）：`utils/embeddedVisuals.ts` 在解析 DOCX、Excel、PDF 时检测图片、图表、绘图形状文字，结果放在各自上下文的 `embeddedVisuals`，由 `EmbeddedVisualsNotice` 展示。图片内文字目前不翻译。
 - 术语资产清单见 `docs/terminology-assets.md`；用户会陆续补充术语，补充前先看该文档的缺口和模板。
 - OpenRouter 支持已在 v0.2.3 移除（本机访问 Google、Anthropic、OpenAI 模型一律 403，线上改走 Cloudflare AI Gateway）：删除了服务端引擎、`OPENROUTER_*` 配置、客户端服务、模型冷却逻辑、`smoke:openrouter` 等脚本；上文关于 OpenRouter 的 v0.0.x 记录是历史，不再适用。
+- v0.2.4：顶部改为导航标签 + 工具图标；质量检查/下载需要已有译文；预览分页；人工修正用行内编辑器（`saveQualityFindingCorrection(finding, corrected, remember)`，Excel 会写回 `processedData`）；中文界面下运行日志在显示层本地化（`utils/logDisplay.ts`，不要改日志源字符串）；多模型审核页已全部走 `review.*` 词条。

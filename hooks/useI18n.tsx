@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   UI_LANG_STORAGE_KEY,
   detectInitialUiLang,
@@ -22,6 +22,10 @@ const I18nContext = createContext<I18nContextValue>({
 
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [lang, setLangState] = useState<UiLang>(detectInitialUiLang);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  }, [lang]);
 
   const setLang = useCallback((next: UiLang) => {
     setLangState(next);

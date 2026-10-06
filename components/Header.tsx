@@ -184,7 +184,7 @@ const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={() => setLang(option)}
                 aria-pressed={lang === option}
-                className={`rounded-md px-2.5 py-1.5 transition-colors ${
+                className={`min-h-9 rounded-md px-3 py-1.5 transition-colors sm:min-h-0 sm:px-2.5 ${
                   lang === option
                     ? isLight
                       ? 'bg-slate-900 text-white'

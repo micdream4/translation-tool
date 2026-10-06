@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { LogEntry } from '../types';
 import { useI18n } from '../hooks/useI18n';
+import { localizeLogMessage } from '../utils/logDisplay';
 
 interface LogConsoleProps {
   logs: LogEntry[];
@@ -12,7 +13,7 @@ const formatTime = (time: number) =>
   new Date(time).toLocaleTimeString([], { hour12: false });
 
 const LogConsole: React.FC<LogConsoleProps> = ({ logs, theme = 'dark', onClear }) => {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLight = theme === 'light';
 
@@ -55,7 +56,7 @@ const LogConsole: React.FC<LogConsoleProps> = ({ logs, theme = 'dark', onClear }
             <span className={`whitespace-nowrap tabular-nums ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
               {formatTime(log.time)}
             </span>
-            <span className={`min-w-0 break-words ${toneFor(log.message)}`}>{log.message}</span>
+            <span className={`min-w-0 break-words ${toneFor(log.message)}`}>{localizeLogMessage(log.message, lang)}</span>
           </div>
         ))}
       </div>

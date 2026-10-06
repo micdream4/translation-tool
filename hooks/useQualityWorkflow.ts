@@ -104,6 +104,7 @@ type UseQualityWorkflowParams = {
   targetLang: TargetLanguage;
   data: POCTRecord[];
   processedData: POCTRecord[];
+  setProcessedData: React.Dispatch<React.SetStateAction<POCTRecord[]>>;
   translatedFlags: boolean[];
   currentRowsForRetry: POCTRecord[];
   currentIssueSummary: CurrentIssueSummary;
@@ -164,6 +165,7 @@ export const useQualityWorkflow = ({
   targetLang,
   data,
   processedData,
+  setProcessedData,
   translatedFlags,
   currentRowsForRetry,
   currentIssueSummary,
@@ -410,14 +412,19 @@ export const useQualityWorkflow = ({
       return true;
     }
 
+    if (documentKind === 'excel') {
+      if (!processedData[finding.rowIndex]) return false;
+      setProcessedData((rows) =>
+        rows.map((row, index) => (index === finding.rowIndex ? { ...row, [finding.columnKey]: corrected } : row))
+      );
+      setPreviewFocus({ rowIndex: finding.rowIndex, columnKey: finding.columnKey });
+      return true;
+    }
+
     return false;
   };
 
-  const saveQualityFindingCorrection = async (finding: QualityFinding) => {
-    if (typeof window === 'undefined') return;
-    const suggested = finding.translated || '';
-    const corrected = window.prompt('输入人工修正译文。DOCX/PDF 会立即写回当前文档，并保存到本地问题样本库。', suggested);
-    if (corrected === null) return;
+  const saveQualityFindingCorrection = async (finding: QualityFinding, corrected: string, remember: boolean) => {
     const trimmed = corrected.trim();
     if (!trimmed) {
       addLog('Issue Case: 人工修正为空，未保存。');
@@ -441,16 +448,10 @@ export const useQualityWorkflow = ({
     addLog(`Issue Case: 已保存 ${issueCase.issueType} 样本（${finding.locationLabel}）。`);
     const applied = applyFindingCorrectionToDocument(finding, trimmed);
     if (applied) {
-      addLog(`Issue Case: 已将人工修正写回当前 ${documentKind.toUpperCase()}，下载文件会包含该修正。`);
-    } else if (documentKind === 'excel') {
-      addLog('Issue Case: Excel 当前仅保存问题样本；表格写回会在后续统一接入。');
+      addLog(`Issue Case: 已将人工修正写回当前 ${documentKind.toUpperCase()}，下载文件会包含该修正；建议重新运行质量检查。`);
     }
 
-    if (
-      finding.original.trim() &&
-      trimmed &&
-      window.confirm('是否同时把这条人工修正写入 Translation Memory？')
-    ) {
+    if (finding.original.trim() && trimmed && remember) {
       await rememberTranslationPairs([
         {
           sourceText: finding.original,

@@ -15,6 +15,7 @@ export interface QualityTabProps {
   embeddedVisuals?: EmbeddedVisualSummary | null;
   canRetryIssues: boolean;
   canRunQualityCheck: boolean;
+  hasTranslationResult: boolean;
   clearIssueCases: () => void;
   clearQualityReport: () => void;
   currentIssueSummary: UntranslatedSummary;
@@ -61,7 +62,7 @@ export interface QualityTabProps {
   sampleReviewAiSummary: SampleReviewAiSummary;
   sampleReviewCount: number;
   sampleReviewItems: SampleReviewItem[];
-  saveQualityFindingCorrection: (finding: QualityFinding) => Promise<void>;
+  saveQualityFindingCorrection: (finding: QualityFinding, corrected: string, remember: boolean) => Promise<void>;
   setSampleReviewCount: React.Dispatch<React.SetStateAction<number>>;
   severityBadgeClass: (severity?: QualitySeverity) => "text-rose-300 border border-rose-500/30 bg-rose-500/10" | "text-amber-300 border border-amber-500/30 bg-amber-500/10" | "text-slate-400 border border-slate-700 bg-slate-900/40" | "text-sky-300 border border-sky-500/30 bg-sky-500/10";
   translationStatus: "running" | "idle" | "paused" | "completed";
@@ -75,6 +76,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
   embeddedVisuals,
   canRetryIssues,
   canRunQualityCheck,
+  hasTranslationResult,
   clearIssueCases,
   clearQualityReport,
   currentIssueSummary,
@@ -196,7 +198,10 @@ const QualityTab: React.FC<QualityTabProps> = ({
           <p>{t('qc.help.fix')}</p>
           {documentKind !== 'excel' && <p>{t('qc.help.docx')}</p>}
         </div>
-        {(hasTranslationAlerts || hasDocxIssues || hasPdfIssues || placeholderIssueCount > 0) && (
+        {!hasTranslationResult && (
+          <p className={`border-t pt-3 text-xs ${sectionDividerClass} ${mutedTextClass}`}>{t('qc.needTranslation')}</p>
+        )}
+        {hasTranslationResult && (hasTranslationAlerts || hasDocxIssues || hasPdfIssues || placeholderIssueCount > 0) && (
           <div className={`space-y-1 border-t pt-3 text-xs ${sectionDividerClass} ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
             {documentKind === 'excel' && currentIssueSummary.cells > 0 && (
               <p>{t('qc.alert.nonTarget', { cells: currentIssueSummary.cells, rows: currentIssueSummary.rows })}</p>

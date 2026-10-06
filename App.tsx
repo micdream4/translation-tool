@@ -265,15 +265,14 @@ const App: React.FC = () => {
   );
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    document.title = APP_VERSION
-      ? `POCT Document Translator v${APP_VERSION}`
-      : 'POCT Document Translator';
+    const title = t('header.title');
+    document.title = APP_VERSION ? `${title} v${APP_VERSION}` : title;
     if (!APP_VERSION) return;
     const url = new URL(window.location.href);
     if (url.searchParams.get('v') === APP_VERSION) return;
     url.searchParams.set('v', APP_VERSION);
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
-  }, []);
+  }, [t]);
   useEffect(() => {
     if (
       translationModelPreference !== AUTO_MODEL &&
@@ -1031,7 +1030,7 @@ const App: React.FC = () => {
   const pdfHasTranslatedContent = documentKind === 'pdf' && pdfStats.translated > 0;
   const canDownload =
     documentKind === 'docx'
-      ? docxContextRef.current !== null && translationStatus !== 'running'
+      ? docxContextRef.current !== null && translationStatus !== 'running' && docxStats.translated > 0
       : documentKind === 'pdf'
       ? pdfContextRef.current !== null && translationStatus !== 'running' && pdfHasTranslatedContent
       : processedData.length > 0 && translationStatus !== 'running';
@@ -1041,12 +1040,19 @@ const App: React.FC = () => {
       : documentKind === 'pdf'
       ? pdfContextRef.current !== null
       : data.length > 0;
-  const canRunQualityCheck =
+  const hasTranslationResult =
     documentKind === 'docx'
+      ? docxStats.translated > 0
+      : documentKind === 'pdf'
+      ? pdfStats.translated > 0
+      : processedData.length > 0;
+  const canRunQualityCheck =
+    hasTranslationResult &&
+    (documentKind === 'docx'
       ? docxContextRef.current !== null
       : documentKind === 'pdf'
       ? pdfContextRef.current !== null
-      : data.length > 0;
+      : data.length > 0);
   const currentRowsForRetry =
     processedData.length === data.length && processedData.length > 0 ? processedData : data;
   const currentIssueSummary = useMemo(
@@ -1213,6 +1219,7 @@ const App: React.FC = () => {
     targetLang,
     data,
     processedData,
+    setProcessedData,
     translatedFlags,
     currentRowsForRetry,
     currentIssueSummary,
@@ -1263,14 +1270,13 @@ const App: React.FC = () => {
       const end = Math.min(previewData.length - 1, previewFocus.rowIndex + 2);
       return Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
     }
-    const count = Math.min(10, previewData.length);
-    return Array.from({ length: count }, (_, idx) => previewData.length - 1 - idx);
+    return Array.from({ length: previewData.length }, (_, idx) => idx);
   }, [previewData, previewFocus]);
   const previewColumnKeys = useMemo(() => {
     if (!previewData.length) return [];
     const rowIndex = previewFocus?.rowIndex ?? previewRowIndices[0] ?? 0;
     const mergedKeys = Object.keys({ ...(previewSourceRows[rowIndex] || {}), ...(previewData[rowIndex] || {}) });
-    if (!previewFocus) return mergedKeys.slice(0, 6);
+    if (!previewFocus) return mergedKeys;
     const base = mergedKeys.slice(0, 5);
     return Array.from(new Set([...base, previewFocus.columnKey])).slice(0, 6);
   }, [previewData, previewFocus, previewRowIndices, previewSourceRows]);
@@ -1354,7 +1360,9 @@ const App: React.FC = () => {
       : translationStatus === 'paused'
         ? t('monitor.status.paused')
         : processingState.status === 'completed'
-          ? t('monitor.status.completed')
+          ? processingState.progress < 100
+            ? t('monitor.status.completedPartial')
+            : t('monitor.status.completed')
           : processingState.status === 'error'
             ? t('monitor.status.error')
             : processingState.status === 'analyzing'
@@ -1805,6 +1813,7 @@ const App: React.FC = () => {
                 embeddedVisuals={embeddedVisuals}
                 canRetryIssues={canRetryIssues}
                 canRunQualityCheck={canRunQualityCheck}
+                hasTranslationResult={hasTranslationResult}
                 clearIssueCases={clearIssueCases}
                 clearQualityReport={clearQualityReport}
                 currentIssueSummary={currentIssueSummary}

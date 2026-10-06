@@ -138,7 +138,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           {fileExtension || '+'}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{file ? file.name : t('settings.upload.cta')}</p>
+          <p className="truncate font-medium" title={file ? file.name : undefined}>{file ? file.name : t('settings.upload.cta')}</p>
           <p className={`truncate text-xs ${mutedTextClass}`}>{fileSummaryLine}</p>
         </div>
         <span
@@ -268,6 +268,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           >
             {isTranslating ? t('settings.starting') : t('settings.start')}
           </button>
+          {!canRunTranslation && !isTranslating && (
+            <p className={`mt-1.5 text-xs ${mutedTextClass}`}>{t('settings.needFile')}</p>
+          )}
         </div>
       </div>
 
@@ -333,7 +336,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   checked={translationMemoryEnabled}
                   onChange={(e) => setTranslationMemoryEnabled(e.target.checked)}
                   disabled={isTranslating}
-                  className="h-4 w-4 accent-indigo-500"
+                  className="h-5 w-5 accent-indigo-500 sm:h-4 sm:w-4"
                 />
                 <span>{t('settings.tm.use')}</span>
               </label>
@@ -341,7 +344,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 type="button"
                 onClick={clearTranslationMemoryData}
                 disabled={isTranslating || translationMemoryCount === 0}
-                className={`rounded-lg px-3 py-1.5 font-semibold transition-all ${
+                className={`min-h-9 rounded-lg px-3 py-1.5 font-semibold transition-all sm:min-h-0 ${
                   isTranslating || translationMemoryCount === 0 ? disabledButtonClass : neutralButtonClass
                 }`}
               >

@@ -20,6 +20,9 @@ export interface PreviewPanelProps {
   showComparison: boolean;
 }
 
+const PREVIEW_PAGE_SIZE = 10;
+const PREVIEW_COLUMN_PAGE_SIZE = 6;
+
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
   isLight,
   focusedPreviewCell,
@@ -38,6 +41,25 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   showComparison
 }) => {
   const { t } = useI18n();
+  const [rowPage, setRowPage] = React.useState(0);
+  const [columnPage, setColumnPage] = React.useState(0);
+  const focused = Boolean(previewFocus);
+  const rowPageCount = Math.max(1, Math.ceil(previewRowIndices.length / PREVIEW_PAGE_SIZE));
+  const columnPageCount = Math.max(1, Math.ceil(previewColumnKeys.length / PREVIEW_COLUMN_PAGE_SIZE));
+  const safeRowPage = Math.min(rowPage, rowPageCount - 1);
+  const safeColumnPage = Math.min(columnPage, columnPageCount - 1);
+  const shownRowIndices = focused
+    ? previewRowIndices
+    : previewRowIndices.slice(safeRowPage * PREVIEW_PAGE_SIZE, (safeRowPage + 1) * PREVIEW_PAGE_SIZE);
+  const shownColumnKeys = focused
+    ? previewColumnKeys
+    : previewColumnKeys.slice(safeColumnPage * PREVIEW_COLUMN_PAGE_SIZE, (safeColumnPage + 1) * PREVIEW_COLUMN_PAGE_SIZE);
+  // Duplicate headers are stored as "WBC_1"; show them as "WBC (2)" when the base name exists.
+  const displayColumnName = (key: string) => {
+    const match = key.match(/^(.*)_(\d+)$/);
+    if (match && previewColumnKeys.includes(match[1])) return `${match[1]} (${Number(match[2]) + 1})`;
+    return key;
+  };
   const {
     sectionDividerClass,
     headingMutedClass,
@@ -84,7 +106,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             {previewData.length > 0
               ? previewFocus
                 ? t('preview.showingFocused', { count: previewRowIndices.length })
-                : t('preview.showingLast', { shown: Math.min(10, previewData.length), total: previewData.length })
+                : t('preview.showingPage', {
+                    from: safeRowPage * PREVIEW_PAGE_SIZE + 1,
+                    to: Math.min(previewData.length, (safeRowPage + 1) * PREVIEW_PAGE_SIZE),
+                    total: previewData.length
+                  })
               : t('common.noData')}
           </div>
         </div>
@@ -134,13 +160,13 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-800 text-slate-400'}`}>
               <tr>
                 <th className={`px-4 py-3 border-b w-20 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{t('preview.row')}</th>
-                {previewColumnKeys.map(key => (
-                  <th key={key} className={`px-4 py-3 border-b truncate w-40 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{key}</th>
+                {shownColumnKeys.map(key => (
+                  <th key={key} title={key} className={`px-4 py-3 border-b truncate w-40 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{displayColumnName(key)}</th>
                 ))}
               </tr>
             </thead>
             <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-slate-800'}>
-              {previewRowIndices.map((actualIndex) => {
+              {shownRowIndices.map((actualIndex) => {
                 const record = previewData[actualIndex] || {};
                 const originalRecord = previewSourceRows[actualIndex] || {};
                 const isFocusedRow = previewFocus?.rowIndex === actualIndex;
@@ -153,7 +179,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                     <td className={`px-4 py-3 border-b text-[11px] text-slate-500 font-mono ${isLight ? 'border-slate-100' : 'border-slate-800/50'}`}>
                       R{formatExcelRowNumber(actualIndex)}
                     </td>
-                    {previewColumnKeys.map((key, j) => {
+                    {shownColumnKeys.map((key, j) => {
                       const val = record[key];
                       const origVal = originalRecord ? originalRecord[key] : '';
                       const isDiff = hasChanged(origVal, val);
@@ -198,6 +224,22 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </table>
         )}
       </div>
+      {!focused && previewData.length > 0 && (rowPageCount > 1 || columnPageCount > 1) && (
+        <div className={`flex flex-wrap items-center justify-between gap-3 border-t px-4 py-2 text-xs ${sectionDividerClass} ${mutedTextClass}`}>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={safeRowPage === 0} onClick={() => setRowPage(safeRowPage - 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.prev')}</button>
+            <span className="tabular-nums">{safeRowPage + 1} / {rowPageCount}</span>
+            <button type="button" disabled={safeRowPage >= rowPageCount - 1} onClick={() => setRowPage(safeRowPage + 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.next')}</button>
+          </div>
+          {columnPageCount > 1 && (
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={safeColumnPage === 0} onClick={() => setColumnPage(safeColumnPage - 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.prevCols')}</button>
+              <span className="tabular-nums">{safeColumnPage + 1} / {columnPageCount}</span>
+              <button type="button" disabled={safeColumnPage >= columnPageCount - 1} onClick={() => setColumnPage(safeColumnPage + 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.nextCols')}</button>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 };

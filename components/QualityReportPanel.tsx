@@ -74,7 +74,7 @@ interface QualityReportPanelProps {
   exportIssueAssetCandidates: () => void;
   promoteIssueCasesToTranslationMemory: () => void;
   clearIssueCases: () => void;
-  saveQualityFindingCorrection: (finding: QualityFinding) => void;
+  saveQualityFindingCorrection: (finding: QualityFinding, corrected: string, remember: boolean) => void | Promise<void>;
   jumpToPreviewCell: (rowIndex: number, columnKey: string) => void;
   setSampleReviewCount: (value: number) => void;
   generateSampleReview: () => void;
@@ -128,6 +128,9 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   reviewVerdictBadgeClass
 }) => {
   const { t } = useI18n();
+  const [editingFindingId, setEditingFindingId] = useState<string | null>(null);
+  const [draftTranslation, setDraftTranslation] = useState('');
+  const [rememberDraft, setRememberDraft] = useState(true);
   const [findingSeverityFilter, setFindingSeverityFilter] = useState<'all' | QualitySeverity>('all');
   const residualCells = Math.max(currentIssueSummary.cells, qualityReport?.totals.nonTargetCells || 0);
   const residualRows = Math.max(currentIssueSummary.rows, qualityReport?.totals.nonTargetRows || 0);
@@ -172,6 +175,14 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
           >
             {t('report.export')}
           </button>
+        </div>
+      </div>
+
+
+      <details className={`rounded-lg border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/30'}`}>
+        <summary className={`cursor-pointer list-none text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('report.moreTools')}</summary>
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap gap-2">
           <button
             onClick={exportIssueCases}
             disabled={issueCaseCount === 0}
@@ -193,61 +204,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
           >
             {t('report.issueDraft')}
           </button>
-        </div>
-      </div>
-
-      {!hasQualityReport && (
-        <p className={`text-xs ${mutedTextClass}`}>
-          {t('report.empty')}
-        </p>
-      )}
-
-      {hasQualityReport && qualityReport && (
-        <>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
-            <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.scanned')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                {t('report.card.rowsCells', { rows: qualityReport.totals.rowsScanned, cells: qualityReport.totals.cellsScanned })}
-              </p>
-              {formatSnapshot && (
-                <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                  {formatSnapshot.sheetName} · {formatSnapshot.rows}x{formatSnapshot.cols}
-                </p>
-              )}
-            </div>
-            <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.residual')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                {t('report.card.nonTarget', { cells: residualCells, chinese: qualityReport.totals.chineseCells })}
-              </p>
-              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                {t('report.card.nonTargetRows', { rows: residualRows, chineseRows: qualityReport.totals.chineseRows })}
-              </p>
-            </div>
-            <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.repair')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                {t('report.card.empty', { count: qualityReport.totals.emptyTranslations })}
-              </p>
-              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                {t('report.card.placeholder', { placeholder: qualityReport.totals.placeholderCells, id: qualityReport.totals.idMismatches })}
-              </p>
-            </div>
-            <div className={metricCardClass}>
-              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.formatStructure')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                {t('report.card.format', { count: qualityReport.totals.spacingIssues })}
-              </p>
-              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                {t('report.card.formatLevels', { high: qualityReport.totals.spacingHigh, medium: qualityReport.totals.spacingMedium, low: qualityReport.totals.spacingLow })}
-              </p>
-              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
-                {t('report.card.structure', { count: qualityReport.totals.structureMismatches })}
-              </p>
-            </div>
           </div>
-
           <div className={`${nestedPanelClass} flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between`}>
             <div>
               <h4 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('report.loop')}</h4>
@@ -309,6 +266,61 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             </div>
           </div>
 
+        </div>
+      </details>
+
+      {!hasQualityReport && (
+        <p className={`text-xs ${mutedTextClass}`}>
+          {t('report.empty')}
+        </p>
+      )}
+
+      {hasQualityReport && qualityReport && (
+        <>
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
+            <div className={metricCardClass}>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.scanned')}</p>
+              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                {t('report.card.rowsCells', { rows: qualityReport.totals.rowsScanned, cells: qualityReport.totals.cellsScanned })}
+              </p>
+              {formatSnapshot && (
+                <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                  {formatSnapshot.sheetName} · {formatSnapshot.rows}x{formatSnapshot.cols}
+                </p>
+              )}
+            </div>
+            <div className={metricCardClass}>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.residual')}</p>
+              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                {t('report.card.nonTarget', { cells: residualCells, chinese: qualityReport.totals.chineseCells })}
+              </p>
+              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                {t('report.card.nonTargetRows', { rows: residualRows, chineseRows: qualityReport.totals.chineseRows })}
+              </p>
+            </div>
+            <div className={metricCardClass}>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.repair')}</p>
+              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                {t('report.card.empty', { count: qualityReport.totals.emptyTranslations })}
+              </p>
+              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                {t('report.card.placeholder', { placeholder: qualityReport.totals.placeholderCells, id: qualityReport.totals.idMismatches })}
+              </p>
+            </div>
+            <div className={metricCardClass}>
+              <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.formatStructure')}</p>
+              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                {t('report.card.format', { count: qualityReport.totals.spacingIssues })}
+              </p>
+              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                {t('report.card.formatLevels', { high: qualityReport.totals.spacingHigh, medium: qualityReport.totals.spacingMedium, low: qualityReport.totals.spacingLow })}
+              </p>
+              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                {t('report.card.structure', { count: qualityReport.totals.structureMismatches })}
+              </p>
+            </div>
+          </div>
+
           <details className={`rounded-lg border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/30'}`}>
             <summary className="cursor-pointer list-none flex items-center justify-between">
               <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('report.details')}</span>
@@ -324,7 +336,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         key={filter}
                         type="button"
                         onClick={() => setFindingSeverityFilter(filter)}
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide transition-all ${
+                        className={`min-h-9 px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide transition-all sm:min-h-0 sm:px-2.5 ${
                           findingSeverityFilter === filter
                             ? 'bg-indigo-600 text-white'
                             : isLight
@@ -371,8 +383,11 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
                           <button
-                            onClick={() => saveQualityFindingCorrection(finding)}
-                            className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+                            onClick={() => {
+                              setEditingFindingId(finding.id);
+                              setDraftTranslation(finding.translated || '');
+                            }}
+                            className={`min-h-9 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
                           >
                             {t('report.finding.save')}
                           </button>
@@ -384,6 +399,40 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                           </button>
                         </div>
                       </div>
+                      {editingFindingId === finding.id && (
+                        <div className="mt-3 space-y-2">
+                          <textarea
+                            value={draftTranslation}
+                            onChange={(e) => setDraftTranslation(e.target.value)}
+                            rows={3}
+                            className={`w-full rounded-lg border px-3 py-2 text-xs ${isLight ? 'border-slate-200 bg-white text-slate-900' : 'border-slate-700 bg-slate-900 text-slate-200'}`}
+                          />
+                          <label className={`flex items-center gap-2 text-[11px] ${mutedTextClass}`}>
+                            <input type="checkbox" checked={rememberDraft} onChange={(e) => setRememberDraft(e.target.checked)} />
+                            {t('report.finding.remember')}
+                          </label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={!draftTranslation.trim()}
+                              onClick={async () => {
+                                await saveQualityFindingCorrection(finding, draftTranslation, rememberDraft);
+                                setEditingFindingId(null);
+                              }}
+                              className={`min-h-9 px-3 py-2 rounded-lg text-xs font-semibold ${!draftTranslation.trim() ? disabledButtonClass : primaryInlineButtonClass}`}
+                            >
+                              {t('report.finding.apply')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingFindingId(null)}
+                              className={`min-h-9 px-3 py-2 rounded-lg text-xs font-semibold ${neutralButtonClass}`}
+                            >
+                              {t('common.cancel')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

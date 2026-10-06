@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { useI18n } from '../useI18n';
 import type { ModelReviewStyleSelection } from '../../components/translator/types';
 import { ModelReviewService } from '../../services/modelReviewService';
 import {
@@ -51,6 +52,7 @@ export interface ModelReviewContext {
 }
 
 export const useModelReview = (ctx: ModelReviewContext) => {
+  const { t } = useI18n();
   const {
     addLog,
     data,
@@ -187,21 +189,23 @@ const getEffectiveModelReviewStyle = (): ModelReviewStyle =>
       : modelReviewStyleSelection;
 
 const runModelReview = async () => {
+    const sourceKey = documentKind === 'excel' || documentKind === 'docx' || documentKind === 'pdf' ? documentKind : 'other';
+    const sourceText = t(`review.sourceLabel.${sourceKey}`);
     if (!canRunModelReview()) {
       addLog('Multi-AI Review: 请先上传可抽样的 Excel、DOCX 或 PDF 文档。');
-      setModelReviewStatus({ stage: 'error', message: '请先在 Translator 页面上传并解析文件。' });
+      setModelReviewStatus({ stage: 'error', message: t('review.msg.needFile') });
       return;
     }
     if (isRunningModelReview || translationStatus === 'running') {
       addLog('Multi-AI Review: 当前有任务正在运行，请稍后再试。');
-      setModelReviewStatus({ stage: 'error', message: '当前有任务正在运行，请稍后再试。' });
+      setModelReviewStatus({ stage: 'error', message: t('review.msg.busy') });
       return;
     }
-    setModelReviewStatus({ stage: 'sampling', message: `Sampling ${getModelReviewSourceLabel()}...` });
+    setModelReviewStatus({ stage: 'sampling', message: t('review.msg.sampling', { source: sourceText }) });
     const samples = buildModelReviewSamples(modelReviewCount);
     if (!samples.length) {
       addLog('Multi-AI Review: 当前文档中没有可抽样的源语言文本。');
-      setModelReviewStatus({ stage: 'error', message: '当前文档中没有可抽样的源语言文本。' });
+      setModelReviewStatus({ stage: 'error', message: t('review.msg.noSamples') });
       return;
     }
     setIsRunningModelReview(true);
@@ -209,7 +213,7 @@ const runModelReview = async () => {
     const reviewStyle = getEffectiveModelReviewStyle();
     setModelReviewStatus({
       stage: 'translating',
-      message: `Translating ${samples.length} samples with ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} candidate models...`
+      message: t('review.msg.translating', { count: samples.length, models: DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length })
     });
 	    addLog(
 	      `Multi-AI Review: 抽取 ${samples.length} 个 ${getModelReviewSourceLabel()}，评审风格 ${MODEL_REVIEW_STYLE_LABELS[reviewStyle]}，调用 ${DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length} 个候选模型和 ${DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length} 个匿名评审模型；后端按保守并发执行。`
@@ -220,7 +224,7 @@ const runModelReview = async () => {
           current.stage === 'translating'
             ? {
                 stage: 'judging',
-                message: `Anonymous judges are scoring candidate translations...`
+                message: t('review.msg.judging')
               }
             : current
         );
@@ -248,7 +252,7 @@ const runModelReview = async () => {
         addLog(`Multi-AI Review: 完成，当前最高分 ${top.model} (${top.overall.toFixed(2)})。`);
         setModelReviewStatus({
           stage: 'completed',
-          message: `Completed. Top model: ${getModelLabel(top.model)} (${top.overall.toFixed(2)}).`
+          message: t('review.msg.done', { model: getModelLabel(top.model), score: top.overall.toFixed(2) })
         });
       } else if (successfulCandidates.length) {
         addLog(
@@ -256,13 +260,13 @@ const runModelReview = async () => {
         );
         setModelReviewStatus({
           stage: 'completed',
-          message: `Translations completed for ${successfulCandidates.length}/${result.candidates.length} candidate models, but judges returned no usable scores.`
+          message: t('review.msg.partial', { done: successfulCandidates.length, total: result.candidates.length })
         });
       } else {
         addLog('Multi-AI Review: 完成，但评审模型未返回有效排名。');
         setModelReviewStatus({
           stage: 'completed',
-          message: 'Completed, but no valid ranking was returned by the judges.'
+          message: t('review.msg.noRanking')
         });
       }
     } catch (error) {

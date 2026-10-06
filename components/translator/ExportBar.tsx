@@ -34,17 +34,19 @@ const ExportBar: React.FC<ExportBarProps> = ({
   } = getUiClasses(isLight);
 
   return (
-    <div className={`sticky bottom-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-5 py-3 backdrop-blur ${
+    <div className={`static z-30 flex flex-wrap items-center justify-end gap-3 rounded-2xl border px-4 py-3 sm:sticky sm:bottom-4 sm:px-5 backdrop-blur ${
       isLight ? 'border-slate-200 bg-white/95 shadow-[0_16px_40px_rgba(15,23,42,0.12)]' : 'border-white/[0.1] bg-slate-900/90'
     }`}>
-      <p className={`min-w-0 flex-1 text-sm ${
+      <p className={`min-w-0 flex-1 text-sm empty:hidden ${
         docxBlockingIssueCount > 0 && translationStatus !== 'running'
           ? isLight ? 'text-rose-700' : 'text-rose-300'
           : mutedTextClass
       }`}>
         {translationStatus === 'running'
           ? t('export.wait')
-          : docxBlockingIssueCount > 0
+          : !canDownload
+            ? t('export.notTranslated')
+            : docxBlockingIssueCount > 0
             ? t('export.risk', { count: docxBlockingIssueCount })
             : hasEmbeddedVisuals(embeddedVisuals)
               ? t('visuals.export', { parts: describeParts(embeddedVisuals!) })

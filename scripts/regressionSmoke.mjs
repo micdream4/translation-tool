@@ -532,7 +532,7 @@ const readUiKeys = () => {
   const extract = (name) => {
     const start = source.indexOf(`const ${name}: Dictionary = {`);
     const end = source.indexOf("\n};", start);
-    return new Set([...source.slice(start, end).matchAll(/^\s+'([\w.]+)':/gm)].map((match) => match[1]));
+    return new Set([...source.slice(start, end).matchAll(/^\s+'([\w.-]+)':/gm)].map((match) => match[1]));
   };
   return { zh: extract("zh"), en: extract("en") };
 };
@@ -558,7 +558,12 @@ test("UI dictionaries stay in sync and cover every key used by the interface", (
     ...["high", "medium", "low"].map((k) => `report.risk.${k}`),
     ...["fail", "warning", "pass"].map((k) => `report.verdict.${k}`),
     ...["basic", "run", "qc", "sample"].map((k) => `guide.${k}.title`),
-    ...["body", "header", "footer", "footnotes", "endnotes"].map((k) => `visuals.area.${k}`)
+    ...["body", "header", "footer", "footnotes", "endnotes"].map((k) => `visuals.area.${k}`),
+    ...["excel", "docx", "pdf", "other"].map((k) => `review.sourceLabel.${k}`),
+    ...["translated", "failed", "running", "planned"].map((k) => `review.model.${k}`),
+    ...["idle", "sampling", "translating", "judging", "completed", "error"].map((k) => `review.stage.${k}`),
+    ...["auto", "medical-report", "ifu-manual", "marketing-readable", "terminology-faithful"].map((k) => `review.style.${k}`),
+    ...["cell", "readable", "faithful", "style", "manual"].map((k) => `review.metric.${k}`)
   ];
   assert.deepEqual(dynamic.filter((key) => !zh.has(key)), []);
 });
@@ -3437,4 +3442,29 @@ test("TranslationHub splits DeepSeek Pro proxy overload failures before skipping
       process.env.VITE_TRANSLATION_MODE = originalMode;
     }
   }
+});
+
+
+test("run logs are localized for the Chinese UI at display time only", async () => {
+  const { localizeLogMessage } = await bundleTsModule(path.join(repoRoot, "utils/logDisplay.ts"));
+  assert.equal(localizeLogMessage("Importing: a.xlsx", "zh"), "正在导入：a.xlsx");
+  assert.equal(localizeLogMessage("Importing: a.xlsx", "en"), "Importing: a.xlsx");
+  assert.equal(localizeLogMessage("Success: Loaded DOCX with 12 semantic segments.", "zh"), "成功：已载入 DOCX，共 12 个语义段。");
+  assert.match(localizeLogMessage("Translating Batch 2/5 (10 records，行 1-10)...", "zh"), /^正在翻译第 2\/5 批（10 条记录/);
+  assert.equal(localizeLogMessage("Docx translation paused after batch 3.", "zh"), "DOCX 翻译已在第 3 批后暂停。");
+  assert.equal(localizeLogMessage("已是中文的日志", "zh"), "已是中文的日志");
+});
+
+test("audit fixes: quality check and download need a translation, review lab and preview are localized", () => {
+  const appSource = readAppSource();
+  assert.match(appSource, /const hasTranslationResult =/);
+  assert.match(appSource, /canRunQualityCheck =\s*hasTranslationResult &&/);
+  assert.match(appSource, /docxStats\.translated > 0/);
+  assert.doesNotMatch(appSource, /window\.prompt\(/);
+  assert.doesNotMatch(appSource, /window\.confirm\(/);
+  const reviewView = fs.readFileSync(path.join(repoRoot, "components/translator/ModelReviewView.tsx"), "utf8");
+  assert.doesNotMatch(reviewView, /Multi-AI Review Lab|Back to Translator|Run Review|Sample Preview/);
+  const preview = fs.readFileSync(path.join(repoRoot, "components/translator/PreviewPanel.tsx"), "utf8");
+  assert.match(preview, /PREVIEW_PAGE_SIZE/);
+  assert.match(fs.readFileSync(path.join(repoRoot, "index.html"), "utf8"), /<html lang="zh-CN">/);
 });

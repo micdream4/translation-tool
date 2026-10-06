@@ -181,14 +181,14 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
                 <li key={run.id} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2.5">
                   <span className="font-mono text-xs tabular-nums">#{run.batchNum}</span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm">
+                    <p className="truncate text-sm" title={run.model || undefined}>
                       {t('monitor.units', {
                         count: run.items,
                         unit: run.unit === 'rows' ? t('common.rows') : t('common.segments')
                       })}
                       {run.model ? ` · ${run.model}` : ''}
                     </p>
-                    <p className={`truncate font-mono text-xs tabular-nums ${mutedTextClass}`}>
+                    <p className={`truncate font-mono text-xs tabular-nums ${mutedTextClass}`} title={run.note || undefined}>
                       {formatSeconds(elapsed)}
                       {run.note ? ` · ${run.note}` : ''}
                     </p>

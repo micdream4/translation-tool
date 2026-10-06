@@ -88,7 +88,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
         <option value={ALL_STRING_TARGETS}>{t('strings.all', { count: STRING_TARGET_LANGS.length })}</option>
         {STRING_TARGET_LANGS.map((lang) => (
           <option key={lang} value={lang}>
-            {t('strings.only', { lang: getTargetLanguageLabel(lang) })}
+            {t('strings.only', { lang: getTargetLanguageLabel(lang).split(' / ').pop() || lang })}
           </option>
         ))}
       </select>

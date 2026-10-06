@@ -1,5 +1,6 @@
 
 import React from 'react';
+import type { TranslationRequest } from '../../services/translationHub';
 import {
   buildExcelRetryTargets
 } from '../../quality/retryTargets';
@@ -45,7 +46,7 @@ import type {
   TranslationMemoryStats
 } from '../../utils/translatorShared';
 import {
-  AUTO_OPENROUTER_MODEL,
+  AUTO_MODEL,
   RETRY_BATCH_SIZE,
   cellNeedsTranslation,
   createIssueSummary,
@@ -75,7 +76,7 @@ export interface ExcelTranslationContext {
   getRetryAttemptModelLabel: (model: TranslationEngine) => string;
   getSpreadsheetBatchSize: () => number;
   getTranslationMemoryKey: (sourceText: string, lang?: TargetLanguage) => string;
-  getTranslationOptions: () => { openRouterModels: string[]; model?: undefined; providerModel?: undefined; openRouterModel?: undefined; } | { model: "cloudflare-ai"; providerModel: string; openRouterModels?: undefined; openRouterModel?: undefined; } | { model: "deepseek"; providerModel: string; openRouterModels?: undefined; openRouterModel?: undefined; } | { model: "openrouter"; openRouterModel: string; openRouterModels?: undefined; providerModel?: undefined; };
+  getTranslationOptions: () => TranslationRequest['options'];
   getUsedModelLabel: () => string;
   isRetryingMissing: boolean;
   logTranslationMemoryStats: (label: string, stats: TranslationMemoryStats) => void;
@@ -636,7 +637,7 @@ const retryMissingRows = async (
     addLog(`重译问题项: 针对 ${uniqueIndices.length} 行重新翻译...`);
 
     const fallbackPriority = getFallbackPriority(
-      translationModelPreference !== AUTO_OPENROUTER_MODEL
+      translationModelPreference !== AUTO_MODEL
     );
 
     const sourceRecords =
@@ -722,11 +723,7 @@ const retryMissingRows = async (
                   ? getCloudflareAiProviderModel(translationModelPreference)
                   : model === 'deepseek' && isDeepSeekDirectModel(translationModelPreference)
                     ? getDeepSeekDirectProviderModel(translationModelPreference)
-                    : undefined,
-              openRouterModel:
-                model === 'openrouter' && translationModelPreference !== AUTO_OPENROUTER_MODEL
-                  ? translationModelPreference
-                  : undefined
+                    : undefined
             }
           });
           addLog(
@@ -913,7 +910,7 @@ const retryCellsByKeys = async (
     addLog(`${label}: 针对 ${retryItems.length} 行重新翻译...`);
 
     const fallbackPriority = getFallbackPriority(
-      translationModelPreference !== AUTO_OPENROUTER_MODEL
+      translationModelPreference !== AUTO_MODEL
     );
 
     const baseProcessed =
@@ -946,11 +943,7 @@ const retryCellsByKeys = async (
                   ? getCloudflareAiProviderModel(translationModelPreference)
                   : model === 'deepseek' && isDeepSeekDirectModel(translationModelPreference)
                     ? getDeepSeekDirectProviderModel(translationModelPreference)
-                    : undefined,
-              openRouterModel:
-                model === 'openrouter' && translationModelPreference !== AUTO_OPENROUTER_MODEL
-                  ? translationModelPreference
-                  : undefined
+                    : undefined
             }
           });
           addLog(

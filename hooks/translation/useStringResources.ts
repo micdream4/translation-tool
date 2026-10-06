@@ -1,5 +1,6 @@
 
 import React from 'react';
+import type { TranslationRequest } from '../../services/translationHub';
 import { TranslationHub } from '../../services/translationHub';
 import {
   POCTRecord,
@@ -23,7 +24,7 @@ import type {
   StringOutputDiagnostic
 } from '../../utils/translatorShared';
 import {
-  AUTO_OPENROUTER_MODEL,
+  AUTO_MODEL,
   STRING_BATCH_SIZE,
   downloadTextFile,
   formatCurrentStringOutputText,
@@ -33,13 +34,11 @@ import {
 
 export interface StringResourcesContext {
   addLog: (msg: string) => void;
-  applyLatestOpenRouterModelCooldowns: (contextLabel: string) => void;
   applyStringAutoFix: (text: string) => string;
   collectStringOutputDiagnostics: (sourceEntries: ReturnType<typeof parseStringResourceLine>[], output: string, lang: TargetLanguage) => StringOutputDiagnostic;
   currentModelDisplayLabel: string;
-  currentSkippedOpenRouterModels: string[];
   getCurrentStringOutputDiagnostics: (outputs: Record<string, string>) => StringOutputDiagnostic[];
-  getTranslationOptions: () => { openRouterModels: string[]; model?: undefined; providerModel?: undefined; openRouterModel?: undefined; } | { model: "cloudflare-ai"; providerModel: string; openRouterModels?: undefined; openRouterModel?: undefined; } | { model: "deepseek"; providerModel: string; openRouterModels?: undefined; openRouterModel?: undefined; } | { model: "openrouter"; openRouterModel: string; openRouterModels?: undefined; providerModel?: undefined; };
+  getTranslationOptions: () => TranslationRequest['options'];
   selectedStringTargetLangs: string[];
   setStringError: React.Dispatch<React.SetStateAction<string>>;
   setStringErrorDetails: React.Dispatch<React.SetStateAction<string>>;
@@ -58,11 +57,9 @@ export interface StringResourcesContext {
 export const useStringResources = (ctx: StringResourcesContext) => {
   const {
     addLog,
-    applyLatestOpenRouterModelCooldowns,
     applyStringAutoFix,
     collectStringOutputDiagnostics,
     currentModelDisplayLabel,
-    currentSkippedOpenRouterModels,
     getCurrentStringOutputDiagnostics,
     getTranslationOptions,
     selectedStringTargetLangs,
@@ -200,11 +197,6 @@ export const useStringResources = (ctx: StringResourcesContext) => {
       `String Resource: 开始处理 ${entries.length} 行，输出 ${targetLangs.length} 个目标语言（${targetLangs.join(', ')}）。`
     );
     addLog(`String Resource: 使用上方翻译模型 - ${currentModelDisplayLabel}。`);
-    if (translationModelPreference === AUTO_OPENROUTER_MODEL && currentSkippedOpenRouterModels.length > 0) {
-      addLog(
-        `String Resource: Auto 当前跳过冷却模型 ${currentSkippedOpenRouterModels.map(getModelLabel).join(', ')}。`
-      );
-    }
     if (payload.length > 0) {
       addLog(
         `String Resource: ${payload.length} 行送模型翻译，按 ${Math.ceil(
@@ -245,7 +237,6 @@ export const useStringResources = (ctx: StringResourcesContext) => {
             targetLang: lang,
             options: getTranslationOptions()
           });
-          applyLatestOpenRouterModelCooldowns(`String Resource: ${lang} Batch ${batchIndex + 1}`);
           batchResult.forEach((record, offset) => {
             translatedBatch[start + offset] = record;
           });
@@ -261,7 +252,6 @@ export const useStringResources = (ctx: StringResourcesContext) => {
         addLog(`String Resource: ${lang} 已完成（${completedLangCount}/${totalLangCount}）。`);
         results.push({ status: 'fulfilled', value: output });
       } catch (error) {
-        applyLatestOpenRouterModelCooldowns(`String Resource: ${lang}`);
         completedLangCount += 1;
         const reason = error instanceof Error ? error.message : String(error);
         addLog(`String Resource: ${lang} 失败（${completedLangCount}/${totalLangCount}）：${reason}`);

@@ -11,8 +11,8 @@ import {
 } from "../../utils/modelReview";
 import { parseModelJsonArray, parseModelJsonObject } from "../../utils/jsonRepair";
 import {
-  buildOpenRouterPrompt,
-  buildOpenRouterSystemPrompt,
+  buildTranslationPrompt,
+  buildTranslationSystemPrompt,
   type TranslationProfile
 } from "../../utils/translationProfiles";
 import {
@@ -112,8 +112,8 @@ const translateWithModel = async ({
   const content = await callModel({
     env,
     model,
-    system: buildOpenRouterSystemPrompt(profile),
-    user: buildOpenRouterPrompt(records, targetLang, profile),
+    system: buildTranslationSystemPrompt(profile),
+    user: buildTranslationPrompt(records, targetLang, profile),
     maxTokens: 7000
   });
   const parsed = parseModelJsonArray<POCTRecord>(content);

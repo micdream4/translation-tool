@@ -24,25 +24,6 @@ export const jsonResponse = (data: unknown, status = 200) =>
 
 export const normalizeEmail = (value: unknown) => String(value || "").trim().toLowerCase();
 
-export const parseUserKeyMap = (raw: unknown) => {
-  if (!raw) return {} as Record<string, string>;
-  try {
-    const parsed = JSON.parse(String(raw));
-    if (!parsed || typeof parsed !== "object") return {} as Record<string, string>;
-    const out: Record<string, string> = {};
-    Object.entries(parsed as Record<string, unknown>).forEach(([email, key]) => {
-      const normalizedEmail = normalizeEmail(email);
-      const normalizedKey = String(key || "").trim();
-      if (!normalizedEmail || !normalizedKey) return;
-      out[normalizedEmail] = normalizedKey;
-    });
-    return out;
-  } catch (error) {
-    console.warn("Failed to parse OPENROUTER_KEYS_BY_EMAIL JSON.", error);
-    return {} as Record<string, string>;
-  }
-};
-
 const base64UrlToBytes = (value: string) => {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
   const binary = atob(padded);
@@ -194,10 +175,3 @@ export const enforceRequestAuth = async (request: Request, env: FunctionEnv): Pr
   return { ok: true, auth };
 };
 
-export const getOpenRouterKeyForUser = (env: FunctionEnv, userEmail: string) => {
-  const userKeyMap = parseUserKeyMap(env.OPENROUTER_KEYS_BY_EMAIL || env.OPENROUTER_KEY_BY_EMAIL);
-  const defaultOpenRouterKey = String(
-    env.OPENROUTER_API_KEY || env.Openrouter_API_KEY || env.VITE_OPENROUTER_API_KEY || ""
-  ).trim();
-  return String(userKeyMap[userEmail] || defaultOpenRouterKey || "").trim();
-};

@@ -17,7 +17,6 @@ STRING_RESOURCE_TARGET_LANGS
 } from './targetLanguage';
 import { normalizeTerminology } from './terminology';
 import {
-normalizeOpenRouterModelId
 } from './translationProfiles';
 import {
 isLikelyIdentifier
@@ -45,10 +44,8 @@ export const DEFAULT_CLOUDFLARE_AI_MODELS = [
   'openai/gpt-5.4',
   'anthropic/claude-sonnet-4.6'
 ] as const;
-export const DEFAULT_OPENROUTER_MODELS: string[] = [];
-export const DEFAULT_OPENROUTER_AUTO_MODELS: string[] = [];
-export const AUTO_OPENROUTER_MODEL = '__AUTO_OPENROUTER__';
-export const OPENROUTER_MODEL_COOLDOWN_MS = 30 * 60 * 1000;
+// Value of the model selector meaning "let the server pick the fallback chain".
+export const AUTO_MODEL = '__AUTO_MODEL__';
 export const MODEL_LABELS: Record<string, string> = {
   'cloudflare-ai:google/gemini-3-flash': 'Cloudflare Gemini 3 Flash',
   'cloudflare-ai:openai/gpt-5.4': 'Cloudflare OpenAI GPT-5.4',
@@ -108,44 +105,23 @@ export const splitCloudflareAutoModels = (models: readonly string[]) => ({
 });
 export const formatAutoModelChainLabel = (
   cloudflareModels: readonly string[],
-  openRouterModels: readonly string[],
   includeDeepSeekDirect: boolean
 ) => {
   const cloudflareAuto = splitCloudflareAutoModels(cloudflareModels);
   return [
     ...cloudflareAuto.primary.map(getModelLabel),
     ...(includeDeepSeekDirect ? DEEPSEEK_DIRECT_AUTO_LABELS : []),
-    ...cloudflareAuto.fallback.map(getModelLabel),
-    ...openRouterModels.map(getModelLabel)
+    ...cloudflareAuto.fallback.map(getModelLabel)
   ].join(' -> ');
 };
-export type TranslationEngine = 'cloudflare-ai' | 'openrouter' | 'deepseek' | 'gemini';
+export type TranslationEngine = 'cloudflare-ai' | 'deepseek' | 'gemini';
 export type ThemeMode = 'light' | 'dark';
 export type TranslationMemoryStats = {
   hits: number;
   deduped: number;
   stored: number;
 };
-export type OpenRouterModelCooldown = {
-  until: number;
-  reason: string;
-};
-export type OpenRouterModelIssue = {
-  model?: string;
-  status?: number | string;
-  message?: string;
-  kind?: string;
-};
 export type StageResult = 'paused' | 'completed' | void;
-
-export const parseOpenRouterModelOptions = () => {
-  const raw =
-    String((import.meta as any)?.env?.VITE_OPENROUTER_MODELS || '').trim();
-  const values = raw
-    ? raw.split(/[,\n;]+/).map((item: string) => normalizeOpenRouterModelId(item)).filter(Boolean)
-    : [...DEFAULT_OPENROUTER_MODELS];
-  return Array.from(new Set(values));
-};
 
 export const parseCloudflareAiModelOptions = () => {
   const raw =
@@ -153,15 +129,6 @@ export const parseCloudflareAiModelOptions = () => {
   const values = raw
     ? raw.split(/[,\n;]+/).map((item: string) => item.trim()).filter(Boolean)
     : [...DEFAULT_CLOUDFLARE_AI_MODELS];
-  return Array.from(new Set(values));
-};
-
-export const parseOpenRouterAutoModelOptions = () => {
-  const raw =
-    String((import.meta as any)?.env?.VITE_OPENROUTER_AUTO_MODELS || '').trim();
-  const values = raw
-    ? raw.split(/[,\n;]+/).map((item: string) => normalizeOpenRouterModelId(item)).filter(Boolean)
-    : [...DEFAULT_OPENROUTER_AUTO_MODELS];
   return Array.from(new Set(values));
 };
 

@@ -1,5 +1,6 @@
 
 import React from 'react';
+import type { TranslationRequest } from '../../services/translationHub';
 import type { DocxIssueDetail } from '../../components/translator/types';
 import {
   buildTextSegmentRetryPlan
@@ -43,7 +44,6 @@ import { runPdfTranslationWorkflow } from '../../workflows/pdfTranslationWorkflo
 
 export interface PdfTranslationContext {
   addLog: (msg: string) => void;
-  applyLatestOpenRouterModelCooldowns: (contextLabel: string) => void;
   batchMonitor: BatchMonitor;
   buildPdfIssueDetails: (context: PdfContext) => { pending: number[]; details: DocxIssueDetail[]; qualityReport: QualityReport; };
   createTranslationMemoryStats: () => TranslationMemoryStats;
@@ -52,7 +52,7 @@ export interface PdfTranslationContext {
   docxPlaceholderStore: React.RefObject<Map<string, Record<string, string>>>;
   file: File;
   getDocumentBatchPolicy: () => { maxItems: number; maxChars: number; label: string; };
-  getDocumentQualityTranslationOptions: () => { model: "cloudflare-ai"; providerModel: string; profile: "docx-manual"; openRouterModel?: undefined; openRouterModels?: undefined; } | { model: "deepseek"; providerModel: string; profile: "docx-manual"; openRouterModel?: undefined; openRouterModels?: undefined; } | { model: "openrouter"; openRouterModel: string; profile: "docx-manual"; providerModel?: undefined; openRouterModels?: undefined; } | { profile: "docx-manual"; openRouterModels: string[]; model?: undefined; providerModel?: undefined; openRouterModel?: undefined; };
+  getDocumentQualityTranslationOptions: () => TranslationRequest['options'];
   getTranslationMemoryKey: (sourceText: string, lang?: TargetLanguage) => string;
   getUsedModelLabel: () => string;
   logTranslationMemoryStats: (label: string, stats: TranslationMemoryStats) => void;
@@ -77,7 +77,6 @@ export interface PdfTranslationContext {
 export const usePdfTranslation = (ctx: PdfTranslationContext) => {
   const {
     addLog,
-    applyLatestOpenRouterModelCooldowns,
     batchMonitor,
     buildPdfIssueDetails,
     createTranslationMemoryStats,
@@ -137,7 +136,6 @@ export const usePdfTranslation = (ctx: PdfTranslationContext) => {
       shouldTranslateText: shouldTranslateDocxText,
       dedupeLeadingRepeat,
       getTranslationOptions: getDocumentQualityTranslationOptions,
-      applyLatestModelCooldowns: applyLatestOpenRouterModelCooldowns,
       createTranslationMemoryStats,
       lookupReusableTranslations,
       getTranslationMemoryKey,
@@ -273,9 +271,7 @@ const retryPdfSegments = async () => {
               targetLang,
               options: getDocumentQualityTranslationOptions()
             });
-            applyLatestOpenRouterModelCooldowns(`PDF Retry Batch ${batchNum}`);
           } catch (err) {
-            applyLatestOpenRouterModelCooldowns(`PDF Retry Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(
               `PDF Retry Batch ${batchNum} 失败，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(

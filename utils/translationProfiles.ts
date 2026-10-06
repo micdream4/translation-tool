@@ -5,18 +5,6 @@ import { getTargetLanguageLabel, getTargetLocaleInstruction } from "./targetLang
 
 export type TranslationProfile = "spreadsheet" | "docx-manual";
 
-export const DEEPSEEK_OPENROUTER_MODEL = "deepseek/deepseek-v4-pro";
-const LEGACY_DEEPSEEK_OPENROUTER_MODELS = new Set(["deepseek/deepseek-v3.2"]);
-
-export const DOCX_MANUAL_OPENROUTER_MODELS: string[] = [];
-
-export const normalizeOpenRouterModelId = (model: string) => {
-  const normalized = String(model || "").trim();
-  return LEGACY_DEEPSEEK_OPENROUTER_MODELS.has(normalized)
-    ? DEEPSEEK_OPENROUTER_MODEL
-    : normalized;
-};
-
 const joinGlossaryBlocks = (...blocks: Array<string | undefined>) =>
   Array.from(
     new Set(
@@ -106,7 +94,7 @@ ${JSON.stringify(records)}
 `;
 };
 
-export const buildOpenRouterPrompt = (
+export const buildTranslationPrompt = (
   records: POCTRecord[],
   targetLang: TargetLanguage,
   profile: TranslationProfile = "spreadsheet"
@@ -115,7 +103,7 @@ export const buildOpenRouterPrompt = (
     ? buildDocxManualPrompt(records, targetLang)
     : buildSpreadsheetPrompt(records, targetLang);
 
-export const buildOpenRouterSystemPrompt = (
+export const buildTranslationSystemPrompt = (
   profile: TranslationProfile = "spreadsheet"
 ) =>
   profile === "docx-manual"

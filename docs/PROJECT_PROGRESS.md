@@ -1,5 +1,16 @@
 # 项目进度
 
+## v0.2.3
+
+- 移除 OpenRouter 支持：本机访问 Google、Anthropic、OpenAI 模型一律返回 403（provider 服务条款限制），线上已改用 Cloudflare AI Gateway，OpenRouter 路径此前一直是空列表的休眠状态。
+  - 服务端：删除 `/api/translate` 的 OpenRouter 引擎、`OPENROUTER_*` 环境变量、按邮箱分配 Key（`OPENROUTER_KEYS_BY_EMAIL`）；`/api/me` 不再返回 `openrouter` 能力；`engine=openrouter` 返回 400 提示不再支持；请求里的 `models` 数组不再使用。
+  - 客户端：删除 `services/openRouterService.ts`、翻译中枢的 OpenRouter 分支、样本审核服务的 OpenRouter 直连；删除 OpenRouter 模型冷却逻辑（只对 OpenRouter 模型生效）；自动模式的选择值从 `__AUTO_OPENROUTER__` 改为 `__AUTO_MODEL__`（旧值不在可选列表里时会自动回到自动模式）。
+  - 构建与配置：`vite.config.ts` 不再向浏览器注入任何 OpenRouter Key，`wrangler.toml` 删除相关变量，`package.json` 删除 `smoke:openrouter` 和 `docx:translate`。
+  - 脚本与本地 Agent：删除 `scripts/openrouterModelSmoke.mjs`、`scripts/translate_docx_openrouter.py`、`scripts/verify_docx_spanish.py`；本地 Agent 的 `--model` 不再支持 `openrouter:<id>`。
+  - 通用提示词函数改名：`buildOpenRouterPrompt` → `buildTranslationPrompt`，`buildOpenRouterSystemPrompt` → `buildTranslationSystemPrompt`。
+- 回归测试：删除只测 OpenRouter 的用例，其余改为 Cloudflare / DeepSeek；新增 `engine=openrouter` 返回 400、无引擎可用时报告全部失败模型、源码中不再出现 OpenRouter 的检查。
+- 部署注意：生产环境如还保留 `OPENROUTER_API_KEY`、`OPENROUTER_KEYS_BY_EMAIL`、`OPENROUTER_MODELS` 等变量，可在 Cloudflare Pages 里删除；本机 `.env.local` 里的 `OPENROUTER_*` 也不再使用。
+
 ## v0.2.2
 
 - 新增图片提示：上传 DOCX、Excel、PDF 时检测嵌入的图片、图表和绘图形状文字（Excel 的绘图文本框），这些内容不会被翻译，导出后保持原文。检测逻辑在 `utils/embeddedVisuals.ts`：DOCX 扫描正文、页眉、页脚、脚注、尾注中的 `a:blip` / `v:imagedata` 和图表；Excel 按工作表扫描绘图里的图片、图表和有文字的形状，以及单元格内图片；PDF 使用解析时的每页图片数。

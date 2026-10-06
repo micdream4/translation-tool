@@ -82,7 +82,7 @@
    - 暂不依赖 Thal/HbA2 等外源指标，避免无效提示。
 4. **AI 解读**  
    - `MultiAIJudge` 使用模板 summary 作为 system context。  
-   - 带上“指标名称 + 异常方向 + 现有描述”后发送至 OpenRouter/Deepseek，给出建议、风险等级。  
+   - 带上“指标名称 + 异常方向 + 现有描述”后发送至 DeepSeek 或 Cloudflare AI Gateway 模型，给出建议、风险等级。  
    - 输出结构中保留 `templateId`，便于医生回查对应模板。
 5. **医生审核闭环**  
    - UI 增加“Mark as Accepted/Discarded”按钮（本地存储或云端），标记的组合不再提示。  

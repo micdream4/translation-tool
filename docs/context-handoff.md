@@ -136,9 +136,8 @@ Portuguese: inputFiles=9, outputFiles=9, hardFailureCount=0, warningCount=0
 2. 非敏感 Pages 配置已迁入 `wrangler.toml` 的 `[vars]`，包括：
    - `VITE_TRANSLATION_MODE=proxy`
    - `REQUIRE_CF_ACCESS_EMAIL=true`
-   - `OPENROUTER_MODELS`
 3. 访问邮箱只在 Cloudflare Zero Trust Access Policy 中维护；应用层不再读取 `ALLOWED_USER_EMAILS`。
-4. `OPENROUTER_API_KEY` 仍作为 Cloudflare encrypted Secret，不写入仓库。
+4. `DEEPSEEK_API_KEY` 作为 Cloudflare encrypted Secret，不写入仓库。
 5. 新增 `/api/me`，前端 Header 显示登录/访客/阻止状态。
 6. 新增 `npm run test:real-docs`，用 `local-data` 中真实 Excel/DOCX/PDF 做 smoke。
 6. PDF 新导出对 Latin-1 可覆盖文本优先写真实文本层，不支持字符集回退 PNG 文本块。
@@ -332,4 +331,4 @@ npm run build
 - 超时与重试：Cloudflare AI 单模型 60 秒，`/api/translate` 总预算 90 秒，浏览器请求 120 秒；服务商不可用类错误连续拆分最多 4 次。详见 `docs/CLOUDFLARE_PAGES_DEPLOY.md`。
 - 图片提示（v0.2.2）：`utils/embeddedVisuals.ts` 在解析 DOCX、Excel、PDF 时检测图片、图表、绘图形状文字，结果放在各自上下文的 `embeddedVisuals`，由 `EmbeddedVisualsNotice` 展示。图片内文字目前不翻译。
 - 术语资产清单见 `docs/terminology-assets.md`；用户会陆续补充术语，补充前先看该文档的缺口和模板。
-
+- OpenRouter 支持已在 v0.2.3 移除（本机访问 Google、Anthropic、OpenAI 模型一律 403，线上改走 Cloudflare AI Gateway）：删除了服务端引擎、`OPENROUTER_*` 配置、客户端服务、模型冷却逻辑、`smoke:openrouter` 等脚本；上文关于 OpenRouter 的 v0.0.x 记录是历史，不再适用。

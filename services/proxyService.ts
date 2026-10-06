@@ -1,7 +1,7 @@
 import { POCTRecord, TargetLanguage } from "../types";
 import type { TranslationProfile } from "../utils/translationProfiles";
 
-export type ProxyEngine = "auto" | "cloudflare-ai" | "openrouter" | "deepseek" | "gemini";
+export type ProxyEngine = "auto" | "cloudflare-ai" | "deepseek" | "gemini";
 
 export type ProxyModelIssue = {
   model: string;
@@ -38,7 +38,7 @@ const getEnvValue = (key: string): string | undefined => {
 };
 
 export class ProxyTranslationService {
-  private lastEngine: "cloudflare-ai" | "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
+  private lastEngine: "cloudflare-ai" | "deepseek" | "gemini" | "unknown" = "unknown";
   private lastModelIssues: ProxyModelIssue[] = [];
   private lastModel = "";
   private readonly endpoint: string;
@@ -60,7 +60,6 @@ export class ProxyTranslationService {
     engine: ProxyEngine = "auto",
     model?: string,
     options: {
-      models?: string[];
       profile?: TranslationProfile;
     } = {}
   ): Promise<POCTRecord[]> {
@@ -85,7 +84,6 @@ export class ProxyTranslationService {
     engine: ProxyEngine,
     model: string | undefined,
     options: {
-      models?: string[];
       profile?: TranslationProfile;
     },
     signal: AbortSignal
@@ -97,7 +95,6 @@ export class ProxyTranslationService {
       targetLang,
       engine,
       model,
-      models: options.models,
       profile: options.profile
     });
     let response: Response | null = null;
@@ -169,7 +166,6 @@ export class ProxyTranslationService {
     if (typeof engineUsed === "string") {
       if (
         engineUsed === "cloudflare-ai" ||
-        engineUsed === "openrouter" ||
         engineUsed === "deepseek" ||
         engineUsed === "gemini"
       ) {

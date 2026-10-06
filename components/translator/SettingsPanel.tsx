@@ -14,13 +14,12 @@ import { formatDocxCoverageSummary } from '../../utils/docx';
 export interface SettingsPanelProps {
   isLight: boolean;
   embeddedVisuals?: EmbeddedVisualSummary | null;
-  AUTO_OPENROUTER_MODEL: "__AUTO_OPENROUTER__";
+  AUTO_MODEL: "__AUTO_MODEL__";
   applySavedProgress: () => void;
   autoModelChainLabel: string;
   availableTranslationModels: string[];
   canRunTranslation: boolean;
   clearTranslationMemoryData: () => Promise<void>;
-  currentSkippedOpenRouterModels: string[];
   discardSavedProgress: () => void;
   documentKind: "docx" | "pdf" | "excel";
   docxContextRef: React.RefObject<DocxContext>;
@@ -59,13 +58,12 @@ export interface SettingsPanelProps {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   isLight,
   embeddedVisuals,
-  AUTO_OPENROUTER_MODEL,
+  AUTO_MODEL,
   applySavedProgress,
   autoModelChainLabel,
   availableTranslationModels,
   canRunTranslation,
   clearTranslationMemoryData,
-  currentSkippedOpenRouterModels,
   discardSavedProgress,
   documentKind,
   docxContextRef,
@@ -243,7 +241,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             onChange={(e) => setTranslationModelPreference(e.target.value)}
             disabled={isTranslating || isStringTranslating}
           >
-            <option value={AUTO_OPENROUTER_MODEL}>
+            <option value={AUTO_MODEL}>
               {usesDocumentQualityModels
                 ? t('settings.model.autoDoc', { kind: documentKind.toUpperCase(), chain: autoModelChainLabel })
                 : t('settings.model.auto', { chain: autoModelChainLabel })}
@@ -279,9 +277,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           {usesDocumentQualityModels
             ? t('settings.model.autoDocHint', { kind: documentKind.toUpperCase(), chain: autoModelChainLabel })
             : t('settings.model.autoHint', { chain: autoModelChainLabel })}
-          {currentSkippedOpenRouterModels.length > 0
-            ? ` ${t('settings.model.skipped', { models: currentSkippedOpenRouterModels.map(getModelLabel).join(', ') })}`
-            : ''}
         </p>
       </div>
 

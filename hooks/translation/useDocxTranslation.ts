@@ -1,5 +1,6 @@
 
 import React from 'react';
+import type { TranslationRequest } from '../../services/translationHub';
 import type { DocxIssueDetail } from '../../components/translator/types';
 import {
   buildTextSegmentRetryPlan
@@ -42,7 +43,6 @@ import {
 
 export interface DocxTranslationContext {
   addLog: (msg: string) => void;
-  applyLatestOpenRouterModelCooldowns: (contextLabel: string) => void;
   batchMonitor: BatchMonitor;
   buildDocxIssueDetails: (context: DocxContext) => { pending: number[]; details: DocxIssueDetail[]; qualityReport: QualityReport; };
   createTranslationMemoryStats: () => TranslationMemoryStats;
@@ -54,7 +54,7 @@ export interface DocxTranslationContext {
   docxPlaceholderStore: React.RefObject<Map<string, Record<string, string>>>;
   file: File;
   getDocumentBatchPolicy: () => { maxItems: number; maxChars: number; label: string; };
-  getDocumentQualityTranslationOptions: () => { model: "cloudflare-ai"; providerModel: string; profile: "docx-manual"; openRouterModel?: undefined; openRouterModels?: undefined; } | { model: "deepseek"; providerModel: string; profile: "docx-manual"; openRouterModel?: undefined; openRouterModels?: undefined; } | { model: "openrouter"; openRouterModel: string; profile: "docx-manual"; providerModel?: undefined; openRouterModels?: undefined; } | { profile: "docx-manual"; openRouterModels: string[]; model?: undefined; providerModel?: undefined; openRouterModel?: undefined; };
+  getDocumentQualityTranslationOptions: () => TranslationRequest['options'];
   getTranslationMemoryKey: (sourceText: string, lang?: TargetLanguage) => string;
   getUsedModelLabel: () => string;
   logTranslationMemoryStats: (label: string, stats: TranslationMemoryStats) => void;
@@ -76,7 +76,6 @@ export interface DocxTranslationContext {
 export const useDocxTranslation = (ctx: DocxTranslationContext) => {
   const {
     addLog,
-    applyLatestOpenRouterModelCooldowns,
     batchMonitor,
     buildDocxIssueDetails,
     createTranslationMemoryStats,
@@ -227,7 +226,6 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
                 targetLang,
                 options: getDocumentQualityTranslationOptions()
               });
-              applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
               addLog(
                 `Docx Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${getUsedModelLabel()}，用时 ${formatElapsedSeconds(
                   Date.now() - batchStartedAt
@@ -239,7 +237,6 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
               batchMonitor.end('docx', batchNum, 'memory');
             }
           } catch (err) {
-            applyLatestOpenRouterModelCooldowns(`Docx Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(
               `Docx Batch ${batchNum} 翻译失败，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(
@@ -448,9 +445,7 @@ const retryDocxSegments = async () => {
               targetLang,
               options: getDocumentQualityTranslationOptions()
             });
-            applyLatestOpenRouterModelCooldowns(`Docx Retry Batch ${batchNum}`);
           } catch (err) {
-            applyLatestOpenRouterModelCooldowns(`Docx Retry Batch ${batchNum}`);
             const errMsg = err instanceof Error ? err.message : String(err);
             addLog(
               `Docx Retry Batch ${batchNum} 失败，模型: ${currentModelDisplayLabel}，用时 ${formatElapsedSeconds(

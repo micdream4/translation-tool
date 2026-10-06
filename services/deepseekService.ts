@@ -1,8 +1,8 @@
 import { POCTRecord, TargetLanguage } from "../types";
 import { parseModelJsonArray, sanitizeModelJson } from "../utils/jsonRepair";
 import {
-  buildOpenRouterPrompt,
-  buildOpenRouterSystemPrompt,
+  buildTranslationPrompt,
+  buildTranslationSystemPrompt,
   type TranslationProfile
 } from "../utils/translationProfiles";
 
@@ -65,7 +65,7 @@ export class DeepseekService {
       throw new Error("Deepseek API key is missing. Set VITE_DEEPSEEK_API_KEY or Deepseek_API_KEY in .env.local.");
     }
 
-    const prompt = buildOpenRouterPrompt(records, targetLang, profile);
+    const prompt = buildTranslationPrompt(records, targetLang, profile);
 
     const response = await fetch(API_URL, {
       method: "POST",
@@ -84,7 +84,7 @@ export class DeepseekService {
         messages: [
           {
             role: "system",
-            content: buildOpenRouterSystemPrompt(profile)
+            content: buildTranslationSystemPrompt(profile)
           },
           {
             role: "user",

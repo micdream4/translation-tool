@@ -327,16 +327,11 @@ const getCredentialBlockReason = (model: string) => {
       process.env.DEEPSEEK_API_KEY
   );
   const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.API_KEY);
-  const hasOpenRouter = Boolean(
-    process.env.OPENROUTER_API_KEY ||
-      process.env.VITE_OPENROUTER_API_KEY ||
-      process.env.Openrouter_API_KEY
-  );
 
   if (normalized === "auto") {
-    return hasDeepSeek || hasGemini || hasOpenRouter
+    return hasDeepSeek || hasGemini
       ? null
-      : "本地 direct 模式未配置 DeepSeek、Gemini 或 OpenRouter API Key。";
+      : "本地 direct 模式未配置 DeepSeek 或 Gemini API Key。";
   }
   if (normalized.startsWith("deepseek-")) {
     return hasDeepSeek ? null : "缺少本地 DeepSeek API Key。";
@@ -344,10 +339,7 @@ const getCredentialBlockReason = (model: string) => {
   if (normalized.startsWith("gemini-")) {
     return hasGemini ? null : "缺少本地 Gemini API Key（GEMINI_API_KEY 或 API_KEY）。";
   }
-  if (normalized.startsWith("openrouter:")) {
-    return hasOpenRouter ? null : "缺少本地 OPENROUTER_API_KEY。";
-  }
-  return `本地 Agent 暂不识别模型标识“${model}”；可使用 auto、deepseek-*、gemini-* 或 openrouter:<model-id>。`;
+  return `本地 Agent 暂不识别模型标识“${model}”；可使用 auto、deepseek-* 或 gemini-*。`;
 };
 
 class RepositoryTranslationProvider implements AgentTranslationProvider {
@@ -369,9 +361,8 @@ class RepositoryTranslationProvider implements AgentTranslationProvider {
     const hub = await this.getHub();
     const normalized = request.model.trim().toLowerCase();
     const options: {
-      model?: "deepseek" | "gemini" | "openrouter";
+      model?: "deepseek" | "gemini";
       providerModel?: string;
-      openRouterModel?: string;
       profile: TranslationProfile;
     } = { profile: request.profile };
 
@@ -380,9 +371,6 @@ class RepositoryTranslationProvider implements AgentTranslationProvider {
       options.providerModel = request.model;
     } else if (normalized.startsWith("gemini-")) {
       options.model = "gemini";
-    } else if (normalized.startsWith("openrouter:")) {
-      options.model = "openrouter";
-      options.openRouterModel = request.model.slice("openrouter:".length);
     }
 
     const records = await hub.translateBatch({

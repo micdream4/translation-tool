@@ -4,7 +4,6 @@ export type AuthStatus = 'checking' | 'authenticated' | 'anonymous' | 'blocked';
 
 export type TranslationCapabilities = {
   cloudflareAi: boolean;
-  openrouter: boolean;
   deepseek: boolean;
   gemini: boolean;
 };
@@ -32,7 +31,6 @@ const normalizeCapabilities = (
   if (!capabilities) return undefined;
   return {
     cloudflareAi: Boolean(capabilities.cloudflareAi),
-    openrouter: Boolean(capabilities.openrouter),
     deepseek: Boolean(capabilities.deepseek),
     gemini: Boolean(capabilities.gemini)
   };

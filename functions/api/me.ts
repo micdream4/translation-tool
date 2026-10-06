@@ -1,19 +1,9 @@
-import { getAuthContext, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
+import { getAuthContext, jsonResponse } from "../_shared/auth";
 import { hasCloudflareAiBinding, getDeepSeekKey, parseDelimitedModelList } from "../_shared/llmProviders";
 
-const hasOpenRouterModels = (env: Record<string, unknown>) =>
-  parseDelimitedModelList(
-    env.OPENROUTER_MODELS ||
-      env.VITE_OPENROUTER_MODELS ||
-      env.OPENROUTER_MODEL ||
-      env.VITE_OPENROUTER_MODEL,
-    []
-  ).length > 0;
-
-const getTranslationCapabilities = (env: Record<string, unknown>, userEmail: string) => ({
+const getTranslationCapabilities = (env: Record<string, unknown>) => ({
   cloudflareAi: hasCloudflareAiBinding(env),
   deepseek: Boolean(getDeepSeekKey(env)),
-  openrouter: Boolean(getOpenRouterKeyForUser(env, userEmail) && hasOpenRouterModels(env)),
   gemini: false
 });
 
@@ -30,7 +20,7 @@ export const onRequestGet = async (context: any) => {
         accessEmail: auth.accessEmail,
         requireAccessEmail: auth.requireAccessEmail,
         accessControlledBy: "cloudflare-zero-trust",
-        translationCapabilities: getTranslationCapabilities(env, auth.userEmail)
+        translationCapabilities: getTranslationCapabilities(env)
       },
       401
     );
@@ -43,6 +33,6 @@ export const onRequestGet = async (context: any) => {
     requireAccessEmail: auth.requireAccessEmail,
     accessControlledBy: "cloudflare-zero-trust",
     localBypass: auth.isLocalBypass,
-    translationCapabilities: getTranslationCapabilities(env, auth.userEmail)
+    translationCapabilities: getTranslationCapabilities(env)
   });
 };

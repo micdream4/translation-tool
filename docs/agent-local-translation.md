@@ -29,7 +29,7 @@ npm run --silent agent:translate -- \
 - `--report-dir`：任务总报告和逐文件 QA 报告目录。
 - `--task-id`：仅允许字母、数字、点、下划线和连字符。
 - `--targets`：逗号分隔，名称必须与工具目标语言列表一致。
-- `--model`：`auto`、`deepseek-*`、`gemini-*` 或 `openrouter:<model-id>`。
+- `--model`：`auto`、`deepseek-*` 或 `gemini-*`。
 
 本地密钥从 `.env.local` 或进程环境读取：
 
@@ -40,8 +40,6 @@ DEEPSEEK_API_KEY=...
 # Gemini
 GEMINI_API_KEY=...
 
-# OpenRouter
-OPENROUTER_API_KEY=...
 ```
 
 缺少所选模型的本地密钥时返回 `BLOCKED`，不会回退到网页或 Cloudflare Pages API。

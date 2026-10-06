@@ -13,18 +13,6 @@ export default defineConfig(({ mode }) => {
     const allowClientKeys = translationMode === 'direct';
     const geminiKey = allowClientKeys ? env.VITE_GEMINI_API_KEY || '' : '';
     const deepseekKey = allowClientKeys ? env.VITE_DEEPSEEK_API_KEY || '' : '';
-    const openRouterKey = allowClientKeys
-      ? env.VITE_OPENROUTER_API_KEY ||
-        env.VITE_Openrouter_API_KEY ||
-        env.VITE_OpenRouter_API_KEY ||
-        ''
-      : '';
-    const openRouterModel =
-      env.OPENROUTER_MODEL ||
-      env.VITE_OPENROUTER_MODEL ||
-      env.Openrouter_MODEL ||
-      env.VITE_Openrouter_MODEL ||
-      '';
     const localPagesFunctionPlugin = {
       name: 'local-pages-functions',
       configureServer(server: any) {
@@ -90,22 +78,6 @@ export default defineConfig(({ mode }) => {
         'import.meta.env.GEMINI_API_KEY': JSON.stringify(geminiKey),
         'process.env.VITE_DEEPSEEK_API_KEY': JSON.stringify(deepseekKey),
         'import.meta.env.VITE_DEEPSEEK_API_KEY': JSON.stringify(deepseekKey),
-        'process.env.OPENROUTER_API_KEY': JSON.stringify(''),
-        'process.env.VITE_OPENROUTER_API_KEY': JSON.stringify(openRouterKey),
-        'process.env.Openrouter_API_KEY': JSON.stringify(''),
-        'process.env.VITE_Openrouter_API_KEY': JSON.stringify(openRouterKey),
-        'import.meta.env.OPENROUTER_API_KEY': JSON.stringify(''),
-        'import.meta.env.VITE_OPENROUTER_API_KEY': JSON.stringify(openRouterKey),
-        'import.meta.env.Openrouter_API_KEY': JSON.stringify(''),
-        'import.meta.env.VITE_Openrouter_API_KEY': JSON.stringify(openRouterKey),
-        'process.env.OPENROUTER_MODEL': JSON.stringify(openRouterModel),
-        'process.env.VITE_OPENROUTER_MODEL': JSON.stringify(openRouterModel),
-        'process.env.Openrouter_MODEL': JSON.stringify(openRouterModel),
-        'process.env.VITE_Openrouter_MODEL': JSON.stringify(openRouterModel),
-        'import.meta.env.OPENROUTER_MODEL': JSON.stringify(openRouterModel),
-        'import.meta.env.VITE_OPENROUTER_MODEL': JSON.stringify(openRouterModel),
-        'import.meta.env.Openrouter_MODEL': JSON.stringify(openRouterModel),
-        'import.meta.env.VITE_Openrouter_MODEL': JSON.stringify(openRouterModel),
         'process.env.VITE_APP_VERSION': JSON.stringify(appVersion),
         'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
       },

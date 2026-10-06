@@ -1,13 +1,11 @@
 import type { POCTRecord, TargetLanguage } from "../../types";
 import { parseModelJsonArray, sanitizeModelJson } from "../../utils/jsonRepair";
 import {
-  buildOpenRouterPrompt,
-  buildOpenRouterSystemPrompt,
-  DOCX_MANUAL_OPENROUTER_MODELS,
-  normalizeOpenRouterModelId,
+  buildTranslationPrompt,
+  buildTranslationSystemPrompt,
   type TranslationProfile
 } from "../../utils/translationProfiles";
-import { enforceRequestAuth, getOpenRouterKeyForUser, jsonResponse } from "../_shared/auth";
+import { enforceRequestAuth, jsonResponse } from "../_shared/auth";
 import {
   getMaxRecords,
   getMaxRequestBytes,
@@ -23,9 +21,7 @@ import {
   getDeepSeekKey
 } from "../_shared/llmProviders";
 
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
-const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 90000;
 const DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 120000;
 const DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS = 16384;
@@ -57,7 +53,7 @@ type TranslationModelIssue = {
   kind: "http" | "empty" | "exception";
 };
 
-type TranslationEngine = "cloudflare-ai" | "deepseek" | "openrouter";
+type TranslationEngine = "cloudflare-ai" | "deepseek";
 
 const parsePlainModelList = (rawList: string) =>
   Array.from(
@@ -68,12 +64,6 @@ const parsePlainModelList = (rawList: string) =>
         .filter(Boolean)
     )
   );
-
-const parseOpenRouterTimeoutMs = (env: Record<string, unknown>) => {
-  const raw = Number(env.OPENROUTER_REQUEST_TIMEOUT_MS || env.VITE_OPENROUTER_REQUEST_TIMEOUT_MS);
-  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS;
-  return Math.min(55000, Math.max(5000, Math.round(raw)));
-};
 
 const isDeepSeekProModel = (model: string) => /deepseek[-/]v4-pro/i.test(String(model || ""));
 
@@ -111,17 +101,6 @@ const parseDeepSeekMaxOutputTokens = (env: Record<string, unknown>, model = "") 
   return Math.min(65536, Math.max(1024, Math.round(raw)));
 };
 
-const buildOpenRouterProviderRouting = (env: Record<string, unknown>) => {
-  const sort = String(env.OPENROUTER_PROVIDER_SORT || "throughput").trim().toLowerCase();
-  if (!sort || sort === "none" || sort === "off") {
-    return { allow_fallbacks: true };
-  }
-  return {
-    sort,
-    allow_fallbacks: true
-  };
-};
-
 const fetchWithTimeout = async (
   url: string,
   init: RequestInit,
@@ -140,25 +119,6 @@ const fetchWithTimeout = async (
   } finally {
     clearTimeout(timer);
   }
-};
-
-const parseOpenRouterModels = (env: Record<string, unknown>) => {
-  const rawList = String(
-    env.OPENROUTER_MODELS ||
-      env.VITE_OPENROUTER_MODELS ||
-      env.OPENROUTER_MODEL ||
-      env.VITE_OPENROUTER_MODEL ||
-      ""
-  );
-
-  return Array.from(
-    new Set(
-      rawList
-        .split(/[,\n;]+/)
-        .map((item) => normalizeOpenRouterModelId(item))
-        .filter(Boolean)
-    )
-  );
 };
 
 const parseCloudflareAiModels = (env: Record<string, unknown>) => {
@@ -216,30 +176,18 @@ const parseCloudflareAiMaxOutputTokens = (env: Record<string, unknown>) => {
 
 const parseRequestedModel = (value: unknown) => String(value || "").trim();
 
-const parseRequestedModels = (value: unknown) => {
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeOpenRouterModelId(String(item || ""))).filter(Boolean);
-  }
-  return String(value || "")
-    .split(/[,\n;]+/)
-    .map((item) => normalizeOpenRouterModelId(item))
-    .filter(Boolean);
-};
-
 const parseTranslationProfile = (value: unknown): TranslationProfile =>
   String(value || "").trim() === "docx-manual" ? "docx-manual" : "spreadsheet";
 
 const parseEngineChain = (
   engine: string,
   hasCloudflareAi: boolean,
-  hasDeepSeek: boolean,
-  hasOpenRouter: boolean
+  hasDeepSeek: boolean
 ): TranslationEngine[] => {
   if (engine === "auto") {
     return [
       ...(hasCloudflareAi ? (["cloudflare-ai"] as const) : []),
-      ...(hasDeepSeek ? (["deepseek"] as const) : []),
-      ...(hasOpenRouter ? (["openrouter"] as const) : [])
+      ...(hasDeepSeek ? (["deepseek"] as const) : [])
     ];
   }
   if (engine === "cloudflare-ai" || engine === "cloudflare" || engine === "cf") {
@@ -250,9 +198,6 @@ const parseEngineChain = (
   }
   if (engine === "deepseek" || engine === "deepseek-direct") {
     return hasDeepSeek ? ["deepseek"] : [];
-  }
-  if (engine === "openrouter") {
-    return hasOpenRouter ? ["openrouter"] : [];
   }
   return [];
 };
@@ -269,7 +214,6 @@ export const onRequestPost = async (context: any) => {
     const targetLang = payload?.targetLang as TargetLanguage | undefined;
     const engine = String(payload?.engine || "auto").toLowerCase();
     const requestedModel = parseRequestedModel(payload?.model);
-    const requestedModels = parseRequestedModels(payload?.models);
     const profile = parseTranslationProfile(payload?.profile);
 
     if (!Array.isArray(records) || !targetLang) {
@@ -279,20 +223,13 @@ export const onRequestPost = async (context: any) => {
     if (records.length > getMaxRecords(env)) {
       return jsonResponse({ error: `Too many records (max ${getMaxRecords(env)}).` }, 413);
     }
-    const modelListError = validateModelList(
-      [requestedModel, ...requestedModels].filter(Boolean)
-    );
+    const modelListError = validateModelList([requestedModel].filter(Boolean));
     if (modelListError) return jsonResponse({ error: modelListError }, 400);
-    const openRouterKey = getOpenRouterKeyForUser(env, authResult.auth.userEmail);
-    const configuredOpenRouterModels = parseOpenRouterModels(env);
-    const hasOpenRouter = Boolean(
-      openRouterKey && (configuredOpenRouterModels.length || requestedModel || requestedModels.length)
-    );
     const deepSeekKey = getDeepSeekKey(env);
     const hasDeepSeek = Boolean(deepSeekKey);
     const cloudflareAi = getCloudflareAiBinding(env);
     const hasCloudflareAi = Boolean(cloudflareAi);
-    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasDeepSeek, hasOpenRouter);
+    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasDeepSeek);
     const allErrors: string[] = [];
     const allModelIssues: TranslationModelIssue[] = [];
 
@@ -303,12 +240,12 @@ export const onRequestPost = async (context: any) => {
           : engine === "deepseek" || engine === "deepseek-direct"
             ? "DeepSeek API key missing."
           : engine === "openrouter"
-            ? "OpenRouter key missing."
+            ? "OpenRouter is no longer supported. Use cloudflare-ai, deepseek or auto."
             : "No available translation engine.";
       return jsonResponse({ error: missing }, 400);
     }
 
-    const prompt = buildOpenRouterPrompt(records, targetLang, profile);
+    const prompt = buildTranslationPrompt(records, targetLang, profile);
     const requestStartedAt = Date.now();
     const totalBudgetMs = parseTotalBudgetMs(env);
     const remainingMs = () => totalBudgetMs - (Date.now() - requestStartedAt);
@@ -338,7 +275,7 @@ export const onRequestPost = async (context: any) => {
               ai: cloudflareAi,
               gatewayId,
               model,
-              system: buildOpenRouterSystemPrompt(profile),
+              system: buildTranslationSystemPrompt(profile),
               user: prompt,
               maxTokens: maxOutputTokens,
               json: true,
@@ -358,108 +295,6 @@ export const onRequestPost = async (context: any) => {
           allModelIssues.push({
             model,
             status: /timed out/i.test(message) ? "timeout" : "exception",
-            message,
-            kind: "exception"
-          });
-        }
-      }
-      return null;
-    };
-
-    const translateWithOpenRouter = async () => {
-      if (!openRouterKey) throw new Error("OpenRouter key missing.");
-      const models = requestedModel
-        ? [requestedModel]
-        : requestedModels.length
-          ? requestedModels
-          : profile === "docx-manual"
-            ? parseRequestedModels(
-                env.DOCX_OPENROUTER_MODELS ||
-                  env.VITE_DOCX_OPENROUTER_MODELS ||
-                  env.OPENROUTER_DOCX_MODELS
-              )
-                .concat(DOCX_MANUAL_OPENROUTER_MODELS)
-                .filter((model, index, arr) => arr.indexOf(model) === index)
-            : configuredOpenRouterModels;
-      const referer =
-        env.OPENROUTER_SITE ||
-        context.request.headers.get("Origin") ||
-        "https://poct-translator.local";
-      const configuredTimeoutMs = parseOpenRouterTimeoutMs(env);
-      const provider = buildOpenRouterProviderRouting(env);
-
-      for (const model of models) {
-        if (!hasBudgetForAnotherModel()) break;
-        const requestTimeoutMs = Math.min(configuredTimeoutMs, remainingMs());
-        try {
-          const response = await fetchWithTimeout(
-            OPENROUTER_API_URL,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${openRouterKey}`,
-                "HTTP-Referer": referer,
-                "X-Title": String(env.OPENROUTER_APP_TITLE || "POCT Medical Translator")
-              },
-              body: JSON.stringify({
-                model,
-                temperature: 0,
-                response_format: {
-                  type: "json_object"
-                },
-                provider,
-                messages: [
-                  {
-                    role: "system",
-                    content: buildOpenRouterSystemPrompt(profile)
-                  },
-                  { role: "user", content: prompt }
-                ]
-              })
-            },
-            requestTimeoutMs,
-            model
-          );
-
-          if (!response.ok) {
-            const text = await response.text();
-            let message = text.slice(0, 200);
-            try {
-              const parsed = JSON.parse(text);
-              message = String(parsed?.error?.message || message);
-            } catch {
-              // Keep raw response preview.
-            }
-            allErrors.push(`${model}: OpenRouter error ${response.status}: ${message.slice(0, 200)}`);
-            allModelIssues.push({
-              model,
-              status: response.status,
-              message,
-              kind: "http"
-            });
-            continue;
-          }
-
-          const result = await response.json();
-          const text = sanitizeResponse(extractChatText(result));
-          if (!text) {
-            allErrors.push(`${model}: OpenRouter returned empty content.`);
-            allModelIssues.push({
-              model,
-              message: "OpenRouter returned empty content.",
-              kind: "empty"
-            });
-            continue;
-          }
-          const parsed = parseModelJsonArray(text);
-          return jsonResponse({ engine: "openrouter", model, records: parsed, modelIssues: allModelIssues });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          allErrors.push(`${model}: ${message}`);
-          allModelIssues.push({
-            model,
-            status: /timed out|aborted|abort/i.test(message) ? "timeout" : "exception",
             message,
             kind: "exception"
           });
@@ -496,7 +331,7 @@ export const onRequestPost = async (context: any) => {
                 messages: [
                   {
                     role: "system",
-                    content: buildOpenRouterSystemPrompt(profile)
+                    content: buildTranslationSystemPrompt(profile)
                   },
                   { role: "user", content: prompt }
                 ]
@@ -578,11 +413,6 @@ export const onRequestPost = async (context: any) => {
         if (result) return result;
       }
 
-      if (hasOpenRouter) {
-        const result = await translateWithOpenRouter();
-        if (result) return result;
-      }
-
       return jsonResponse(
         {
           error: buildFailureMessage(),
@@ -596,9 +426,7 @@ export const onRequestPost = async (context: any) => {
       const result =
         candidate === "cloudflare-ai"
           ? await translateWithCloudflareAi()
-          : candidate === "deepseek"
-            ? await translateWithDeepSeek()
-            : await translateWithOpenRouter();
+          : await translateWithDeepSeek();
       if (result) return result;
     }
 

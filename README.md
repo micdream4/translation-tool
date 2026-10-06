@@ -5,7 +5,7 @@
 ## 功能概览
 - Excel（.xlsx，多工作表）/Word（.docx）导入导出，尽量保持原始结构与版式
 - 文本型 PDF 导入，按原页背景与文本坐标覆盖译文，可下载译文 PDF；同时提供按页整理的 Review DOCX
-- 多翻译引擎（DeepSeek/Gemini/OpenRouter）自动切换与失败回退
+- 多翻译引擎（Cloudflare AI Gateway 的 Gemini / GPT / Claude 与 DeepSeek）自动切换与失败回退
 - 目标语言支持：简体中文、繁體中文（台灣）、英语、西班牙语、法语、德语、意大利语、波兰语、罗马尼亚语、土耳其语、俄语、葡萄牙语
 - 术语表与后处理：术语统一、占位符保护、标识符锁定
 - 组合规则抽取与缺失组合提示
@@ -17,7 +17,7 @@
 ## 技术栈
 - React 19 + TypeScript + Vite
 - xlsx / jszip / pdfjs-dist / docx（表格、文档与 PDF 文本处理）
-- 多模型翻译服务适配（Cloudflare AI Gateway / OpenRouter / DeepSeek / Gemini）
+- 多模型翻译服务适配（Cloudflare AI Gateway / DeepSeek / Gemini）
 
 ## 快速开始
 1. 安装依赖
@@ -28,14 +28,12 @@
    ```bash
    # 推荐：本地也走代理模式，避免把模型 Key 注入浏览器 bundle
    VITE_TRANSLATION_MODE=proxy
-   # 生产环境 Auto 优先走 Gemini，再走 DeepSeek 官方 API，GPT/Claude 随后兜底，OpenRouter 仅作显式兜底
+   # 生产环境 Auto 优先走 Gemini，再走 DeepSeek 官方 API，GPT/Claude 随后兜底
    CLOUDFLARE_AI_MODELS=google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6
    CLOUDFLARE_AI_PRIMARY_MODELS=google/gemini-3-flash
    CLOUDFLARE_AI_FALLBACK_MODELS=openai/gpt-5.4,anthropic/claude-sonnet-4.6
    DEEPSEEK_API_KEY=your_deepseek_key
    DEEPSEEK_MODELS=deepseek-v4-flash,deepseek-v4-pro
-   OPENROUTER_API_KEY=your_key
-   OPENROUTER_MODELS=
    ```
    如需本地纯浏览器直连模型，显式设置 `VITE_TRANSLATION_MODE=direct` 后再使用 `VITE_*_API_KEY`。
 3. 启动开发环境
@@ -53,9 +51,7 @@
 - `npm run test:ci-gate`：运行 CI 可用的类型、代码回归、Issue 回归和构建检查
 - `npm run test:real-docs -- --strict`：使用本机 `local-data/` 真实样本执行严格文档回归；缺文件或超出基线会失败
 - `npm run test:quality-gate`：先运行 CI gate，再运行严格真实文档回归
-- `npm run smoke:openrouter`：用当前 OpenRouter key 实测模型可用性，不输出密钥
 - `npm run deepseek:test`：DeepSeek 接口连通性测试
-- `npm run docx:translate -- "<docx_path>" --target English`：离线批量翻译/验收脚本（运维辅助，不是最终用户入口）
 - `npm run deploy:pages`：构建并发布到 Cloudflare Pages（需先 `wrangler login`）
 
 ## 本地 Agent 文档任务
@@ -101,18 +97,9 @@ npm run --silent agent:translate -- \
 3. 后端使用 Cloudflare Access 身份  
    在 Cloudflare Pages Functions 环境变量里配置：
    ```bash
-   # 每个邮箱对应一把 Key（JSON）
-   OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}
-
-   # 可选：未命中邮箱映射时的兜底 Key
-   OPENROUTER_API_KEY=sk-or-fallback
-
    # 可选：DeepSeek 官方 API 直连，Auto 会在 Cloudflare Gemini 失败后优先尝试 Flash/Pro
    DEEPSEEK_API_KEY=sk-deepseek
    DEEPSEEK_MODELS=deepseek-v4-flash,deepseek-v4-pro
-
-   # 可选：OpenRouter 最后兜底模型列表；默认留空，不再通过 OpenRouter 调国内模型。
-   OPENROUTER_MODELS=
 
    # 可选：本地调试（线上不要开）
    ALLOW_LOCAL_WITHOUT_ACCESS=false
@@ -124,16 +111,13 @@ npm run --silent agent:translate -- \
    `CF-Access-Authenticated-User-Email`；允许访问的邮箱只在 Cloudflare Zero Trust Access Policy 中维护。
    前端会调用 `/api/me` 显示当前访问状态；翻译、抽样审核和 Multi-AI Review API 使用同一套认证规则。
 
-4. 在 OpenRouter 给每把 Key 设置额度  
-   给每个人那把 Key 设置 `limit` + `limit_reset=monthly`，即可限制每人每月花费。
-
-5. 安全建议  
+4. 安全建议  
    不要在生产构建里设置 `VITE_*_API_KEY`，避免模型 Key 暴露给浏览器。生产直连 DeepSeek 应使用服务端 Secret `DEEPSEEK_API_KEY`，不要使用 `VITE_DEEPSEEK_API_KEY`。
-   配置 `DEEPSEEK_API_KEY` 后，左侧 `Translation Model` 会在 Auto 后方显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认按 Gemini -> DeepSeek Flash -> DeepSeek Pro -> GPT-5.4 -> Claude Sonnet 4.6 -> OpenRouter 显式兜底执行。
+   配置 `DEEPSEEK_API_KEY` 后，左侧 `Translation Model` 会在 Auto 后方显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`；Auto 默认按 Gemini -> DeepSeek Flash -> DeepSeek Pro -> GPT-5.4 -> Claude Sonnet 4.6 执行。
    Multi-AI Review 默认会并发调用 Gemini Flash、DeepSeek Flash、DeepSeek Pro、GPT-5.4、Claude Sonnet 4.6 生成候选译文，再由 GPT-5.4、Claude Sonnet 4.6、DeepSeek Pro 匿名评分。
-   当前默认 OpenRouter 链为空；Gemini、GPT 和 Claude 统一通过 Cloudflare AI Gateway 调用，DeepSeek 通过官方 API 直连。若后续确实需要 OpenRouter 兜底，可先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
+   Gemini、GPT 和 Claude 统一通过 Cloudflare AI Gateway 调用，DeepSeek 通过官方 API 直连。项目已移除 OpenRouter 支持。
 
-6. DOCX 范围说明
+5. DOCX 范围说明
    浏览器端 DOCX 翻译当前覆盖正文、页眉、页脚、脚注、尾注和批注中的段落文本，并在上传和导出时显示 XML 部件、语义段和文本节点覆盖统计。术语表/构建基块 `word/glossary/document.xml` 暂不处理。
 
 7. PDF 范围说明

@@ -90,7 +90,6 @@ export type AIModelSource =
   | 'Claude'
   | 'Rules'
   | 'Heuristic'
-  | 'OpenRouter'
   | 'Deepseek';
 
 export interface CrossCheckConclusion {

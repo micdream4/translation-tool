@@ -96,7 +96,7 @@
 - Cloudflare Zero Trust 负责登录和邮箱身份。
 - Pages Functions 读取 `CF-Access-Authenticated-User-Email`。
 - 邮箱 allow/deny 只在 Cloudflare Zero Trust Access Policy 中维护。
-- `OPENROUTER_KEYS_BY_EMAIL` 支持按用户分配模型 Key 和预算。
+- （已移除）曾计划用 `OPENROUTER_KEYS_BY_EMAIL` 按用户分配 Key；现在统一走 Cloudflare AI Gateway 和 DeepSeek 服务端密钥。
 - `/api/me` 供前端显示当前用户状态。
 
 中期再考虑完整账号系统、用量日志、组织/角色、任务队列和额度面板。

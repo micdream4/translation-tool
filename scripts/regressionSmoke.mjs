@@ -86,7 +86,7 @@ const bundleTsModule = async (sourcePath, options = {}) => {
   }
 };
 
-const openRouterResponse = (content, status = 200) =>
+const chatCompletionResponse = (content, status = 200) =>
   new Response(
     JSON.stringify({
       choices: [
@@ -116,7 +116,6 @@ const functionContext = (body, env = {}) => ({
   env: {
     ALLOW_LOCAL_WITHOUT_ACCESS: "true",
     LOCAL_DEV_EMAIL: "dev@example.com",
-    OPENROUTER_API_KEY: "test-openrouter-key",
     ...env
   }
 });
@@ -361,7 +360,7 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(wranglerSource, /MODEL_REVIEW_JUDGE_CONCURRENCY = "1"/);
   assert.match(
     fs.readFileSync(path.join(repoRoot, "functions/api/translate.ts"), "utf8"),
-    /DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 90000[\s\S]*DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 120000[\s\S]*parseOpenRouterTimeoutMs[\s\S]*Math\.min\(55000[\s\S]*parseDeepSeekTimeoutMs[\s\S]*Math\.min\(180000/
+    /DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 90000[\s\S]*DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 120000[\s\S]*parseDeepSeekTimeoutMs[\s\S]*Math\.min\(180000/
   );
   assert.match(wranglerSource, /CLOUDFLARE_REVIEW_TRANSLATION_MODELS = "cloudflare-ai:google\/gemini-3-flash,deepseek:deepseek-v4-flash,deepseek:deepseek-v4-pro,cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6"/);
   assert.match(wranglerSource, /CLOUDFLARE_REVIEW_JUDGE_MODELS = "cloudflare-ai:openai\/gpt-5\.4,cloudflare-ai:anthropic\/claude-sonnet-4\.6,deepseek:deepseek-v4-pro"/);
@@ -386,8 +385,6 @@ test("API me exposes server-side translation capabilities without leaking keys",
     env: {
       ALLOW_LOCAL_WITHOUT_ACCESS: "true",
       LOCAL_DEV_EMAIL: "dev@example.com",
-      OPENROUTER_API_KEY: "test-openrouter-key",
-      OPENROUTER_MODELS: "fallback-model",
       DEEPSEEK_API_KEY: "test-deepseek-key",
       AI: {
         run: async () => ({})
@@ -400,10 +397,9 @@ test("API me exposes server-side translation capabilities without leaking keys",
   assert.deepEqual(payload.translationCapabilities, {
     cloudflareAi: true,
     deepseek: true,
-    openrouter: true,
     gemini: false
   });
-  assert.doesNotMatch(JSON.stringify(payload), /test-deepseek-key|test-openrouter-key/);
+  assert.doesNotMatch(JSON.stringify(payload), /test-deepseek-key/);
 });
 
 const base64Url = (input) =>
@@ -496,13 +492,11 @@ test("API functions reject oversized bodies, too many records and malformed mode
     );
     assert.equal(badModel.status, 400);
 
-    const tooManyModels = await translate.onRequestPost(
-      functionContext(
-        { records: [record], targetLang: "English", models: Array.from({ length: 9 }, (_, i) => `vendor/model-${i}`) },
-        env
-      )
+    const removedEngine = await translate.onRequestPost(
+      functionContext({ records: [record], targetLang: "English", engine: "openrouter" }, env)
     );
-    assert.equal(tooManyModels.status, 400);
+    assert.equal(removedEngine.status, 400);
+    assert.match((await removedEngine.json()).error, /no longer supported/);
 
     const reviewTooManyModels = await modelReview.onRequestPost(
       functionContext(
@@ -730,7 +724,7 @@ test("TranslationHub stops splitting a batch when the provider is down instead o
         hub.translateBatch({
           records: Array.from({ length: 20 }, (_, i) => ({ content: `row ${i}` })),
           targetLang: "English",
-          options: { model: "openrouter" }
+          options: { model: "cloudflare-ai" }
         }),
         /All translation engines failed/
       );
@@ -974,22 +968,18 @@ test("PDF support is text-first and exports translated content as DOCX", async (
   fs.rmSync(pdfOut, { force: true });
   assert.match(appSource, /PDF download blocked/);
   assert.match(pdfSource, /embeddedVisuals: summarizePdfVisuals\(pages\)/);
-  assert.doesNotMatch(appSource, /disabled=\{!capabilities\.openrouter\}/);
   assert.match(appSource, /retryPdfSegments/);
   assert.match(appSource, /documentKind === 'pdf'\) \{\s*await retryPdfSegments\(\)/);
   assert.match(appSource, /documentKind === 'docx' \|\| documentKind === 'pdf'/);
   assert.match(appSource, /getTranslationOptions: getDocumentQualityTranslationOptions/);
-  assert.match(appSource, /applyLatestModelCooldowns: applyLatestOpenRouterModelCooldowns/);
   assert.match(appSource, /settings\.model\.autoDoc/);
   assert.match(readI18nSource(), /Auto \{kind\} quality/);
-  assert.match(appSource, /activeDocumentQualityOpenRouterModels/);
   assert.match(appSource, /buildAdaptiveTextBatches/);
   assert.match(appSource, /const DOCX_BATCH_SIZE = 20/);
   assert.match(appSource, /const DOCX_BATCH_CHAR_LIMIT = 12000/);
   assert.match(appSource, /const DEEPSEEK_PRO_DOCX_BATCH_SIZE = 8/);
   assert.match(appSource, /const DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT = 6000/);
   assert.match(appSource, /getDocumentBatchPolicy/);
-  assert.match(pdfWorkflowSource, /applyLatestModelCooldowns\?\.\(`PDF Batch/);
   assert.match(pdfWorkflowSource, /batchCharLimit/);
   assert.match(pdfWorkflowSource, /modelLabel\?: string/);
   assert.match(pdfWorkflowSource, /PDF Batch \$\{batchNum\} 使用引擎:[\s\S]*模型: \$\{modelLabel \|\| "unknown"\}[\s\S]*用时/);
@@ -1233,10 +1223,9 @@ test("translation envelopes restore model output order and reject broken identit
 test("production proxy builds do not inject server-side model keys into the browser bundle", () => {
   const viteSource = fs.readFileSync(path.join(repoRoot, "vite.config.ts"), "utf8");
   assert.match(viteSource, /allowClientKeys = translationMode === 'direct'/);
-  assert.doesNotMatch(viteSource, /env\.OPENROUTER_API_KEY\s*\|\|/);
+  assert.doesNotMatch(viteSource, /openrouter/i);
   assert.doesNotMatch(viteSource, /allowClientKeys\s*\?\s*env\.GEMINI_API_KEY/);
   assert.doesNotMatch(viteSource, /allowClientKeys\s*\?\s*env\.DEEPSEEK_API_KEY/);
-  assert.match(viteSource, /'process\.env\.OPENROUTER_API_KEY': JSON\.stringify\(''\)/);
 });
 
 test("translation memory supports exact reuse and in-file dedupe", async () => {
@@ -1560,7 +1549,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
       targetLang: "Russian",
       fileName: "sample.docx",
       modelLabel: "Auto",
-      modelPreference: "auto-openrouter",
+      modelPreference: "auto",
       generatedAt: new Date("2026-01-01T00:00:00.000Z"),
       qualityReport,
       issueSummary: {
@@ -1606,7 +1595,7 @@ test("quality issue cases can be saved and exported from quality findings", asyn
     targetLang: "Russian",
     fileName: "sample.docx",
     modelLabel: "Auto",
-    modelPreference: "auto-openrouter",
+    modelPreference: "auto",
     generatedAt: new Date("2026-01-01T00:00:00.000Z"),
     qualityReport,
     issueSummary: {
@@ -2717,46 +2706,38 @@ test("language profiles flag high-confidence source-language residue", async () 
   );
 });
 
-test("API translate function accepts proxy payload and normalizes OpenRouter records", async () => {
+test("API translate function accepts a proxy payload for one Cloudflare model", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
-  const calls = [];
-
-  await withMockedFetch(async (setFetch) => {
-    setFetch(async (_url, init) => {
-      const body = JSON.parse(String(init.body));
-      calls.push(body);
-      return openRouterResponse(
-        JSON.stringify([
-          {
-            id: "seg-1",
-            content: "Translated IFU sentence."
-          }
-        ])
-      );
-    });
-
-    const response = await onRequestPost(
-      functionContext({
+  const aiCalls = [];
+  const response = await onRequestPost(
+    functionContext(
+      {
         records: [{ id: "seg-1", content: "中文说明" }],
         targetLang: "English",
-        engine: "openrouter",
-        model: "google/gemini-3-flash-preview",
+        engine: "cloudflare-ai",
+        model: "google/gemini-3-flash",
         profile: "docx-manual"
-      })
-    );
-    const payload = await response.json();
-    assert.equal(response.status, 200);
-    assert.equal(payload.engine, "openrouter");
-    assert.equal(payload.model, "google/gemini-3-flash-preview");
-    assert.deepEqual(payload.records, [{ id: "seg-1", content: "Translated IFU sentence." }]);
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].model, "google/gemini-3-flash-preview");
-    assert.deepEqual(calls[0].provider, { sort: "throughput", allow_fallbacks: true });
-    assert.match(calls[0].messages[0].content, /IFU|operator manual/i);
-  });
+      },
+      {
+        AI: {
+          run: async (model, input) => {
+            aiCalls.push({ model, input });
+            return { response: JSON.stringify({ records: [{ id: "seg-1", content: "Translated IFU sentence." }] }) };
+          }
+        }
+      }
+    )
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.engine, "cloudflare-ai");
+  assert.equal(payload.model, "google/gemini-3-flash");
+  assert.deepEqual(payload.records, [{ id: "seg-1", content: "Translated IFU sentence." }]);
+  assert.equal(aiCalls.length, 1);
+  assert.match(JSON.stringify(aiCalls[0].input.messages), /IFU|operator manual/i);
 });
 
-test("API translate auto uses Cloudflare AI Gateway Gemini before OpenRouter", async () => {
+test("API translate auto uses Cloudflare AI Gateway Gemini before DeepSeek", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const aiCalls = [];
   let fetchCalled = false;
@@ -2764,7 +2745,7 @@ test("API translate auto uses Cloudflare AI Gateway Gemini before OpenRouter", a
   await withMockedFetch(async (setFetch) => {
     setFetch(async () => {
       fetchCalled = true;
-      throw new Error("OpenRouter should not be called when Cloudflare AI succeeds.");
+      throw new Error("No other provider should be called when Cloudflare AI succeeds.");
     });
 
     const response = await onRequestPost(
@@ -2882,53 +2863,27 @@ test("Cloudflare AI provider calls use provider-compatible schemas", async () =>
   assert.equal(calls[2].input.response_format, undefined);
 });
 
-test("API translate auto falls back to OpenRouter when Cloudflare AI fails", async () => {
+test("API translate reports every failed model when no engine can serve the request", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const calls = [];
-
-  await withMockedFetch(async (setFetch) => {
-    setFetch(async (_url, init) => {
-      const body = JSON.parse(String(init.body));
-      calls.push({ provider: "openrouter", model: body.model });
-      return openRouterResponse(
-        JSON.stringify({
-          records: [{ id: "seg-1", content: "Fallback translated sentence." }]
-        })
-      );
-    });
-
-    const response = await onRequestPost(
-      functionContext(
-        {
-          records: [{ id: "seg-1", content: "中文说明" }],
-          targetLang: "English",
-          engine: "auto"
-        },
-        {
-          AI: {
-            run: async (model) => {
-              calls.push({ provider: "cloudflare-ai", model });
-              throw new Error("Cloudflare AI temporary error");
-            }
-          },
-          OPENROUTER_MODELS: "qwen/qwen3.6-plus"
+  const response = await onRequestPost(
+    functionContext(
+      { records: [{ id: "seg-1", content: "中文说明" }], targetLang: "English", engine: "auto" },
+      {
+        AI: {
+          run: async (model) => {
+            calls.push(model);
+            throw new Error("Cloudflare AI temporary error");
+          }
         }
-      )
-    );
-    const payload = await response.json();
-    assert.equal(response.status, 200);
-    assert.deepEqual(calls, [
-      { provider: "cloudflare-ai", model: "google/gemini-3-flash" },
-      { provider: "cloudflare-ai", model: "openai/gpt-5.4" },
-      { provider: "cloudflare-ai", model: "anthropic/claude-sonnet-4.6" },
-      { provider: "openrouter", model: "qwen/qwen3.6-plus" }
-    ]);
-    assert.equal(payload.engine, "openrouter");
-    assert.equal(payload.model, "qwen/qwen3.6-plus");
-    assert.deepEqual(payload.records, [{ id: "seg-1", content: "Fallback translated sentence." }]);
-    assert.equal(payload.modelIssues[0].model, "google/gemini-3-flash");
-    assert.equal(payload.modelIssues[0].kind, "exception");
-  });
+      }
+    )
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 500);
+  assert.deepEqual(calls, ["google/gemini-3-flash", "openai/gpt-5.4", "anthropic/claude-sonnet-4.6"]);
+  assert.match(payload.error, /All translation engines failed/);
+  assert.deepEqual(payload.modelIssues.map((issue) => issue.model), calls);
 });
 
 test("API translate can call DeepSeek official API directly with thinking disabled", async () => {
@@ -2939,7 +2894,7 @@ test("API translate can call DeepSeek official API directly with thinking disabl
     setFetch(async (url, init) => {
       const body = JSON.parse(String(init.body));
       calls.push({ url: String(url), body, headers: init.headers });
-      return openRouterResponse(
+      return chatCompletionResponse(
         JSON.stringify({
           records: [{ id: "seg-1", content: "Direct DeepSeek translated sentence." }]
         })
@@ -2957,8 +2912,7 @@ test("API translate can call DeepSeek official API directly with thinking disabl
         },
         {
           DEEPSEEK_API_KEY: "test-deepseek-key",
-          DEEPSEEK_MODELS: "deepseek-v4-flash",
-          OPENROUTER_API_KEY: ""
+          DEEPSEEK_MODELS: "deepseek-v4-flash"
         }
       )
     );
@@ -2977,19 +2931,19 @@ test("API translate can call DeepSeek official API directly with thinking disabl
   });
 });
 
-test("API translate auto tries DeepSeek official API before OpenRouter when Cloudflare AI fails", async () => {
+test("API translate auto tries DeepSeek official API when Cloudflare AI fails", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const calls = [];
 
   await withMockedFetch(async (setFetch) => {
     setFetch(async (url, init) => {
       const body = JSON.parse(String(init.body));
-      const provider = String(url).includes("api.deepseek.com") ? "deepseek" : "openrouter";
+      const provider = String(url).includes("api.deepseek.com") ? "deepseek" : "unexpected";
       calls.push({ provider, model: body.model });
-      if (provider === "openrouter") {
-        throw new Error("OpenRouter should not be called when DeepSeek succeeds.");
+      if (provider === "unexpected") {
+        throw new Error("Only the DeepSeek API should be called when DeepSeek succeeds.");
       }
-      return openRouterResponse(
+      return chatCompletionResponse(
         JSON.stringify({
           records: [{ id: "seg-1", content: "DeepSeek fallback translated sentence." }]
         })
@@ -3012,8 +2966,7 @@ test("API translate auto tries DeepSeek official API before OpenRouter when Clou
           },
           DEEPSEEK_API_KEY: "test-deepseek-key",
           DEEPSEEK_MODELS: "deepseek-v4-flash",
-          CLOUDFLARE_AI_MODELS: "google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6",
-          OPENROUTER_MODELS: "qwen/qwen3.6-plus"
+          CLOUDFLARE_AI_MODELS: "google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6"
         }
       )
     );
@@ -3038,10 +2991,10 @@ test("API translate auto tries DeepSeek Pro before Cloudflare GPT and Claude fal
   await withMockedFetch(async (setFetch) => {
     setFetch(async (url, init) => {
       const body = JSON.parse(String(init.body));
-      const provider = String(url).includes("api.deepseek.com") ? "deepseek" : "openrouter";
+      const provider = String(url).includes("api.deepseek.com") ? "deepseek" : "unexpected";
       calls.push({ provider, model: body.model });
-      if (provider === "openrouter") {
-        throw new Error("OpenRouter should not be called when DeepSeek Pro succeeds.");
+      if (provider === "unexpected") {
+        throw new Error("Only the DeepSeek API should be called when DeepSeek Pro succeeds.");
       }
       if (body.model === "deepseek-v4-flash") {
         return new Response(JSON.stringify({ error: { message: "Flash temporarily unavailable" } }), {
@@ -3049,7 +3002,7 @@ test("API translate auto tries DeepSeek Pro before Cloudflare GPT and Claude fal
           headers: { "Content-Type": "application/json" }
         });
       }
-      return openRouterResponse(
+      return chatCompletionResponse(
         JSON.stringify({
           records: [{ id: "seg-1", content: "DeepSeek Pro translated sentence." }]
         })
@@ -3075,8 +3028,7 @@ test("API translate auto tries DeepSeek Pro before Cloudflare GPT and Claude fal
           },
           DEEPSEEK_API_KEY: "test-deepseek-key",
           DEEPSEEK_MODELS: "deepseek-v4-flash,deepseek-v4-pro",
-          CLOUDFLARE_AI_MODELS: "google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6",
-          OPENROUTER_MODELS: "qwen/qwen3.6-plus"
+          CLOUDFLARE_AI_MODELS: "google/gemini-3-flash,openai/gpt-5.4,anthropic/claude-sonnet-4.6"
         }
       )
     );
@@ -3097,7 +3049,7 @@ test("API translate auto tries DeepSeek Pro before Cloudflare GPT and Claude fal
   });
 });
 
-test("API translate auto model chain falls through when Gemini returns an error", async () => {
+test("API translate DeepSeek model chain falls through when the first model returns an error", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const calls = [];
 
@@ -3105,105 +3057,41 @@ test("API translate auto model chain falls through when Gemini returns an error"
     setFetch(async (_url, init) => {
       const body = JSON.parse(String(init.body));
       calls.push(body.model);
-      if (body.model === "google/gemini-3-flash-preview") {
-        return new Response(JSON.stringify({ error: { message: "Gemini provider error" } }), {
+      if (body.model === "deepseek-v4-flash") {
+        return new Response(JSON.stringify({ error: { message: "provider error" } }), {
           status: 500,
           headers: { "Content-Type": "application/json" }
         });
       }
-      return openRouterResponse(
-        JSON.stringify([
-          {
-            id: "seg-1",
-            content: "Fallback model translated sentence."
-          }
-        ])
+      return chatCompletionResponse(
+        JSON.stringify([{ id: "seg-1", content: "Fallback model translated sentence." }])
       );
     });
 
     const response = await onRequestPost(
       functionContext(
-        {
-          records: [{ id: "seg-1", content: "中文说明" }],
-          targetLang: "English",
-          engine: "openrouter"
-        },
-        {
-          OPENROUTER_MODELS: "google/gemini-3-flash-preview,qwen/qwen3.6-plus"
-        }
+        { records: [{ id: "seg-1", content: "中文说明" }], targetLang: "English", engine: "deepseek" },
+        { DEEPSEEK_API_KEY: "test-deepseek-key", DEEPSEEK_MODELS: "deepseek-v4-flash,deepseek-v4-pro" }
       )
     );
     const payload = await response.json();
     assert.equal(response.status, 200);
-    assert.deepEqual(calls, ["google/gemini-3-flash-preview", "qwen/qwen3.6-plus"]);
-    assert.equal(payload.model, "qwen/qwen3.6-plus");
+    assert.deepEqual(calls, ["deepseek-v4-flash", "deepseek-v4-pro"]);
+    assert.equal(payload.model, "deepseek-v4-pro");
     assert.deepEqual(payload.records, [{ id: "seg-1", content: "Fallback model translated sentence." }]);
-    assert.equal(payload.modelIssues[0].model, "google/gemini-3-flash-preview");
+    assert.equal(payload.modelIssues[0].model, "deepseek-v4-flash");
     assert.equal(payload.modelIssues[0].status, 500);
   });
 });
 
-test("API translate auto model chain falls through when a model request times out", async () => {
-  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
-  const calls = [];
-
-  await withMockedFetch(async (setFetch) => {
-    setFetch(async (_url, init) => {
-      const body = JSON.parse(String(init.body));
-      calls.push(body.model);
-      if (body.model === "qwen/qwen3.6-plus") {
-        return new Promise((_resolve, reject) => {
-          init.signal?.addEventListener("abort", () => {
-            reject(init.signal.reason || new Error("aborted"));
-          });
-        });
-      }
-      return openRouterResponse(
-        JSON.stringify([
-          {
-            id: "seg-1",
-            content: "Timeout fallback translated sentence."
-          }
-        ])
-      );
-    });
-
-    const response = await onRequestPost(
-      functionContext(
-        {
-          records: [{ id: "seg-1", content: "中文说明" }],
-          targetLang: "English",
-          engine: "openrouter"
-        },
-        {
-          OPENROUTER_MODELS: "qwen/qwen3.6-plus,deepseek/deepseek-v4-pro",
-          OPENROUTER_REQUEST_TIMEOUT_MS: "5"
-        }
-      )
-    );
-    const payload = await response.json();
-    assert.equal(response.status, 200);
-    assert.deepEqual(calls, ["qwen/qwen3.6-plus", "deepseek/deepseek-v4-pro"]);
-    assert.equal(payload.model, "deepseek/deepseek-v4-pro");
-    assert.deepEqual(payload.records, [{ id: "seg-1", content: "Timeout fallback translated sentence." }]);
-    assert.equal(payload.modelIssues[0].model, "qwen/qwen3.6-plus");
-    assert.equal(payload.modelIssues[0].status, "timeout");
-  });
-});
-
-test("Auto translation passes OpenRouter model chain through string and spreadsheet flows", () => {
+test("Auto translation routes through the Cloudflare and DeepSeek chain in string and spreadsheet flows", () => {
   const appSource = readAppSource();
   assert.match(appSource, /const getTranslationOptions = \(\) => \{/);
-  assert.match(appSource, /translationModelPreference === AUTO_OPENROUTER_MODEL[\s\S]*openRouterModels/);
+  assert.match(appSource, /isCloudflareAiModelValue\(translationModelPreference\)[\s\S]*return \{\};/);
   assert.match(appSource, /String Resource[\s\S]*translationHub\.translateBatch\(\{[\s\S]*options: getTranslationOptions\(\)/);
   assert.match(appSource, /for \(const lang of targetLangs\)/);
   assert.doesNotMatch(appSource, /Promise\.allSettled\(targetLangs\.map/);
   assert.match(appSource, /String Resource: 使用上方翻译模型/);
-  assert.match(appSource, /applyOpenRouterModelCooldowns/);
-  assert.match(appSource, /Auto 将跳过 30 分钟/);
-  assert.match(appSource, /currentSkippedOpenRouterModels/);
-  assert.match(appSource, /activeOpenRouterModels/);
-  assert.match(appSource, /allOpenRouterModels/);
   assert.match(appSource, /getSpreadsheetBatchSize/);
   assert.match(appSource, /const getSpreadsheetBatchSize = \(\) => BATCH_SIZE/);
   assert.match(appSource, /getDocumentBatchPolicy/);
@@ -3214,8 +3102,6 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /\$\{label\}: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
   assert.match(appSource, /isDeepSeekDirectProModel\(translationModelPreference\)/);
   assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS = \[[\s\S]*google\/gemini-3-flash[\s\S]*openai\/gpt-5\.4[\s\S]*anthropic\/claude-sonnet-4\.6/);
-  assert.match(appSource, /const DEFAULT_OPENROUTER_MODELS: string\[\] = \[\]/);
-  assert.match(appSource, /const DEFAULT_OPENROUTER_AUTO_MODELS: string\[\] = \[\]/);
   assert.match(appSource, /strings\.modelHint/);
   assert.match(readI18nSource(), /这里只选择输出语言/);
   assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);
@@ -3227,11 +3113,12 @@ test("Auto translation passes OpenRouter model chain through string and spreadsh
   assert.match(appSource, /availableTranslationModels/);
   assert.match(
     appSource,
-    /\.\.\.\(capabilities\.deepseek \? DEEPSEEK_DIRECT_MODEL_VALUES : \[\]\),[\s\S]*\.\.\.\(capabilities\.cloudflareAi \? cloudflareAiModels\.map\(toCloudflareAiModelValue\) : \[\]\),/
+    /\.\.\.\(capabilities\.deepseek \? DEEPSEEK_DIRECT_MODEL_VALUES : \[\]\),[\s\S]*\.\.\.\(capabilities\.cloudflareAi \? cloudflareAiModels\.map\(toCloudflareAiModelValue\) : \[\]\)/
   );
   assert.match(appSource, /isDeepSeekDirectModel\(translationModelPreference\)[\s\S]*model: 'deepseek' as const[\s\S]*providerModel/);
   assert.match(appSource, /includeDeepSeekDirect \? DEEPSEEK_DIRECT_AUTO_LABELS : \[\]/);
-  assert.match(appSource, /formatAutoModelChainLabel\([\s\S]*cloudflareAiModels[\s\S]*activeOpenRouterModels[\s\S]*capabilities\.deepseek/);
+  assert.match(appSource, /formatAutoModelChainLabel\([\s\S]*cloudflareAiModels[\s\S]*capabilities\.deepseek/);
+  assert.doesNotMatch(appSource, /openrouter/i);
 });
 
 test("Multi-AI Review defaults compare five translation candidates with three strong judges", async () => {
@@ -3265,7 +3152,7 @@ test("Proxy translation retries transient fetch failures before surfacing string
       }
       return new Response(
         JSON.stringify({
-          engine: "openrouter",
+          engine: "cloudflare-ai",
           records: body.records.map((record) => ({
             ...record,
             content: `${record.content} traduzido`
@@ -3282,54 +3169,14 @@ test("Proxy translation retries transient fetch failures before surfacing string
     const result = await service.translateBatch(
       [{ content: "上传成功" }],
       "Portuguese",
-      "openrouter",
-      undefined,
-      { models: ["google/gemini-3-flash-preview", "qwen/qwen3.6-plus"] }
+      "cloudflare-ai"
     );
 
     assert.deepEqual(calls, ["Portuguese", "Portuguese"]);
     assert.deepEqual(result, [{ content: "上传成功 traduzido" }]);
-    assert.equal(service.getLastEngine(), "openrouter");
+    assert.equal(service.getLastEngine(), "cloudflare-ai");
     assert.deepEqual(service.getLastModelIssues(), []);
   });
-});
-
-test("OpenRouter service falls back across configured model list", async () => {
-  const { OpenRouterService } = await bundleTsModule(path.join(repoRoot, "services/openRouterService.ts"));
-  const originalKey = process.env.OPENROUTER_API_KEY;
-  const calls = [];
-
-  try {
-    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
-    await withMockedFetch(async (setFetch) => {
-      setFetch(async (_url, init) => {
-        const body = JSON.parse(String(init.body));
-        calls.push(body.model);
-        if (body.model === "blocked-model") {
-          return new Response(JSON.stringify({ error: { message: "blocked" } }), {
-            status: 403,
-            headers: { "Content-Type": "application/json" }
-          });
-        }
-        return openRouterResponse(JSON.stringify({ records: [{ content: "Amostra concluída" }] }));
-      });
-
-      const service = new OpenRouterService("unused-default");
-      const output = await service.translateBatch(
-        [{ content: "样本完成" }],
-        "Portuguese",
-        { models: ["blocked-model", "qwen/qwen3.6-plus"] }
-      );
-      assert.deepEqual(calls, ["blocked-model", "qwen/qwen3.6-plus"]);
-      assert.deepEqual(output, [{ content: "Amostra concluída" }]);
-    });
-  } finally {
-    if (originalKey === undefined) {
-      delete process.env.OPENROUTER_API_KEY;
-    } else {
-      process.env.OPENROUTER_API_KEY = originalKey;
-    }
-  }
 });
 
 test("API review-samples function parses anonymous review JSON without network", async () => {
@@ -3339,7 +3186,7 @@ test("API review-samples function parses anonymous review JSON without network",
     setFetch(async (_url, init) => {
       const body = JSON.parse(String(init.body));
       assert.equal(body.model, "judge-model");
-      return openRouterResponse(
+      return chatCompletionResponse(
         JSON.stringify({
           reviews: [
             {
@@ -3393,7 +3240,7 @@ test("API model-review function translates candidates and ranks anonymous judge 
       const body = JSON.parse(String(init.body));
       seenModels.push(body.model);
       if (body.model === "judge-a") {
-        return openRouterResponse(
+        return chatCompletionResponse(
           JSON.stringify({
             scores: [
               {
@@ -3424,7 +3271,7 @@ test("API model-review function translates candidates and ranks anonymous judge 
           })
         );
       }
-      return openRouterResponse(
+      return chatCompletionResponse(
         JSON.stringify([
           {
             id: "sample-1",
@@ -3483,14 +3330,14 @@ test("TranslationHub retry flow splits recoverable proxy batch failures and pres
         const body = JSON.parse(String(init.body));
         calls.push(body.records.map((record) => record.payload.content));
         if (body.records.length > 1) {
-          return new Response(JSON.stringify({ engine: "openrouter", records: [{ content: "only one" }] }), {
+          return new Response(JSON.stringify({ engine: "cloudflare-ai", records: [{ content: "only one" }] }), {
             status: 200,
             headers: { "Content-Type": "application/json" }
           });
         }
         return new Response(
           JSON.stringify({
-            engine: "openrouter",
+            engine: "cloudflare-ai",
             records: body.records.map((record) => ({
               ...record,
               payload: {
@@ -3510,7 +3357,7 @@ test("TranslationHub retry flow splits recoverable proxy batch failures and pres
       const result = await hub.translateBatch({
         records: [{ content: "A" }, { content: "B" }],
         targetLang: "English",
-        options: { model: "openrouter" }
+        options: { model: "cloudflare-ai" }
       });
       assert.deepEqual(calls, [["A", "B"], ["A"], ["B"]]);
       assert.deepEqual(result, [{ content: "A translated" }, { content: "B translated" }]);

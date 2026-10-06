@@ -92,7 +92,6 @@ import {
   type TranslationMemoryPair
 } from './utils/translationMemory';
 import {
-  DOCX_MANUAL_OPENROUTER_MODELS
 } from './utils/translationProfiles';
 import {
   containsProtectedTerm,
@@ -105,7 +104,6 @@ import {
 } from './utils/translationTokens';
 import type {
   IssueSummaryState,
-  OpenRouterModelCooldown,
   StageResult,
   StringOutputDiagnostic,
   ThemeMode,
@@ -114,7 +112,7 @@ import type {
 import {
   ALL_STRING_TARGETS,
   APP_VERSION,
-  AUTO_OPENROUTER_MODEL,
+  AUTO_MODEL,
   BATCH_SIZE,
   DEEPSEEK_DIRECT_MODEL_VALUES,
   DOCX_WORD_REGEX,
@@ -136,8 +134,6 @@ import {
   isDeepSeekDirectProModel,
   isSevereDocxIssue,
   parseCloudflareAiModelOptions,
-  parseOpenRouterAutoModelOptions,
-  parseOpenRouterModelOptions,
   parseRuntimeProtectedTerms,
   shouldLockCell,
   toCloudflareAiModelValue,
@@ -245,8 +241,6 @@ const App: React.FC = () => {
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
   const translationMemorySessionRef = useRef<Map<string, string>>(new Map());
-  const openRouterModelCooldownsRef = useRef<Map<string, OpenRouterModelCooldown>>(new Map());
-  const [openRouterModelCooldownVersion, setOpenRouterModelCooldownVersion] = useState(0);
 
   const translationHub = useMemo(() => new TranslationHub(), []);
   const hubCapabilities = useMemo(() => translationHub.getCapabilities(), [translationHub]);
@@ -257,58 +251,17 @@ const App: React.FC = () => {
     }),
     [authState.translationCapabilities, hubCapabilities]
   );
-  const openRouterModels = useMemo(() => parseOpenRouterModelOptions(), []);
-  const openRouterAutoModels = useMemo(() => parseOpenRouterAutoModelOptions(), []);
   const cloudflareAiModels = useMemo(() => parseCloudflareAiModelOptions(), []);
-  const allOpenRouterModels = useMemo(
-    () => Array.from(new Set([...openRouterModels, ...openRouterAutoModels, ...DOCX_MANUAL_OPENROUTER_MODELS])),
-    [openRouterModels, openRouterAutoModels]
-  );
-  const activeOpenRouterModels = useMemo(() => {
-    const now = Date.now();
-    openRouterModelCooldownsRef.current.forEach((cooldown, model) => {
-      if (cooldown.until <= now) {
-        openRouterModelCooldownsRef.current.delete(model);
-      }
-    });
-    const active = openRouterAutoModels.filter((model) => {
-      const cooldown = openRouterModelCooldownsRef.current.get(model);
-      return !cooldown || cooldown.until <= now;
-    });
-    return active.length > 0 ? active : openRouterAutoModels;
-  }, [openRouterAutoModels, openRouterModelCooldownVersion]);
-  const activeDocumentQualityOpenRouterModels = useMemo(() => {
-    const now = Date.now();
-    const active = DOCX_MANUAL_OPENROUTER_MODELS.filter((model) => {
-      const cooldown = openRouterModelCooldownsRef.current.get(model);
-      return !cooldown || cooldown.until <= now;
-    });
-    return active.length > 0 ? active : DOCX_MANUAL_OPENROUTER_MODELS;
-  }, [openRouterModelCooldownVersion]);
   const usesDocumentQualityModels = documentKind === 'docx' || documentKind === 'pdf';
-  const currentSkippedOpenRouterModels = useMemo(() => {
-    const models = usesDocumentQualityModels ? DOCX_MANUAL_OPENROUTER_MODELS : openRouterAutoModels;
-    return models.filter((model) =>
-      Boolean(openRouterModelCooldownsRef.current.get(model)?.until > Date.now())
-    );
-  }, [usesDocumentQualityModels, openRouterAutoModels, openRouterModelCooldownVersion]);
-  const availableOpenRouterModels = useMemo(
-    () =>
-      usesDocumentQualityModels
-        ? Array.from(new Set([...DOCX_MANUAL_OPENROUTER_MODELS, ...openRouterModels]))
-        : openRouterModels,
-    [usesDocumentQualityModels, openRouterModels]
-  );
   const availableTranslationModels = useMemo(
     () => [
       ...(capabilities.deepseek ? DEEPSEEK_DIRECT_MODEL_VALUES : []),
-      ...(capabilities.cloudflareAi ? cloudflareAiModels.map(toCloudflareAiModelValue) : []),
-      ...availableOpenRouterModels
+      ...(capabilities.cloudflareAi ? cloudflareAiModels.map(toCloudflareAiModelValue) : [])
     ],
-    [availableOpenRouterModels, capabilities.cloudflareAi, capabilities.deepseek, cloudflareAiModels]
+    [capabilities.cloudflareAi, capabilities.deepseek, cloudflareAiModels]
   );
   const [translationModelPreference, setTranslationModelPreference] = useState<string>(
-    AUTO_OPENROUTER_MODEL
+    AUTO_MODEL
   );
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -323,10 +276,10 @@ const App: React.FC = () => {
   }, []);
   useEffect(() => {
     if (
-      translationModelPreference !== AUTO_OPENROUTER_MODEL &&
+      translationModelPreference !== AUTO_MODEL &&
       !availableTranslationModels.includes(translationModelPreference)
     ) {
-      setTranslationModelPreference(AUTO_OPENROUTER_MODEL);
+      setTranslationModelPreference(AUTO_MODEL);
     }
   }, [availableTranslationModels, translationModelPreference]);
   const modelReviewService = useMemo(() => new ModelReviewService(), []);
@@ -1209,25 +1162,15 @@ const App: React.FC = () => {
     };
   }, [documentKind, data, currentRowsForRetry, docxStats, pdfStats, docxIssueDetails, pdfIssueDetails]);
   const currentModelLabel =
-    translationModelPreference === AUTO_OPENROUTER_MODEL
+    translationModelPreference === AUTO_MODEL
       ? 'Auto'
       : getTranslationModelLabel(translationModelPreference);
   const currentModelChainLabel =
-    translationModelPreference === AUTO_OPENROUTER_MODEL
-      ? usesDocumentQualityModels
-        ? formatAutoModelChainLabel(
-            capabilities.cloudflareAi ? cloudflareAiModels : [],
-            activeDocumentQualityOpenRouterModels,
-            capabilities.deepseek
-          )
-        : formatAutoModelChainLabel(
-            capabilities.cloudflareAi ? cloudflareAiModels : [],
-            activeOpenRouterModels,
-            capabilities.deepseek
-          )
+    translationModelPreference === AUTO_MODEL
+      ? formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], capabilities.deepseek)
       : currentModelLabel;
   const currentModelDisplayLabel =
-    translationModelPreference === AUTO_OPENROUTER_MODEL
+    translationModelPreference === AUTO_MODEL
       ? `Auto (${currentModelChainLabel})`
       : currentModelLabel;
   // Pictures, charts and drawing text are not translated; the page and the report say so.
@@ -1279,7 +1222,7 @@ const App: React.FC = () => {
     fileName: file?.name,
     embeddedVisuals,
     translationModelPreference,
-    autoModelValue: AUTO_OPENROUTER_MODEL,
+    autoModelValue: AUTO_MODEL,
     addLog,
     setPreviewFocus,
     formatLocationLabel,
@@ -1446,7 +1389,6 @@ const App: React.FC = () => {
           : '';
   const autoModelChainLabel = formatAutoModelChainLabel(
     capabilities.cloudflareAi ? cloudflareAiModels : [],
-    usesDocumentQualityModels ? activeDocumentQualityOpenRouterModels : activeOpenRouterModels,
     capabilities.deepseek
   );
   const isDocumentLoaded =
@@ -1505,22 +1447,15 @@ const App: React.FC = () => {
             ? 'Style'
             : 'Manual';
 
-  const { applyLatestOpenRouterModelCooldowns, getFallbackPriority, getRetryAttemptModelLabel, getTranslationOptions, getDocumentQualityTranslationOptions, getDocumentBatchPolicy } = useModelRouting({
-    activeDocumentQualityOpenRouterModels,
-    activeOpenRouterModels,
-    addLog,
-    allOpenRouterModels,
+  const { getFallbackPriority, getRetryAttemptModelLabel, getTranslationOptions, getDocumentQualityTranslationOptions, getDocumentBatchPolicy } = useModelRouting({
     capabilities,
     isUsingDeepSeekPro,
-    openRouterModelCooldownsRef,
-    setOpenRouterModelCooldownVersion,
     translationHub,
     translationModelPreference
   });
 
   const { runPdfTranslation, retryPdfSegments } = usePdfTranslation({
     addLog,
-    applyLatestOpenRouterModelCooldowns,
     batchMonitor,
     buildPdfIssueDetails,
     createTranslationMemoryStats,
@@ -1553,7 +1488,6 @@ const App: React.FC = () => {
 
   const { runDocxTranslation, retryDocxSegments } = useDocxTranslation({
     addLog,
-    applyLatestOpenRouterModelCooldowns,
     batchMonitor,
     buildDocxIssueDetails,
     createTranslationMemoryStats,
@@ -1642,11 +1576,9 @@ const App: React.FC = () => {
 
   const { translateStringResources, clearStringResources, copyStringOutput, exportStringHistory, exportCurrentStringOutput, clearStringHistoryData } = useStringResources({
     addLog,
-    applyLatestOpenRouterModelCooldowns,
     applyStringAutoFix,
     collectStringOutputDiagnostics,
     currentModelDisplayLabel,
-    currentSkippedOpenRouterModels,
     getCurrentStringOutputDiagnostics,
     getTranslationOptions,
     selectedStringTargetLangs,
@@ -1759,13 +1691,12 @@ const App: React.FC = () => {
         <SettingsPanel
           isLight={isLight}
           embeddedVisuals={embeddedVisuals}
-          AUTO_OPENROUTER_MODEL={AUTO_OPENROUTER_MODEL}
+          AUTO_MODEL={AUTO_MODEL}
           applySavedProgress={applySavedProgress}
           autoModelChainLabel={autoModelChainLabel}
           availableTranslationModels={availableTranslationModels}
           canRunTranslation={canRunTranslation}
           clearTranslationMemoryData={clearTranslationMemoryData}
-          currentSkippedOpenRouterModels={currentSkippedOpenRouterModels}
           discardSavedProgress={discardSavedProgress}
           documentKind={documentKind}
           docxContextRef={docxContextRef}
@@ -1805,7 +1736,7 @@ const App: React.FC = () => {
           isLight={isLight}
           statusLabel={runStatusLabel}
           progress={processingState.progress}
-          modelLabel={translationModelPreference === AUTO_OPENROUTER_MODEL ? t('settings.model.autoShort') : currentModelDisplayLabel}
+          modelLabel={translationModelPreference === AUTO_MODEL ? t('settings.model.autoShort') : currentModelDisplayLabel}
           batchRuns={batchRuns}
           showPauseResume={showPauseResume}
           isTranslating={isTranslating}

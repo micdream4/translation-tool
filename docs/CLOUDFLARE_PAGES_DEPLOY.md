@@ -7,7 +7,7 @@ upload `.xlsx` / `.docx` / text-based `.pdf` -> translate -> download. Excel `.x
 - Cloudflare account
 - Node.js 18+
 - Repository code pushed to Git provider (GitHub/GitLab)
-- Cloudflare AI binding configured; optional DeepSeek / OpenRouter secrets for fallback paths.
+- Cloudflare AI binding configured; optional DeepSeek secret for the fallback path.
 
 ## 2. Create Pages Project
 1. Open Cloudflare Dashboard -> `Workers & Pages` -> `Create` -> `Pages`.
@@ -34,22 +34,17 @@ Non-sensitive controlled-sharing config is managed in `wrangler.toml` under `[va
 - `CLOUDFLARE_REVIEW_JUDGE_MODELS=cloudflare-ai:openai/gpt-5.4,cloudflare-ai:anthropic/claude-sonnet-4.6,deepseek:deepseek-v4-pro`
 - `DEEPSEEK_MODELS=deepseek-v4-flash,deepseek-v4-pro`
 - `DEEPSEEK_REQUEST_TIMEOUT_MS=90000`
-- `OPENROUTER_MODELS=` (empty by default; use only as explicit last fallback)
 - `REQUIRE_CF_ACCESS_EMAIL=true`
 
 Optional encrypted Secret:
-- `OPENROUTER_KEYS_BY_EMAIL={"user1@company.com":"sk-or-xxx","user2@company.com":"sk-or-yyy"}`
 - `DEEPSEEK_API_KEY=<your_deepseek_key>` for official DeepSeek API fallback.
-- `OPENROUTER_API_KEY=<your_key>` for explicit OpenRouter last fallback.
 
 说明：
 - Production should use `VITE_TRANSLATION_MODE=proxy`. Do not configure browser-side `VITE_*_API_KEY` secrets in Cloudflare Pages unless you intentionally want direct browser calls.
-- Auto 模式按成本优先顺序执行：Cloudflare Gemini 3 Flash -> DeepSeek 官方 API `deepseek-v4-flash` -> DeepSeek 官方 API `deepseek-v4-pro` -> Cloudflare GPT-5.4 -> Cloudflare Claude 4.6 Sonnet；最后才按 `OPENROUTER_MODELS` 顺序尝试 OpenRouter 模型。
-- Multi-AI Review 会并发调用 5 个候选翻译模型，再由 3 个匿名强评审模型打分；默认不使用 OpenRouter。
+- Auto 模式按成本优先顺序执行：Cloudflare Gemini 3 Flash -> DeepSeek 官方 API `deepseek-v4-flash` -> DeepSeek 官方 API `deepseek-v4-pro` -> Cloudflare GPT-5.4 -> Cloudflare Claude 4.6 Sonnet。
+- Multi-AI Review 会并发调用 5 个候选翻译模型，再由 3 个匿名强评审模型打分。
 - 前端会从 `/api/me` 读取后端能力；只有 Cloudflare Pages 配置了 encrypted Secret `DEEPSEEK_API_KEY` 时，才在 Auto 后方显示 `DeepSeek Direct v4 Flash` 和 `DeepSeek Direct v4 Pro`。手工选择 Pro 时会向 DeepSeek 官方 API 指定 `deepseek-v4-pro`。
-- OpenRouter 默认留空，不再通过 OpenRouter 调 Qwen / DeepSeek；DeepSeek 走官方直连，GPT / Claude / Gemini 走 Cloudflare AI Gateway。若后续需要 OpenRouter 兜底，先用 `npm run smoke:openrouter` 验证，再通过 `OPENROUTER_MODELS` / `VITE_OPENROUTER_MODELS` 显式加入。
-- 如果配置了 `OPENROUTER_MODELS`，后端会按顺序尝试这些 OpenRouter 模型，直到某个模型成功。
-- `OPENROUTER_MODEL` 仍可保留给单模型场景；多模型时优先使用 `OPENROUTER_MODELS`。
+- OpenRouter 支持已移除；DeepSeek 走官方直连，GPT / Claude / Gemini 走 Cloudflare AI Gateway。
 - 当某个模型因地区限制或 provider 不可用而失败时，站点会自动切到下一个模型，不需要用户手动重试。
 - `DEEPSEEK_API_KEY` 必须是 Cloudflare encrypted Secret；不要把它写成 `VITE_DEEPSEEK_API_KEY`，否则生产浏览器 bundle 可能暴露密钥。
 
@@ -64,19 +59,19 @@ Timeouts and retries (optional overrides, defaults shown):
 - `CLOUDFLARE_AI_REQUEST_TIMEOUT_MS=60000`：单个 Cloudflare AI 模型的超时。超时后记为 `timeout` 并切换到下一个模型，而不是一直等待。
 - `TRANSLATE_TOTAL_BUDGET_MS=90000`：`/api/translate` 单次请求内整条模型回退链的总时间预算。Cloudflare 约 100 秒会关闭代理请求，超出预算时服务端直接返回明确错误，而不是让客户端收到 524。
 - `VITE_PROXY_REQUEST_TIMEOUT_MS=120000`：浏览器端单次翻译请求的超时（构建时变量），应大于服务端预算。
-- DeepSeek、OpenRouter 保持原有的单模型超时变量；各模型实际超时取自身超时与剩余预算中较小者。
+- DeepSeek 保持原有的单模型超时变量；各模型实际超时取自身超时与剩余预算中较小者。
 - 客户端遇到服务商不可用类错误（超时、过载、网络、500）时，最多连续拆分 4 次且没有成功就停止，不再拆到每条记录一个请求；JSON 解析和对齐类错误仍会拆到单条。
 
 Request limits (optional overrides, defaults shown):
 - `MAX_REQUEST_BYTES=4194304`：单次请求体上限。
 - `MAX_RECORDS_PER_REQUEST=200`：`/api/translate` 单次记录数上限（前端单批最多 40 条）。
 - `MAX_SAMPLES_PER_REQUEST=100`：`/api/model-review`、`/api/review-samples` 单次样本数上限。
-- 单次请求指定的模型数最多 8 个，模型 ID 只允许字母、数字和 `._:/@+-`。
+- 请求里指定的单个模型 ID 只允许字母、数字和 `._:/@+-`；`engine=openrouter` 会返回 400。
 - 请求频率限制建议在 Cloudflare 的 WAF Rate Limiting 规则里配置（`/api/*`），代码层不做限流。
 
 Public sharing (no Access) notes:
 - 保持 `REQUIRE_CF_ACCESS_EMAIL` 为空或 `false`。
-- 这样前端可直接调用 `/api/translate`，仅使用 `OPENROUTER_API_KEY`。
+- 这样前端可直接调用 `/api/translate`，使用 Cloudflare AI binding 和 `DEEPSEEK_API_KEY`。
 
 ## 4. Protect Access (Recommended)
 Use Cloudflare Zero Trust Access policy:
@@ -109,6 +104,6 @@ If deploying from Git integration:
    - before release, run `npm run test:quality-gate` on the Mac that owns the ignored `local-data/` regression samples; GitHub CI intentionally runs `test:ci-gate` only
 
 ## 7. Cost and Stability Tips
-- Use `OPENROUTER_KEYS_BY_EMAIL` for per-user budget control.
+- Set spend limits on the Cloudflare AI Gateway and the DeepSeek account for budget control.
 - Keep model temperature low for deterministic technical docs.
 - Start with smaller DOCX for smoke tests before large manuals.

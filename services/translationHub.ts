@@ -1,6 +1,5 @@
 import { MedicalAIService } from "./geminiService";
 import { DeepseekService } from "./deepseekService";
-import { OpenRouterService } from "./openRouterService";
 import { ProxyTranslationService, ProxyEngine, type ProxyModelIssue } from "./proxyService";
 import { POCTRecord, TargetLanguage } from "../types";
 import type { TranslationProfile } from "../utils/translationProfiles";
@@ -15,10 +14,8 @@ export interface TranslationRequest {
   records: POCTRecord[];
   targetLang: TargetLanguage;
     options?: {
-      model?: "cloudflare-ai" | "deepseek" | "gemini" | "openrouter";
+      model?: "cloudflare-ai" | "deepseek" | "gemini";
       providerModel?: string;
-      openRouterModel?: string;
-      openRouterModels?: string[];
       profile?: TranslationProfile;
   };
 }
@@ -48,12 +45,11 @@ const isProxyMode = () => {
 const parseProxyCapabilities = () => {
   const raw = (getEnvValue("VITE_PROXY_ENGINES") || "").toLowerCase();
   if (!raw) {
-    return { cloudflareAi: true, openrouter: false, deepseek: false, gemini: false };
+    return { cloudflareAi: true, deepseek: false, gemini: false };
   }
   const items = raw.split(",").map((item) => item.trim()).filter(Boolean);
   return {
     cloudflareAi: items.includes("cloudflare-ai") || items.includes("cloudflare"),
-    openrouter: items.includes("openrouter"),
     deepseek: items.includes("deepseek"),
     gemini: items.includes("gemini")
   };
@@ -65,19 +61,16 @@ const MAX_CONSECUTIVE_AVAILABILITY_FAILURES = 4;
 export class TranslationHub {
   private readonly deepseek: DeepseekService;
   private readonly gemini: MedicalAIService;
-  private readonly openRouter?: OpenRouterService;
   private readonly proxy?: ProxyTranslationService;
   private readonly cache = new Map<string, POCTRecord[]>();
   private readonly hasGeminiKey: boolean;
-  private readonly hasOpenRouterKey: boolean;
   private readonly DEFAULT_RETRIES = 2;
   private readonly capabilities: {
     cloudflareAi: boolean;
-    openrouter: boolean;
     deepseek: boolean;
     gemini: boolean;
   };
-  private lastEngine: "cloudflare-ai" | "openrouter" | "deepseek" | "gemini" | "unknown" = "unknown";
+  private lastEngine: "cloudflare-ai" | "deepseek" | "gemini" | "unknown" = "unknown";
   private lastModelIssues: ProxyModelIssue[] = [];
   private lastModel = "";
 
@@ -86,18 +79,14 @@ export class TranslationHub {
       this.deepseek = new DeepseekService();
       this.gemini = new MedicalAIService();
       this.hasGeminiKey = false;
-      this.hasOpenRouterKey = false;
       this.proxy = new ProxyTranslationService();
       this.capabilities = parseProxyCapabilities();
     } else {
       this.deepseek = new DeepseekService();
       this.gemini = new MedicalAIService();
       this.hasGeminiKey = this.detectGeminiKey();
-      this.hasOpenRouterKey = this.detectOpenRouterKey();
-      this.openRouter = this.hasOpenRouterKey ? new OpenRouterService() : undefined;
       this.capabilities = {
         cloudflareAi: false,
-        openrouter: !!this.openRouter,
         deepseek: true,
         gemini: this.hasGeminiKey
       };
@@ -117,25 +106,6 @@ export class TranslationHub {
     const key = (nodeKey || browserKey || "").trim();
     if (!key) return false;
     return !/^placehol/i.test(key);
-  }
-
-  private detectOpenRouterKey() {
-    const nodeKey =
-      typeof process !== "undefined"
-        ? process.env.OPENROUTER_API_KEY ||
-          process.env.VITE_OPENROUTER_API_KEY ||
-          process.env.Openrouter_API_KEY ||
-          process.env.VITE_Openrouter_API_KEY
-        : "";
-    const browserKey =
-      typeof import.meta !== "undefined"
-        ? (import.meta as any).env?.OPENROUTER_API_KEY ||
-          (import.meta as any).env?.VITE_OPENROUTER_API_KEY ||
-          (import.meta as any).env?.Openrouter_API_KEY ||
-          (import.meta as any).env?.VITE_Openrouter_API_KEY
-        : "";
-    const key = (nodeKey || browserKey || "").trim();
-    return Boolean(key);
   }
 
   // Failures caused by the model output (bad JSON, wrong length, misaligned ids) are fixed by
@@ -222,9 +192,8 @@ export class TranslationHub {
           req.records,
           req.targetLang,
           engine,
-          req.options?.providerModel || req.options?.openRouterModel,
+          req.options?.providerModel,
           {
-            models: req.options?.openRouterModels,
             profile: req.options?.profile
           }
         );
@@ -276,25 +245,8 @@ export class TranslationHub {
     };
     const runGemini = () =>
       this.gemini.translateBatch(req.records, req.targetLang);
-    const runOpenRouter = () => {
-      if (!this.openRouter) {
-        throw new Error("OpenRouter API key unavailable.");
-      }
-      return this.openRouter.translateBatch(req.records, req.targetLang, {
-        model: req.options?.openRouterModel,
-        models: req.options?.openRouterModels,
-        profile: req.options?.profile
-      });
-    };
-
     let translated: POCTRecord[];
-    if (preferred === "openrouter") {
-      if (!this.openRouter) {
-        throw new Error("OpenRouter API key unavailable.");
-      }
-      translated = await runOpenRouter();
-      this.lastEngine = "openrouter";
-    } else if (preferred === "gemini") {
+    if (preferred === "gemini") {
       if (!this.hasGeminiKey) {
         throw new Error("Gemini API Key unavailable,无法使用该模型。");
       }
@@ -318,16 +270,7 @@ export class TranslationHub {
           used = true;
           this.lastEngine = "gemini";
         } catch (geminiError) {
-          console.warn("Gemini translation failed, trying OpenRouter fallback.", geminiError);
-        }
-      }
-      if (!used && this.openRouter) {
-        try {
-          translated = await runOpenRouter();
-          used = true;
-          this.lastEngine = "openrouter";
-        } catch (openRouterError) {
-          throw openRouterError;
+          console.warn("Gemini translation failed.", geminiError);
         }
       }
       if (!used) throw new Error("No direct translation engine succeeded.");
@@ -355,8 +298,6 @@ export class TranslationHub {
       records: req.records,
       model: preferred || "auto",
       providerModel: req.options?.providerModel || "",
-      openRouterModel: req.options?.openRouterModel || "",
-      openRouterModels: req.options?.openRouterModels || [],
       profile: req.options?.profile || "spreadsheet",
       mode: this.proxy ? "proxy" : "direct"
     });

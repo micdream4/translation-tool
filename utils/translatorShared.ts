@@ -1,4 +1,5 @@
 
+import { CJK_REGEX, LOCKED_KEY_REGEX } from '../rules/patterns';
 import type { DocxIssueDetail } from '../components/translator/types';
 import packageJson from '../package.json';
 import {
@@ -31,7 +32,7 @@ export const DEEPSEEK_PRO_DOCX_BATCH_SIZE = 8;
 export const DEEPSEEK_PRO_DOCX_BATCH_CHAR_LIMIT = 6000;
 export const RETRY_BATCH_SIZE = 5;
 export const STRING_BATCH_SIZE = 40;
-export const SOURCE_LANG_REGEX = /[\u4e00-\u9fff]/;
+export const SOURCE_LANG_REGEX = CJK_REGEX;
 export const STRING_TARGET_LANGS: TargetLanguage[] = STRING_RESOURCE_TARGET_LANGS;
 export const ALL_STRING_TARGETS = '__ALL_STRING_TARGETS__';
 export const PROTECTED_TERMS_STORAGE_KEY = 'poct.protected_terms';
@@ -298,7 +299,7 @@ export const valueNeedsTranslation = (value: unknown, target: TargetLanguage) =>
   return shouldTranslateCellValue('', value, target, { ignoreLock: true });
 };
 
-export const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
+export { LOCKED_KEY_REGEX };
 
 export const shouldLockCell = (key: string, value: unknown) => {
   if (typeof value !== 'string') return false;

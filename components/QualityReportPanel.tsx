@@ -46,6 +46,9 @@ interface QualityReportPanelProps {
   formatSnapshot: FormatSnapshotView;
   currentIssueSummary: IssueSummaryView;
   issueCaseCount: number;
+  acceptedExceptionCount: number;
+  acceptQualityFinding: (finding: QualityFinding) => void;
+  exportAcceptedGoldenCases: () => void;
   qualityFindings: QualityFinding[];
   sampleReviewCount: number;
   sampleReviewItems: SampleReviewItemView[];
@@ -84,12 +87,18 @@ interface QualityReportPanelProps {
   reviewVerdictBadgeClass: (verdict: SampleReviewAIResult['verdict']) => string;
 }
 
+// Residue and formatting findings can be false alarms (a name kept on purpose); mechanical damage cannot.
+const ACCEPTABLE_FINDING_CATEGORIES = new Set<QualityFinding['category']>(['nonTarget', 'chinese', 'spacing']);
+
 const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   qualityReport,
   hasQualityReport,
   formatSnapshot,
   currentIssueSummary,
   issueCaseCount,
+  acceptedExceptionCount,
+  acceptQualityFinding,
+  exportAcceptedGoldenCases,
   qualityFindings,
   sampleReviewCount,
   sampleReviewItems,
@@ -245,6 +254,16 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             </button>
             <button
               type="button"
+              onClick={exportAcceptedGoldenCases}
+              disabled={acceptedExceptionCount === 0}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                acceptedExceptionCount === 0 ? disabledButtonClass : neutralButtonClass
+              }`}
+            >
+              {t('report.accepted.export', { count: acceptedExceptionCount })}
+            </button>
+            <button
+              type="button"
               onClick={exportRegressionCases}
               disabled={issueCaseCount === 0}
               className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
@@ -391,6 +410,16 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                           >
                             {t('report.finding.save')}
                           </button>
+                          {ACCEPTABLE_FINDING_CATEGORIES.has(finding.category) && (
+                            <button
+                              type="button"
+                              onClick={() => acceptQualityFinding(finding)}
+                              title={t('report.finding.accept.hint')}
+                              className={`min-h-9 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+                            >
+                              {t('report.finding.accept')}
+                            </button>
+                          )}
                           <button
                             onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}
                             className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all"

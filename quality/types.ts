@@ -42,6 +42,8 @@ export interface QualityCheckInput {
 export interface QualityCheckOptions {
   targetLang?: TargetLanguage;
   shouldIgnoreUnit?: (unit: QualityUnit) => boolean;
+  /** Skip the user's "confirmed as correct" exceptions (tests and golden-set scoring). */
+  ignoreExceptions?: boolean;
 }
 
 export interface QualityIssue {
@@ -52,6 +54,8 @@ export interface QualityIssue {
   original?: string;
   type: QualityIssueType;
   severity?: QualitySeverity;
+  /** Why the severity was lowered; 'retry-stuck' = retries keep returning the same text. */
+  reason?: 'retry-stuck';
 }
 
 export interface QualityReport {

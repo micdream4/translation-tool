@@ -32,6 +32,7 @@ import {
   type QualityFinding
 } from '../quality/report';
 import { runQualityChecks, runQualityChecksOnUnits, type QualityCheckInput, type QualityReport } from '../utils/quality';
+import { acceptQualityException, listQualityExceptions, serializeExceptionsAsGoldenCases } from '../quality/exceptions';
 import type { QualityCheckOptions } from '../utils/quality';
 import type { POCTRecord, ReviewSample, SampleReviewAIResult, TargetLanguage } from '../types';
 
@@ -208,6 +209,7 @@ export const useQualityWorkflow = ({
   const [sampleReviewAiMeta, setSampleReviewAiMeta] = useState<{ model?: string; engine?: string } | null>(null);
   const [isRunningSampleReviewAi, setIsRunningSampleReviewAi] = useState(false);
   const [issueCaseCount, setIssueCaseCount] = useState<number>(0);
+  const [acceptedExceptionCount, setAcceptedExceptionCount] = useState<number>(() => listQualityExceptions().length);
 
   const sampleReviewAuditService = useMemo(() => new SampleReviewAuditService(), []);
 
@@ -464,6 +466,36 @@ export const useQualityWorkflow = ({
       ]);
       addLog('Issue Case: 已同步写入 Translation Memory。');
     }
+  };
+
+  // "Confirmed as correct": the finding is a false alarm (e.g. a name or address kept on purpose).
+  // It is stored as an exception so no entry point reports or retries it again, then the report
+  // is refreshed. Accepted findings can be exported as rule golden cases.
+  const acceptQualityFinding = (finding: QualityFinding) => {
+    const entry = acceptQualityException({
+      type: finding.category,
+      targetLang,
+      sourceText: finding.original,
+      translatedText: finding.translated,
+      appVersion,
+      documentKind,
+      locationLabel: finding.locationLabel
+    });
+    setAcceptedExceptionCount(listQualityExceptions().length);
+    addLog(`Quality Exception: 已确认无误（${finding.locationLabel}），之后的质量检查和重译不再处理同一内容。`);
+    runQualityCheck();
+    return entry;
+  };
+
+  const exportAcceptedGoldenCases = () => {
+    const exceptions = listQualityExceptions();
+    if (!exceptions.length) {
+      addLog('Quality Exception: 当前没有已确认无误的项目可导出。');
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadTextFile(`Rule_Golden_Captured_${stamp}.jsonl`, `${serializeExceptionsAsGoldenCases(exceptions)}\n`);
+    addLog(`Quality Exception: 已导出 ${exceptions.length} 条规则样本，可追加到 fixtures/rule-golden-captured.jsonl。`);
   };
 
   const exportIssueCases = () => {
@@ -735,6 +767,7 @@ export const useQualityWorkflow = ({
     setQualityReport,
     hasQualityReport,
     issueCaseCount,
+    acceptedExceptionCount,
     qualityFindings,
     sampleReviewCount,
     setSampleReviewCount,
@@ -755,6 +788,8 @@ export const useQualityWorkflow = ({
     promoteIssueCasesToTranslationMemory,
     clearIssueCases,
     saveQualityFindingCorrection,
+    acceptQualityFinding,
+    exportAcceptedGoldenCases,
     generateSampleReview,
     runAiSampleReview
   };

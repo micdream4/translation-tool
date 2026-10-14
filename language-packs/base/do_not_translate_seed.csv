@@ -49,3 +49,5 @@
 "D048","MON","lab_abbr","exact","all","Short-form monocyte abbreviation used in BA512/AI reports.","BA512 veterinary AI reports","Keep unchanged."
 "D049","BA212","model","exact","all","Product family/model token used in reports and manuals.","BA212 reports/manuals","Keep unchanged."
 "D050","BA512","model","exact","all","Product family/model token used in veterinary AI reports.","BA512 veterinary AI reports","Keep unchanged."
+"D051","Rx only","fixed_expression","exact","all","US prescription-device statement; regulatory symbol text.","labels/IFU","Keep unchanged in every target language."
+"D052","EC REP","fixed_expression","exact","all","EU authorized representative symbol text (ISO 15223-1).","labels/IFU","Keep unchanged in every target language."

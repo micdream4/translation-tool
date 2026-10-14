@@ -234,9 +234,10 @@ const App: React.FC = () => {
   );
   const untranslatedOptions = useMemo(
     () => ({
-      shouldIgnoreCell: (rowIndex: number, columnKey: string) => shouldSkipExcelCell(rowIndex, columnKey)
+      shouldIgnoreCell: (rowIndex: number, columnKey: string) => shouldSkipExcelCell(rowIndex, columnKey),
+      sourceRecords: data
     }),
-    [excelSkipScope, excelContext, documentKind]
+    [excelSkipScope, excelContext, documentKind, data]
   );
   const pauseRequestedRef = useRef(false);
   const snapshotPromptKeyRef = useRef<string>('');
@@ -823,6 +824,8 @@ const App: React.FC = () => {
     };
 
     report.issues.nonTargetLanguage.forEach((issue) => {
+      // Retries keep returning the same text: leave it to a person (report shows "needs confirmation").
+      if (issue.reason === 'retry-stuck') return;
       const text = issue.value || getText(segments[issue.rowIndex], issue.rowIndex);
       addIssue(
         issue.rowIndex,
@@ -1191,6 +1194,7 @@ const App: React.FC = () => {
     setQualityReport,
     hasQualityReport,
     issueCaseCount,
+    acceptedExceptionCount,
     qualityFindings,
     sampleReviewCount,
     setSampleReviewCount,
@@ -1211,6 +1215,8 @@ const App: React.FC = () => {
     promoteIssueCasesToTranslationMemory,
     clearIssueCases,
     saveQualityFindingCorrection,
+    acceptQualityFinding,
+    exportAcceptedGoldenCases,
     generateSampleReview,
     runAiSampleReview
   } = useQualityWorkflow({
@@ -1838,6 +1844,9 @@ const App: React.FC = () => {
                 isRetryingMissing={isRetryingMissing}
                 isRunningSampleReviewAi={isRunningSampleReviewAi}
                 issueCaseCount={issueCaseCount}
+                acceptedExceptionCount={acceptedExceptionCount}
+                acceptQualityFinding={acceptQualityFinding}
+                exportAcceptedGoldenCases={exportAcceptedGoldenCases}
                 jumpToPreviewCell={jumpToPreviewCell}
                 pdfHighPriorityCount={pdfHighPriorityCount}
                 pdfIssueDetails={pdfIssueDetails}

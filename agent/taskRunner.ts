@@ -36,6 +36,7 @@ import { runQualityChecksOnUnits } from "../quality/checks";
 import type { QualityCheckInput, QualityReport } from "../quality/types";
 import { TARGET_LANGUAGE_OPTIONS } from "../utils/targetLanguage";
 import type { TranslationProfile } from "../utils/translationProfiles";
+import { LOCKED_KEY_REGEX } from "../rules/patterns";
 import type {
   AgentDocumentKind,
   AgentFailureSummary,
@@ -65,7 +66,6 @@ const KNOWN_BLOCKED_EXTENSIONS = new Set([
   ".js",
   ".jsx"
 ]);
-const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 const EMPTY_COUNTS: AgentIssueCounts = { critical: 0, medium: 0, minor: 0 };
 
 type QualityPayload = {

@@ -7,6 +7,9 @@ import {
 } from "./languageProfiles";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
 import { isLikelyIdentifier, isProtectedTerm, stripProtectedTerms, stripPreservedUiLabels } from "./translationTokens";
+import { getProseForLanguageCheck } from "../rules/spans";
+import { isQualityExceptionAccepted } from "../quality/exceptions";
+import { CJK_REGEX as SHARED_CJK_REGEX, LOCKED_KEY_REGEX as SHARED_LOCKED_KEY_REGEX } from "../rules/patterns";
 
 export interface UntranslatedCell {
   rowIndex: number;
@@ -17,11 +20,15 @@ export interface UntranslatedCell {
 
 export interface DetectUntranslatedOptions {
   shouldIgnoreCell?: (rowIndex: number, columnKey: string, value: unknown) => boolean;
+  /** Source rows aligned with the scanned rows; enables verbatim-copy detection. */
+  sourceRecords?: POCTRecord[];
+  /** Skip the user's "confirmed as correct" exceptions (tests and golden-set scoring). */
+  ignoreExceptions?: boolean;
 }
 
 type LangCode = "zh" | "en" | "es" | "fr" | "de" | "it" | "pl" | "ro" | "pt" | "tr" | "ru" | "unknown";
 
-const CJK_REGEX = /[\u4e00-\u9fff]/;
+const CJK_REGEX = SHARED_CJK_REGEX;
 const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
 const LATIN_WORD_REGEX = /[A-Za-z\u00C0-\u024F]/;
 const LATIN_TOKEN_REGEX = /\b[A-Za-z][A-Za-z0-9'-]{1,}\b/g;
@@ -39,7 +46,7 @@ const DOT_COMPACT_NUMBER_REGEX = /^\d+(?:\.\d+)+[A-Za-z0-9/]*$/;
 const ROMAN_REAGENT_CODE_REGEX = /^[A-Z]-[IVXLCDM]{1,8}$/;
 const NUMERIC_UNIT_TEXT_REGEX = /^[\s\d.,×xX^+\-~–—/()％%μµA-Za-z]+$/;
 const LATIN_UNIT_TOKEN_REGEX = /[A-Za-zμµ]+/g;
-const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
+const LOCKED_KEY_REGEX = SHARED_LOCKED_KEY_REGEX;
 const ID_TOKEN_REGEX = /^(id|uuid)$/i;
 const TAIWAN_SIMPLIFIED_RESIDUE_REGEX =
   /(质量|信息|启用|打印|样本|软件|硬件|默认|设置|数据|检测|检验结果|参数|菜单|窗口|上传|下载|文件|记录|审核|审查|运行|导出|导入|步骤|说明书|说明|错误|异常|提示|当前|完成|开始|暂停|恢复|细胞|白细胞|红细胞|血小板|中性粒|淋巴细胞|血红蛋白|计数|数量|浓度|范围|单位|用户|设备|仪器|厂商|条码|键盘|屏幕|连接|网络|服务器|数据库|登录|注册|密码|权限|质量控制|参考范围|临床|医疗)|[检测数质样设说译语误认读诊请项页风馆马验鱼鸟龙]/;
@@ -755,7 +762,19 @@ export const detectUntranslatedCells = (
       ) {
         return;
       }
-      if (!isLikelyTargetLanguage(trimmed, targetLang)) {
+      const sourceValue = options.sourceRecords?.[rowIndex]?.[key];
+      const sourceText = typeof sourceValue === "string" ? sourceValue : "";
+      // Same rule as the Quality Check Core: kept spans (entities, address blocks, contact
+      // details, codes, units) are not judged; only the remaining prose must be target language.
+      const prose = getProseForLanguageCheck(trimmed);
+      const residue =
+        (prose && !isLikelyTargetLanguage(prose, targetLang)) ||
+        isVerbatimSourceProse(sourceText, trimmed, targetLang);
+      if (
+        residue &&
+        (options.ignoreExceptions ||
+          !isQualityExceptionAccepted({ type: "nonTargetLanguage", targetLang, translatedText: trimmed }))
+      ) {
         flagged.push({ rowIndex, columnKey: key, value: trimmed });
       }
     });
@@ -763,6 +782,29 @@ export const detectUntranslatedCells = (
 
   return flagged;
 };
+const VERBATIM_LATIN_TARGETS = new Set<LangCode>(["es", "fr", "de", "it", "pl", "ro", "pt", "tr"]);
+
+/**
+ * A segment copied verbatim from an English source into a non-English Latin-script target is
+ * untranslated prose, even when the detector is too cautious to say so (Latin languages share
+ * much vocabulary, so isLikelyTargetLanguage only flags strong signals).
+ */
+export const isVerbatimSourceProse = (sourceText: string, translatedText: string, targetLang?: TargetLanguage) => {
+  if (!targetLang) return false;
+  const code = targetLangToCode(targetLang);
+  if (!VERBATIM_LATIN_TARGETS.has(code)) return false;
+  const source = String(sourceText || "").trim();
+  const target = String(translatedText || "").trim();
+  if (!source || source !== target) return false;
+  const prose = getProseForLanguageCheck(target);
+  const words = prose.match(/[A-Za-z][A-Za-z'’-]+/g) || [];
+  if (words.length < 3) return false;
+  const scores = getLanguageScores(prose);
+  const english = scores.find((item) => item.lang === "en")?.score || 0;
+  const targetScore = scores.find((item) => item.lang === code)?.score || 0;
+  return english >= 2 && english > targetScore;
+};
+
 export { detectLanguage, getLanguageScores };
 export const isNeutralToken = (text: string) =>
   SYMBOL_ONLY_REGEX.test(text.trim()) ||

@@ -2403,5 +2403,25 @@ export const GENERATED_DO_NOT_TRANSLATE_SEED: GeneratedDoNotTranslateSeedRow[] =
     "reason": "Product family/model token used in veterinary AI reports.",
     "source_files": "BA512 veterinary AI reports",
     "notes": "Keep unchanged."
+  },
+  {
+    "lock_id": "D051",
+    "source_text": "Rx only",
+    "category": "fixed_expression",
+    "match_type": "exact",
+    "scope": "all",
+    "reason": "US prescription-device statement; regulatory symbol text.",
+    "source_files": "labels/IFU",
+    "notes": "Keep unchanged in every target language."
+  },
+  {
+    "lock_id": "D052",
+    "source_text": "EC REP",
+    "category": "fixed_expression",
+    "match_type": "exact",
+    "scope": "all",
+    "reason": "EU authorized representative symbol text (ISO 15223-1).",
+    "source_files": "labels/IFU",
+    "notes": "Keep unchanged in every target language."
   }
 ];

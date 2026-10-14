@@ -20,6 +20,7 @@ import {
   getTargetLocaleInstruction,
   isTraditionalChineseTaiwanTarget
 } from "../../utils/targetLanguage";
+import { renderRetentionPolicyForReview } from "../../rules/policy";
 import { enforceRequestAuth, jsonResponse } from "../_shared/auth";
 import { getMaxRequestBytes, getMaxSamples, readJsonBodyWithLimit, validateModelList } from "../_shared/limits";
 import { callRoutedChat, parseDelimitedModelList, parseRoutedModel } from "../_shared/llmProviders";
@@ -189,6 +190,7 @@ Evaluate anonymous Chinese-to-${targetLabel} translations for ${styleGuidance.sc
 Important:
 - Do not infer or mention model names. Judge only Candidate aliases.
 - Company-name romanization is not a scoring factor unless the source explicitly contains a protected company name and the candidate changes it incorrectly.
+${renderRetentionPolicyForReview()}
 - Preserve clinical meaning, severity, conditions, units, symbols, placeholders, table headers, and UI labels.
 - Penalize literal Chinese syntax, omitted meaning, unsafe interpretation changes, terminology drift, and placeholder/UI-label damage.
 ${localeInstruction}

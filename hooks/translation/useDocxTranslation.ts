@@ -2,6 +2,7 @@
 import React from 'react';
 import type { TranslationRequest } from '../../services/translationHub';
 import type { DocxIssueDetail } from '../../components/translator/types';
+import { noteRetryOutcome } from '../../quality/retryConvergence';
 import {
   buildTextSegmentRetryPlan
 } from '../../quality/retryTargets';
@@ -473,6 +474,7 @@ const retryDocxSegments = async () => {
               rawText || '',
               polishTranslation(rawText || '', restored, targetLang)
             );
+            noteRetryOutcome(targetLang, segment.original || '', getDocxSegmentText(segment) || '', polished);
             setDocxSegmentText(segment, polished);
           });
 

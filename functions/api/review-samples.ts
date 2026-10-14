@@ -7,6 +7,7 @@ import type {
 } from "../../types";
 import { parseModelJsonObject } from "../../utils/jsonRepair";
 import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../../utils/targetLanguage";
+import { renderRetentionPolicyForReview } from "../../rules/policy";
 import { enforceRequestAuth, jsonResponse } from "../_shared/auth";
 import { getMaxRequestBytes, getMaxSamples, readJsonBodyWithLimit, validateModelList } from "../_shared/limits";
 import { callRoutedChat, parseDelimitedModelList } from "../_shared/llmProviders";
@@ -61,12 +62,13 @@ const buildReviewPrompt = (samples: ReviewSample[], targetLang: TargetLanguage) 
   const localeInstruction = getTargetLocaleInstruction(targetLang);
   return `
 You are a senior bilingual medical translation reviewer.
-Review each translation pair from Chinese source into ${targetLabel}.
+Review each translation pair from its source language into ${targetLabel}.
 
 Goals:
 - Detect genuinely risky translation problems.
 - Be conservative for Latin-script languages. Do NOT flag a sentence only because it contains shared medical terms, abbreviations, or familiar Latin words.
 - Focus on meaning accuracy, omission, mistranslation, leftover source language, placeholder leakage, terminology mistakes, and serious fluency issues.
+${renderRetentionPolicyForReview()}
 ${localeInstruction}
 
 Output rules:

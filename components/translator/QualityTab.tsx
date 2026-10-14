@@ -40,6 +40,9 @@ export interface QualityTabProps {
   isRetryingMissing: boolean;
   isRunningSampleReviewAi: boolean;
   issueCaseCount: number;
+  acceptedExceptionCount: number;
+  acceptQualityFinding: (finding: QualityFinding) => void;
+  exportAcceptedGoldenCases: () => void;
   jumpToPreviewCell: (rowIndex: number, columnKey: string) => void;
   pdfHighPriorityCount: number;
   pdfIssueDetails: DocxIssueDetail[];
@@ -101,6 +104,9 @@ const QualityTab: React.FC<QualityTabProps> = ({
   isRetryingMissing,
   isRunningSampleReviewAi,
   issueCaseCount,
+  acceptedExceptionCount,
+  acceptQualityFinding,
+  exportAcceptedGoldenCases,
   jumpToPreviewCell,
   pdfHighPriorityCount,
   pdfIssueDetails,
@@ -243,6 +249,9 @@ const QualityTab: React.FC<QualityTabProps> = ({
         formatSnapshot={formatSnapshot}
         currentIssueSummary={currentIssueSummary}
         issueCaseCount={issueCaseCount}
+        acceptedExceptionCount={acceptedExceptionCount}
+        acceptQualityFinding={acceptQualityFinding}
+        exportAcceptedGoldenCases={exportAcceptedGoldenCases}
         qualityFindings={qualityFindings}
         sampleReviewCount={sampleReviewCount}
         sampleReviewItems={sampleReviewItems}

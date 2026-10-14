@@ -9,7 +9,7 @@ import type {
   QualitySeverity,
   QualityUnit
 } from './types';
-import { isLikelyTargetLanguage } from '../utils/language';
+import { isLikelyTargetLanguage, isVerbatimSourceProse } from '../utils/language';
 import {
   getSourceUiLabelCandidates,
   hasUntranslatedUiLabelResidue,
@@ -20,6 +20,10 @@ import {
   stripPreservedUiLabels
 } from '../utils/translationTokens';
 import { isChineseTarget } from '../utils/targetLanguage';
+import { getProseForFormatCheck, getProseForLanguageCheck } from '../rules/spans';
+import { isQualityExceptionAccepted } from './exceptions';
+import { isRetryStuck } from './retryConvergence';
+import { CJK_REGEX, LOCKED_KEY_REGEX } from '../rules/patterns';
 
 export type {
   QualityCheckInput,
@@ -31,7 +35,7 @@ export type {
   QualityUnit
 } from './types';
 
-const CHINESE_REGEX = /[\u4e00-\u9fff]/;
+const CHINESE_REGEX = CJK_REGEX;
 export const PLACEHOLDER_REGEX =
   /(?:_+\s*(?:TKN|ID|FMT|TAG)(?:\s*[_ ]\s*\d+)?\s*_+|(?:TKN|ID|FMT|TAG)\s*[_ ]\s*\d+\s*_*)/i;
 const MEDICAL_CODE_PLACEHOLDER_ARTIFACT_REGEX =
@@ -44,7 +48,9 @@ const EG_REGEX = /\be\s*\.\s*g\s*\./i;
 const EXTRA_SPACE_REGEX = / {2,}/;
 const SPACE_BEFORE_PUNCT_REGEX = /\s+[,.;:!?]/;
 const URL_REGEX = /\bhttps?:\/\/[^\s"'<>]+/gi;
-const LETTER_DIGIT_SPACE_REGEX = /\b[A-Za-z]\s+\d{1,3}\b|\b\d{1,3}\s+[A-Za-z]\b/;
+// Unicode-aware boundaries: "de 1 año" must not read as a split "1 a".
+const LETTER_DIGIT_SPACE_REGEX =
+  /(?<![\p{L}\d])[A-Za-z]\s+\d{1,3}(?![\p{L}\d])|(?<![\p{L}\d])\d{1,3}\s+[A-Za-z](?![\p{L}\d])/u;
 const SAFE_MEDICAL_SPACING_REGEX = /\b(?:B\s*12|B\s*6|G\s*6|P\s*50)\b/i;
 const SAFE_NUMBER_UNIT_SPACING_REGEX =
   /\b\d+(?:[.,]\d+)?\s+(?:V|Hz|Гц|kg|g|mg|mL|ml|L|mm|cm|pg|fL|dBA)\b/gi;
@@ -58,7 +64,6 @@ const DIGIT_BOUNDARY_GLUE_REGEX =
   /\b(?:[a-z]{2,}\d+(?:[-/.]\d+)*[A-Za-z]{2,}|[A-Z][a-z]{3,}\d+|[A-Za-z]{3,}\d+[A-Za-z]{2,})\b/;
 const LOWER_COMPOUND_GLUE_REGEX =
   /\b(?:connectthe|intothe|displaywbc|usesledlight|providesusbinterface|withtcp\/ipprotocol|withgb\/t|andgb\/t|thedcpower|cbcdetection|cbctest|pltthe|aianalysis|retand|supplyrequirements|compositiondescription|routineimaging|fluorescenceimage|andperformmaintenance|powerswitchto|tostart|is1year|enter\d+(?:[-/.]\d+)*digits|than\d+digits)\b/i;
-const LOCKED_KEY_REGEX = /(uuid|(^|[_\s-])id$|编号|序号|唯一标识)/i;
 const PRESERVED_INTERNAL_STATUS_CODE_REGEX =
   /^(?:rbc|hgb|mcv|mch|mchc|ret|wbc|neu|lym|mon|eos|bas|aly|nsh|nst|srbc|awbc|malaria)-(?:up|down|normal|solo|combo|mixed)(?:-[a-z0-9]+)*$/i;
 
@@ -124,8 +129,8 @@ const createQualityIssues = (): QualityReport['issues'] => ({
   nonTargetLanguage: []
 });
 
-export const hasSpacingIssue = (value: string) => {
-  return Boolean(getSpacingSeverity(value));
+export const hasSpacingIssue = (value: string, targetLang?: string) => {
+  return Boolean(getSpacingSeverity(value, targetLang));
 };
 
 const normalizeAutoFixablePunctuationSpacing = (value: string) =>
@@ -144,9 +149,20 @@ const getSpacingCheckValue = (value: string) =>
     .replace(SAFE_STANDARD_SPACING_REGEX, 'SAFE')
     .replace(SAFE_LATIN_ABBREVIATION_REGEX, 'SAFE');
 
-export const getSpacingSeverity = (value: string): QualitySeverity | null => {
-  if (hasGlueIssue(value)) return 'high';
-  const checkValue = getSpacingCheckValue(value);
+// French typography puts a (narrow) space before : ; ! ? » and after «. That is correct, not a spacing error.
+const normalizeTargetTypography = (value: string, targetLang?: string) =>
+  /french/i.test(String(targetLang || ''))
+    ? String(value || '')
+        .replace(/[ \u00a0\u202f]+([:;!?»])/g, '$1')
+        .replace(/«[ \u00a0\u202f]+/g, '«')
+    : String(value || '');
+
+export const getSpacingSeverity = (value: string, targetLang?: string): QualitySeverity | null => {
+  // Kept spans (company names like "Riomavix S.L.", e-mail, URLs, codes, address blocks) are not
+  // prose; their internal punctuation is never a spacing error.
+  const prose = normalizeTargetTypography(getProseForFormatCheck(value), targetLang);
+  if (hasGlueIssue(prose)) return 'high';
+  const checkValue = getSpacingCheckValue(prose);
   if (EXTRA_SPACE_REGEX.test(checkValue) || SPACE_BEFORE_PUNCT_REGEX.test(checkValue) || EG_REGEX.test(checkValue)) {
     return 'medium';
   }
@@ -173,7 +189,7 @@ const stripTargetLanguageNoise = (translatedText: string, originalText = '') => 
   return stripUiLabels(stripProtectedTerms(stripPreservedUiLabels(translatedText)), sourceLabels).trim();
 };
 
-const shouldCheckTargetLanguage = (unit: QualityUnit) => {
+const shouldCheckTargetLanguage = (unit: QualityUnit, proseText: string) => {
   if (typeof unit.translatedValue !== 'string') return false;
   const translatedText = unit.translatedText.trim();
   if (!translatedText) return false;
@@ -181,7 +197,8 @@ const shouldCheckTargetLanguage = (unit: QualityUnit) => {
   if (translatedText === unit.originalText.trim() && PRESERVED_INTERNAL_STATUS_CODE_REGEX.test(translatedText)) {
     return false;
   }
-  const unprotectedText = stripTargetLanguageNoise(translatedText, unit.originalText);
+  if (!proseText) return false;
+  const unprotectedText = stripTargetLanguageNoise(proseText, unit.originalText);
   if (!unprotectedText) return false;
   return !isLikelyIdentifier(unprotectedText);
 };
@@ -250,7 +267,13 @@ export const runQualityChecksOnUnits = (
     if (typeof unit.translatedValue !== 'string') return;
     totals.cellsScanned += 1;
 
-    if (!isChineseTarget(options.targetLang) && CHINESE_REGEX.test(unit.translatedText)) {
+    const accepted = (type: string) =>
+      !options.ignoreExceptions &&
+      isQualityExceptionAccepted({ type, targetLang: options.targetLang, translatedText: unit.translatedText });
+    const proseText = getProseForLanguageCheck(unit.translatedText);
+    const retryStuck = isRetryStuck(options.targetLang, unit.originalText, unit.translatedText);
+
+    if (!isChineseTarget(options.targetLang) && CHINESE_REGEX.test(proseText) && !accepted('chinese')) {
       totals.chineseCells += 1;
       chineseRows.add(unit.rowIndex);
       issues.chinese.push({
@@ -259,11 +282,12 @@ export const runQualityChecksOnUnits = (
         locationLabel: unit.locationLabel,
         value: unit.translatedText,
         original: unit.originalText,
-        type: 'chinese'
+        type: 'chinese',
+        ...(retryStuck ? { severity: 'low' as const, reason: 'retry-stuck' as const } : {})
       });
     }
 
-    const targetLanguageCheckText = stripTargetLanguageNoise(unit.translatedText, unit.originalText);
+    const targetLanguageCheckText = stripTargetLanguageNoise(proseText, unit.originalText);
     const hasUiLabelResidue = hasUntranslatedUiLabelResidue(
       unit.translatedText,
       unit.originalText,
@@ -271,8 +295,10 @@ export const runQualityChecksOnUnits = (
     );
     if (
       options.targetLang &&
-      shouldCheckTargetLanguage(unit) &&
-      (!isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang) || hasUiLabelResidue)
+      !accepted('nonTargetLanguage') &&
+      ((shouldCheckTargetLanguage(unit, proseText) &&
+        (!isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang) || hasUiLabelResidue)) ||
+        isVerbatimSourceProse(unit.originalText, unit.translatedText, options.targetLang))
     ) {
       totals.nonTargetCells += 1;
       nonTargetRows.add(unit.rowIndex);
@@ -282,7 +308,8 @@ export const runQualityChecksOnUnits = (
         locationLabel: unit.locationLabel,
         value: unit.translatedText,
         original: unit.originalText,
-        type: 'nonTargetLanguage'
+        type: 'nonTargetLanguage',
+        ...(retryStuck ? { severity: 'low' as const, reason: 'retry-stuck' as const } : {})
       });
     }
 
@@ -307,10 +334,21 @@ export const runQualityChecksOnUnits = (
     const spacingText = unit.translatedText.trim();
     const shouldSkipSpacingCheck =
       shouldLockCell(unit.columnKey, unit.originalValue) || isLikelyIdentifier(spacingText);
-    const spacingSeverity =
+    const rawSpacingSeverity =
       spacingText && !shouldSkipSpacingCheck
-        ? getSpacingSeverity(spacingText) || (unit.crossRunWordBreak ? 'medium' : null)
+        ? getSpacingSeverity(spacingText, options.targetLang) || (unit.crossRunWordBreak ? 'medium' : null)
         : null;
+    // Medium formatting issues already present in a different source text (e.g. double spaces in the
+    // original) are not something the translation introduced. When source and target are the same
+    // text (a translated file checked on its own) nothing can be inferred, so the issue stays.
+    const sourceText = unit.originalText.trim();
+    const inheritedFromSource =
+      rawSpacingSeverity === 'medium' &&
+      !unit.crossRunWordBreak &&
+      sourceText !== spacingText &&
+      getSpacingSeverity(sourceText) === 'medium';
+    const spacingSeverity =
+      rawSpacingSeverity && !inheritedFromSource && !accepted('spacing') ? rawSpacingSeverity : null;
     if (spacingSeverity) {
       totals.spacingIssues += 1;
       spacingRows.add(unit.rowIndex);

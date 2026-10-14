@@ -98,6 +98,15 @@ npm run deploy:pages
 4. 问题反馈闭环应支持：保存人工修正、问题样本库、转术语、转翻译记忆、转 QA 规则、转回归测试。
 5. 跨电脑问题反馈以 GitHub Issue 为正式入口：公司电脑提交结构化 Issue，Mac/Codex 读取 Issue 后按本文件和 `docs/translation-quality-loop.md` 分类、复现、修复和沉淀测试资产。
 
+## 规则系统（v0.3.0 起）
+
+“哪些内容可以保留原文、质检该怎么判”只在 `rules/` 中定义，详见 `docs/RULE_SYSTEM_DESIGN.md`：
+
+1. 保留策略写在 `rules/policy.ts`，翻译提示词和 AI 审核提示词都从这里渲染，不要在提示词里另写一套。
+2. 可保留片段的识别写在 `rules/spans.ts`；质检只对片段以外的普通文本判断语言。
+3. 不要为单个样本写硬编码正则。新规则必须先在 `fixtures/rule-golden.jsonl`（或 `scripts/buildRuleGolden.mjs` 模板）中加入正反样本，再改实现，`npm run test:rule-golden` 不得出现回归；有改善时用 `--update-baseline` 锁定基线。
+4. 用户在报告中“确认无误”的样本，导出后追加到 `fixtures/rule-golden-captured.jsonl`。
+
 ## 质量规则基线
 
 1. 相同 source text + target language 在有确认译文时应优先复用翻译记忆。

@@ -58,6 +58,7 @@ import {
   shouldLockCell
 } from '../../utils/translatorShared';
 import { summarizeUntranslated } from '../../utils/untranslated';
+import { isRetryStuck, noteRetryOutcome } from '../../quality/retryConvergence';
 
 export interface ExcelTranslationContext {
   addLog: (msg: string) => void;
@@ -655,6 +656,7 @@ const retryMissingRows = async (
       isRetryableCell: ({ rowIndex, columnKey, value, originalValue }) => {
         if (shouldSkipExcelCell(rowIndex, columnKey)) return false;
         const lockBasis = typeof originalValue === 'string' ? originalValue : value;
+        if (typeof originalValue === 'string' && isRetryStuck(targetLang, originalValue, value)) return false;
         return Boolean(value.trim()) && !shouldLockCell(columnKey, lockBasis) && !isNeutralToken(value.trim());
       },
       guardTranslationTokens
@@ -768,6 +770,7 @@ const retryMissingRows = async (
             return;
           }
           if (updated[key] === undefined) return;
+          const previousValue = merged[key];
           const candidate = updated[key];
           merged[key] =
             typeof candidate === 'string'
@@ -786,6 +789,9 @@ const retryMissingRows = async (
               merged[key] as string,
               placeholdersForRow[key]
             );
+          }
+          if (typeof originalValue === 'string' && typeof merged[key] === 'string') {
+            noteRetryOutcome(targetLang, originalValue, String(previousValue ?? ''), merged[key] as string);
           }
         });
 

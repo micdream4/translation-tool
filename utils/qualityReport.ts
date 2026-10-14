@@ -48,6 +48,8 @@ const resolveFindingText = (
   };
 };
 
+const RETRY_STUCK_DESCRIPTION = '待确认：多次重译结果相同，请人工核对；如无误请点“确认无误”';
+
 export const mapQualityFindingToIssueType = (finding: QualityFinding): TranslationIssueType => {
   switch (finding.category) {
     case 'nonTarget':
@@ -101,7 +103,7 @@ export const buildQualityFindings = ({
 
   const appendQualityIssues = (
     category: QualityFindingCategory,
-    list: Array<{ rowIndex: number; columnKey: string; locationLabel?: string; original?: string; value: string; severity?: QualitySeverity }>,
+    list: Array<{ rowIndex: number; columnKey: string; locationLabel?: string; original?: string; value: string; severity?: QualitySeverity; reason?: string }>,
     description: string
   ) => {
     list.forEach((item) => {
@@ -114,7 +116,7 @@ export const buildQualityFindings = ({
         locationLabel: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
         original: text.original,
         translated: text.translated,
-        description,
+        description: item.reason === 'retry-stuck' ? RETRY_STUCK_DESCRIPTION : description,
         severity: item.severity
       });
     });
@@ -130,7 +132,8 @@ export const buildQualityFindings = ({
     const id = `nonTarget-${item.rowIndex}-${item.columnKey}`;
     const existing = findingMap.get(id);
     if (existing) {
-      existing.description = '受保护 UI 标签保留，请核对截图或界面替换';
+      existing.description =
+        item.reason === 'retry-stuck' ? RETRY_STUCK_DESCRIPTION : '受保护 UI 标签保留，请核对截图或界面替换';
       existing.severity = 'low';
     }
   });

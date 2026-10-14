@@ -206,6 +206,8 @@ const rebuildEffectiveTerms = () => {
     .map(buildProtectedTermPattern);
 };
 
+export const getProtectedTermPatterns = () => effectiveProtectedTermPatterns;
+
 export const setRuntimeProtectedTerms = (terms: string[]) => {
   runtimeProtectedTerms = Array.from(
     new Set((terms || []).map((item) => String(item || "").trim()).filter(Boolean))

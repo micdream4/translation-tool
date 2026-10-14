@@ -2,6 +2,7 @@ import type { POCTRecord, TargetLanguage } from "../types";
 import { GLOSSARY_PROMPT, shouldUseEnglishGlossary } from "./glossary";
 import { getSeedGlossaryPrompt } from "./seedTerminology";
 import { getTargetLanguageLabel, getTargetLocaleInstruction } from "./targetLanguage";
+import { renderRetentionPolicyForPrompt } from "../rules/policy";
 
 export type TranslationProfile = "spreadsheet" | "docx-manual";
 
@@ -46,7 +47,7 @@ Rules:
 ${glossaryRule}
 ${localeInstruction}
 - Translate any non-${targetLabel} natural-language text (including full English sentences) into ${targetLabel}.
-- Translate address/common nouns such as "Room", "Building", "Street", "District", "City", "Province" into ${targetLabel}; keep only true proper names transliterated or unchanged.
+${renderRetentionPolicyForPrompt()}
 - Preserve numbers, IDs, measurement units, and codes exactly.
 - If a cell mixes code + text, keep the code intact and only translate the descriptive part.
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; they mark protected IDs, codes, or format placeholders.
@@ -78,7 +79,8 @@ Rules:
 ${glossaryRule}
 ${localeInstruction}
 - Translate any non-${targetLabel} natural-language text into ${targetLabel}.
-- If the input is already partly in ${targetLabel}, still translate residual English/common words into ${targetLabel}; do not leave words such as "List", "Building", "Street", "feces", "service", "reference", "establish", or "uncertain" in the output unless they are true product codes or protected terms.
+- If the input is already partly in ${targetLabel}, still translate residual English/common words into ${targetLabel}; do not leave words such as "List", "feces", "service", "reference", "establish", or "uncertain" in the output unless they are true product codes, protected terms, or part of a kept name or address block.
+${renderRetentionPolicyForPrompt()}
 - Preserve warning severity, regulatory meaning, model names, standards, numbers, units, IDs, and placeholder tokens exactly.
 - Translate natural-language UI labels, button names, menu names, and page names into ${targetLabel}; keep only code-like UI tokens and abbreviations unchanged.
 - Keep placeholder tokens such as "__TKN_0__", "__ID_0__", "__FMT_0__" exactly as provided; do not invent or rename placeholders.

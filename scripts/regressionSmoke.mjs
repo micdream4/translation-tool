@@ -870,7 +870,7 @@ test("embedded pictures, charts and drawing text are detected so the user can be
 
 test("quality report text lists untranslated embedded content", async () => {
   const { buildQualityReportText } = await bundleTsModule(path.join(repoRoot, "utils/qualityReport.ts"));
-  const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "utils/quality.ts"));
+  const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "quality/checks.ts"));
   const report = runQualityChecks([{ a: "你好" }], [{ a: "Hello" }], { targetLang: "English" });
   const base = {
     qualityReport: report,
@@ -1628,7 +1628,7 @@ test("quality core adapters preserve existing row-based quality checks", async (
     path.join(repoRoot, "quality/adapters.ts")
   );
   const { runQualityChecks, runQualityChecksOnUnits } = await bundleTsModule(
-    path.join(repoRoot, "utils/quality.ts")
+    path.join(repoRoot, "quality/checks.ts")
   );
   const {
     guardTranslationTokens,
@@ -1640,11 +1640,9 @@ test("quality core adapters preserve existing row-based quality checks", async (
   );
   const appSource = readAppSource();
   const checksSource = fs.readFileSync(path.join(repoRoot, "quality/checks.ts"), "utf8");
-  const compatibilitySource = fs.readFileSync(path.join(repoRoot, "utils/quality.ts"), "utf8");
   assert.match(checksSource, /runQualityChecksOnUnits/);
   assert.match(checksSource, /isLikelyTargetLanguage/);
   assert.match(checksSource, /stripProtectedTerms/);
-  assert.match(compatibilitySource, /from '..\/quality\/checks'/);
 
   const sourceRows = [
     { id: "A-001", content: "白细胞", note: "2-8°C" },
@@ -1924,7 +1922,7 @@ test("retry target helpers reuse quality issue details across document kinds", a
     buildRetryableExcelSummary,
     buildTextSegmentRetryPlan,
     shouldTranslateCellValue
-  } = await bundleTsModule(path.join(repoRoot, "utils/retryTargets.ts"));
+  } = await bundleTsModule(path.join(repoRoot, "quality/retryTargets.ts"));
   const appSource = readAppSource();
 
   const sourceRows = [

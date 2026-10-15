@@ -192,7 +192,7 @@ const runExcelSmoke = async () => {
     return { caseId: caseConfig.id, skipped: true, status: "skipped", reason: "Excel sample files not found." };
   }
   const { parseExcelWorkbook, exportToExcel } = await bundleTsModule(realPath("utils/excel.ts"));
-  const { runQualityChecks } = await bundleTsModule(realPath("utils/quality.ts"));
+  const { runQualityChecks } = await bundleTsModule(realPath("quality/checks.ts"));
   const source = parseExcelWorkbook(XLSX.readFile(sourcePath, { cellStyles: true }));
   const translated = parseExcelWorkbook(XLSX.readFile(translatedPath, { cellStyles: true }));
   const report = runQualityChecks(source.records, translated.records, { targetLang: caseConfig.targetLang });

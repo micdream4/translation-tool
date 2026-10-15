@@ -1,5 +1,17 @@
 # 项目进度
 
+## v0.3.1
+
+- 项目结构审查后的清理（不改变翻译与质检行为）：
+  - 删除从未接入页面的死代码：`services/ruleEngine.ts`、`services/multiAIJudge.ts`、`data/clinicalCombos.ts`；对应旧方案与一次性 AWBC/SRBC 脚本移到 `docs/archive/`（见其中 README）。删除 AI Studio 遗留的 `metadata.json`。
+  - 质检代码收拢到 `quality/`：`utils/retryTargets.ts` 移到 `quality/retryTargets.ts`；删除只做转发的 `utils/quality.ts`，调用方直接引用 `quality/checks`。
+  - `index.html` 去掉生产环境的 Tailwind CDN 脚本和无效的 esm.sh importmap；Tailwind 改为构建时生成（`tailwind.config.js`、`postcss.config.js`、`index.css`，v3.4，与原 CDN 同版本），首屏不再依赖外网脚本，也不再有样式闪烁。
+  - 修复构建时 `vendor-misc -> vendor-react` 循环 chunk 警告（`scheduler` 归入 `vendor-react`）。
+  - 移除多余的 `@types/jszip`（jszip 自带类型）。
+- `npm run test:ci-gate`（GitHub CI 同一入口）新增 `test:rule-golden`，规则基线退化会直接拦截。
+- 待用户在 Cloudflare 后台处理：删除已废弃的 `OPENROUTER_API_KEY` Secret；配置 `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` 以启用服务端 Access JWT 校验；把 `*.translation-tool-917.pages.dev` 预览域名纳入 Access 保护。
+- 暂未处理（需确认）：前端 Gemini 直连路径（默认关闭）；TypeScript strict（开启后 86 个错误，集中在 `App.tsx`）。
+
 ## v0.3.0
 
 - 质量检查改为统一规则系统，解决“模型有意保留的公司名、地址、联系方式、固定表达在质检中反复报错、重译死循环”的问题。设计文档：`docs/RULE_SYSTEM_DESIGN.md`。

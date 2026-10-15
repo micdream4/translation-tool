@@ -2,7 +2,7 @@ import type { QualityRows } from '../quality/types';
 import type { TargetLanguage } from '../types';
 import type { UntranslatedCell } from './language';
 import type { TranslationIssueCase } from './issueCases';
-import type { QualityReport } from './quality';
+import type { QualityReport } from '../quality/checks';
 import type { QualityFinding } from './qualityReport';
 
 export type DebugDocumentKind = 'excel' | 'docx' | 'pdf';

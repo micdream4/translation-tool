@@ -1,7 +1,7 @@
 import type { DebugPackageInput, buildDebugPackage } from './debugPackage';
 import type { TranslationIssueCase, TranslationIssueType } from './issueCases';
 import { isLikelyTargetLanguage } from './language';
-import { PLACEHOLDER_REGEX } from './quality';
+import { PLACEHOLDER_REGEX } from '../quality/checks';
 
 export type RegressionAssertion =
   | 'bad-fails-target-language'

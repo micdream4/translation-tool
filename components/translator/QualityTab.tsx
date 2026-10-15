@@ -9,7 +9,7 @@ import type { POCTRecord, SampleReviewAIResult, UntranslatedSummary } from '../.
 import type { QualityFinding } from '../../utils/qualityReport';
 import type { QualityReport } from '../../quality/types';
 import type { SampleReviewAiSummary, SampleReviewItem } from '../../hooks/useQualityWorkflow';
-import type { QualitySeverity } from '../../utils/quality';
+import type { QualitySeverity } from '../../quality/checks';
 export interface QualityTabProps {
   isLight: boolean;
   embeddedVisuals?: EmbeddedVisualSummary | null;

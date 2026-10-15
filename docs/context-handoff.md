@@ -35,18 +35,12 @@
 
 ## 项目当前状态
 
-当前代码版本：`v0.0.117`。
+当前代码版本：`v0.3.1`（main 分支）。本节以下 v0.0.x 的段落是历史记录；最新结构以文末“v0.2.1 代码结构”及之后条目为准，版本细节见 `docs/PROJECT_PROGRESS.md`。
 
 稳定地址：
 
 ```text
 https://translation-tool-917.pages.dev
-```
-
-本文件本轮更新状态：
-
-```text
-v0.0.117 为当前待合并版本；本轮完成记录对齐、Excel 公式保护、DOCX 目标语言编号和严格真实文档门禁修复，生产部署状态尚未重新确认。
 ```
 
 ## v0.0.117 完整性修复
@@ -333,3 +327,5 @@ npm run build
 - 术语资产清单见 `docs/terminology-assets.md`；用户会陆续补充术语，补充前先看该文档的缺口和模板。
 - OpenRouter 支持已在 v0.2.3 移除（本机访问 Google、Anthropic、OpenAI 模型一律 403，线上改走 Cloudflare AI Gateway）：删除了服务端引擎、`OPENROUTER_*` 配置、客户端服务、模型冷却逻辑、`smoke:openrouter` 等脚本；上文关于 OpenRouter 的 v0.0.x 记录是历史，不再适用。
 - v0.2.4：顶部改为导航标签 + 工具图标；质量检查/下载需要已有译文；预览分页；人工修正用行内编辑器（`saveQualityFindingCorrection(finding, corrected, remember)`，Excel 会写回 `processedData`）；中文界面下运行日志在显示层本地化（`utils/logDisplay.ts`，不要改日志源字符串）；多模型审核页已全部走 `review.*` 词条。
+- v0.3.0：质检改为统一规则系统，“哪些内容可保留原文”只在 `rules/`（`policy.ts`、`spans.ts`、`patterns.ts`）定义，设计见 `docs/RULE_SYSTEM_DESIGN.md`；规则样本库 `fixtures/rule-golden.jsonl` + 基线，`npm run test:rule-golden` 不得退化。
+- v0.3.1：质检代码统一在 `quality/`（`checks.ts`、`retryTargets.ts` 等，`utils/quality.ts` 已删除）；Tailwind 改为构建时生成（`tailwind.config.js`、`index.css`），不要再加 CDN 脚本；临床组合解读的旧方案和代码已归档到 `docs/archive/`；`test:ci-gate` 已包含 `test:rule-golden`。

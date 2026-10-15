@@ -20,7 +20,7 @@ import { getPdfSegmentText, setPdfSegmentText } from '../../utils/pdfSegments';
 import { polishTranslation } from '../../utils/postprocess';
 import {
   PLACEHOLDER_REGEX
-} from '../../utils/quality';
+} from '../../quality/checks';
 import {
   buildAdaptiveTextBatches,
   formatElapsedSeconds,

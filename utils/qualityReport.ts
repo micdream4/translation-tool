@@ -3,7 +3,7 @@ import type { POCTRecord, TargetLanguage } from '../types';
 import type { QualityRows } from '../quality/types';
 import type { UntranslatedCell } from './language';
 import type { TranslationIssueType } from './issueCases';
-import type { QualityReport, QualitySeverity } from './quality';
+import type { QualityReport, QualitySeverity } from '../quality/checks';
 
 export type QualityFindingCategory =
   | 'nonTarget'

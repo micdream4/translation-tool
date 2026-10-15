@@ -127,11 +127,12 @@ const buildPlaceholderVariantPattern = (key: string) => {
     return new RegExp(escapeRegex(key), "g");
   }
   const id = escapeRegex(match[2]);
-  return new RegExp(`_*(?:TKN|ID|FMT)_${id}_*`, "gi");
+  // (?!\d): __TKN_1__ must not also match the start of __TKN_10__.
+  return new RegExp(`_*(?:TKN|ID|FMT)_${id}(?!\\d)_*`, "gi");
 };
 
 const PLACEHOLDER_REMAINDER_REGEX =
-  /(?:_+\s*(TKN|ID|FMT)(?:\s*[_ ]\s*(\d+))?\s*_+|(?:TKN|ID|FMT)\s*[_ ]\s*(\d+)\s*_*)/gi;
+  /(?:_+\s*(TKN|ID|FMT)(?:\s*[_ ]\s*(\d+))?\s*_+|(?:TKN|ID|FMT)\s*[_ ]\s*(\d+)(?:\s*_+)?)/gi;
 
 const normalizeBrokenPlaceholders = (
   text: string,
@@ -157,6 +158,8 @@ const normalizeBrokenPlaceholders = (
       if (placeholders[exactKey]) {
         return exactKey;
       }
+      // An explicit index that does not exist must not be mapped onto another token.
+      return match;
     }
 
     const fallbackKey = byType[type][cursors[type]++] || byType[type][0];

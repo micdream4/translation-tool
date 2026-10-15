@@ -379,7 +379,37 @@ const lowerFirst = (value: string) => {
   return value.charAt(0).toLowerCase() + value.slice(1);
 };
 
+// Code-like words (SpO2, HbA1c, IPX4, CO2, DC24, R1-A2, SN-01A, HC-5DIFF) and digit:digit
+// ratios/times (1:100, 10:30) are masked before the spacing rules so they are never split.
+// A code word has a digit and either two capitals or a hyphen; "Step1" or "at25" are glue
+// artifacts and still get a space.
+const CODE_WORD_REGEX = /(?<![A-Za-z0-9])(?=[A-Za-z0-9-]*\d)(?=[A-Za-z0-9-]*[A-Za-z])(?:(?=(?:[A-Za-z0-9-]*[A-Z]){2})|(?=[A-Za-z0-9]+-[A-Za-z0-9]))[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*(?![A-Za-z0-9])/g;
+const DIGIT_RATIO_REGEX = /\d+(?::\d+)+/g;
+const MASK_BASE = 0xe000;
+
+const maskCodeWords = (text: string) => {
+  const masked: string[] = [];
+  const mask = (value: string) => {
+    masked.push(value);
+    return String.fromCharCode(MASK_BASE + masked.length - 1);
+  };
+  const result = text.replace(CODE_WORD_REGEX, mask).replace(DIGIT_RATIO_REGEX, mask);
+  return { result, masked };
+};
+
+const unmaskCodeWords = (text: string, masked: string[]) =>
+  masked.length
+    ? text.replace(/[\ue000-\uefff]/g, (char) => masked[char.charCodeAt(0) - MASK_BASE] ?? char)
+    : text;
+
 const fixSegmentSpacing = (segment: string) => {
+  // Text already using private-use characters is left unmasked rather than corrupted.
+  if (/[\ue000-\uefff]/.test(segment)) return fixSegmentSpacingUnmasked(segment);
+  const { result, masked } = maskCodeWords(segment);
+  return unmaskCodeWords(fixSegmentSpacingUnmasked(result), masked);
+};
+
+const fixSegmentSpacingUnmasked = (segment: string) => {
   let result = segment;
   for (let i = 0; i < 4; i += 1) {
     const compacted = result.replace(/\b(\d+(?:\.\d+)*)\.\s+(\d+)(?=(?:\.|\b))/g, "$1.$2");

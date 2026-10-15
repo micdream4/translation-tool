@@ -291,13 +291,17 @@ export const restoreInlineTokens = (
 ) => {
   if (!text || !placeholders) return text;
   let restored = text;
-  Object.entries(placeholders).forEach(([key, value]) => {
-    const match = key.match(/^__([A-Z]+)_(\d+)__$/i);
-    const pattern = match
-      ? new RegExp(`_*(?:TKN|ID|FMT)_${match[2]}_*`, "gi")
-      : new RegExp(key, "g");
-    restored = restored.replace(pattern, value);
-  });
+  // Longest index first, exact index only ((?!\d)), and a replacer function so "$" in the
+  // restored value is kept literally.
+  Object.entries(placeholders)
+    .sort(([a], [b]) => b.length - a.length)
+    .forEach(([key, value]) => {
+      const match = key.match(/^__([A-Z]+)_(\d+)__$/i);
+      const pattern = match
+        ? new RegExp(`_*(?:TKN|ID|FMT)_${match[2]}(?!\\d)_*`, "gi")
+        : new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
+      restored = restored.replace(pattern, () => value);
+    });
   return restored;
 };
 

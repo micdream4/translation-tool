@@ -66,7 +66,7 @@ import {
   runQualityChecksOnUnits,
   type QualityCheckOptions,
   type QualitySeverity
-} from './utils/quality';
+} from './quality/checks';
 import {
   loadTranslationProgress,
   saveTranslationProgress,

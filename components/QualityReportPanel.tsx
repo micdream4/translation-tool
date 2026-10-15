@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useI18n } from '../hooks/useI18n';
-import type { QualityReport, QualitySeverity } from '../utils/quality';
+import type { QualityReport, QualitySeverity } from '../quality/checks';
 import type { QualityFinding } from '../quality/report';
 import type { SampleReviewAIResult } from '../types';
 

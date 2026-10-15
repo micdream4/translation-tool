@@ -31,9 +31,9 @@ import {
   mapQualityFindingToIssueType,
   type QualityFinding
 } from '../quality/report';
-import { runQualityChecks, runQualityChecksOnUnits, type QualityCheckInput, type QualityReport } from '../utils/quality';
+import { runQualityChecks, runQualityChecksOnUnits, type QualityCheckInput, type QualityReport } from '../quality/checks';
 import { acceptQualityException, listQualityExceptions, serializeExceptionsAsGoldenCases } from '../quality/exceptions';
-import type { QualityCheckOptions } from '../utils/quality';
+import type { QualityCheckOptions } from '../quality/checks';
 import type { POCTRecord, ReviewSample, SampleReviewAIResult, TargetLanguage } from '../types';
 
 export type SampleReviewAiSummary = {

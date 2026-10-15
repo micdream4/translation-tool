@@ -23,7 +23,7 @@ import {
   collectPlaceholderIssues,
   runQualityChecks,
   type QualityCheckOptions
-} from '../../utils/quality';
+} from '../../quality/checks';
 import {
   clearTranslationProgress,
   type TranslationProgressSnapshot

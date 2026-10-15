@@ -101,7 +101,7 @@ export default defineConfig(({ mode }) => {
                 }
                 return undefined;
               }
-              if (id.includes('/react/') || id.includes('/react-dom/')) {
+              if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) {
                 return 'vendor-react';
               }
               if (id.includes('/pdfjs-dist/')) {

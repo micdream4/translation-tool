@@ -45,14 +45,14 @@
 - 已新增 `utils/qualityReport.ts`，先抽出 Quality Report finding 构建、报告文本导出和 issue type 映射。
 - 已新增 `quality/types.ts`，定义 `QualityUnit`、`QualityCheckInput`、`QualityIssue`、`QualityReport` 和文档类型。
 - 已新增 `quality/adapters.ts`，支持 row-based 数据转 `QualityUnit[]`。
-- 已新增 `quality/checks.ts`，承接统一 Quality Check Core；`utils/quality.ts` 保留兼容导出。
+- 已新增 `quality/checks.ts`，承接统一 Quality Check Core；原 `utils/quality.ts` 兼容导出已在 v0.3.1 删除。
 - `quality/adapters.ts` 已新增 `segmentsToQualityRows` / `segmentsToQualityUnits`，DOCX/PDF Quality Report 的文本段 rows 映射已从 `App.tsx` 迁出。
 - DOCX/PDF 的 `Run Quality Check` 执行路径已直接基于 `QualityUnit`，rows 中间层只用于报告展示和导出。
 - `QualityUnit` / `QualityIssue` 已携带 `locationLabel`，报告展示和导出文本可优先显示 DOCX/PDF 段落位置。
 - `components/QualityReportPanel.tsx` 已抽出 Quality Report、Quality Loop、AI Sample Review 展示层，主组件只保留状态和回调接线。
 - `hooks/useAuth.ts` 已抽出 `/api/me` 身份探测，主组件不再直接处理认证请求和状态归一化。
 - `hooks/useQualityWorkflow.ts` 已抽出 Quality Report 状态、finding 派生、issue case 操作、Sample Review、AI Sample Review 和 `runQualityCheck` 的 Excel/DOCX/PDF 执行入口。
-- `utils/retryTargets.ts` 已抽出 Quality Issue 到 Retry target 的生成逻辑，Excel/DOCX/PDF 的补译候选选择开始复用统一 helper。
+- `quality/retryTargets.ts`（原 `utils/retryTargets.ts`） 已抽出 Quality Issue 到 Retry target 的生成逻辑，Excel/DOCX/PDF 的补译候选选择开始复用统一 helper。
 - `utils/debugPackage.ts` 已新增本地调试包构建器，Quality Report 面板可导出版本、模型、Quality Report、issue cases 和样本行，作为 GitHub Issue 的结构化附件。
 - GitHub Issue 模板已补充 `Debug Package` 字段，并使用当前仓库已有的 `bug` label。
 - Quality Report 面板已新增 `Issue Draft`，可导出 GitHub Issue Markdown 草稿。
@@ -81,7 +81,7 @@
 - `components/QualityReportPanel.tsx` 已完成第一阶段抽离。
 - `hooks/useAuth.ts` 已完成第一阶段抽离。
 - `hooks/useQualityWorkflow.ts` 已完成状态/动作和 `runQualityCheck` 执行入口抽离。
-- `utils/retryTargets.ts` 已完成第一阶段抽离，统一 Excel/DOCX/PDF 的补译候选选择。
+- `quality/retryTargets.ts`（原 `utils/retryTargets.ts`） 已完成第一阶段抽离，统一 Excel/DOCX/PDF 的补译候选选择。
 - `utils/debugPackage.ts` 已完成第一阶段，先支持本地 JSON 调试包导出。
 - `utils/pdfTextLayer.ts` 已从 PDF 导出中拆出，负责 Latin 目标语言 PDF 文本层规范化和可复制文本层判断。
 - `utils/issueAssets.ts` 已新增，负责将 issue cases 转成 Translation Memory、术语候选和 QA rule candidates。

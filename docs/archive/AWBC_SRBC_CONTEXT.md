@@ -20,10 +20,10 @@
   - `local-data/excel/source/BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106_补充提示.xlsx`
 
 ## 脚本位置与用法
-- 脚本: `scripts/update_awbc_srbc.py`
+- 脚本: `docs/archive/update_awbc_srbc.py`
 - 用法:
 ```bash
-python scripts/update_awbc_srbc.py \
+python docs/archive/update_awbc_srbc.py \
   --input "local-data/excel/source/BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106.xlsx" \
   --output "local-data/excel/source/BA212新8分类解读-AI版-二次审核-增加AWBC SRBC-20260106_补充提示.xlsx" \
   --profile v2

@@ -28,7 +28,7 @@ import {
   validateStringResourceXml
 } from "../utils/stringResources";
 import { guardTranslationTokens, restoreTranslationTokens } from "../utils/translationTokens";
-import { shouldTranslateCellValue } from "../utils/retryTargets";
+import { shouldTranslateCellValue } from "../quality/retryTargets";
 import { polishTranslation } from "../utils/postprocess";
 import { normalizeTerminology } from "../utils/terminology";
 import { rowsToQualityUnits, segmentsToQualityUnits } from "../quality/adapters";

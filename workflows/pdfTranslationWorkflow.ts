@@ -115,9 +115,11 @@ export const runPdfTranslationWorkflow = async ({
     const result = await runStage("translate", async () => {
       let completed = 0;
       let paused = false;
+      // Source text and translation-memory keys always come from the original segment, so a
+      // resumed run never stores a partial translation as if it were source text.
       const batches = buildAdaptiveTextBatches({
         items: candidates,
-        getText: (segment) => getPdfSegmentText(segment) || segment.original,
+        getText: (segment) => segment.original || getPdfSegmentText(segment),
         maxItems: batchSize,
         maxChars: batchCharLimit
       });
@@ -133,13 +135,13 @@ export const runPdfTranslationWorkflow = async ({
         const batchNum = batchIndex + 1;
         const chunkChars = sumBatchTextChars(
           chunk,
-          (segment) => getPdfSegmentText(segment) || segment.original
+          (segment) => segment.original || getPdfSegmentText(segment)
         );
         addLog(`PDF Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段，约 ${chunkChars} 字符`);
         batchMonitor?.begin({ kind: 'pdf', batchNum, totalBatches, items: chunk.length, unit: 'segments' });
         const memoryStats = createTranslationMemoryStats();
         const memoryHits = await lookupReusableTranslations(
-          chunk.map((segment) => getPdfSegmentText(segment) || segment.original)
+          chunk.map((segment) => segment.original || getPdfSegmentText(segment))
         );
         const leaders: Array<{
           segment: PdfSegment;
@@ -152,7 +154,7 @@ export const runPdfTranslationWorkflow = async ({
         const seenInBatch = new Set<string>();
 
         chunk.forEach((segment) => {
-          const rawText = getPdfSegmentText(segment) || segment.original;
+          const rawText = segment.original || getPdfSegmentText(segment);
           const memoryKey = getTranslationMemoryKey(rawText);
           const memoryTarget = memoryHits.get(memoryKey);
           if (memoryTarget) {

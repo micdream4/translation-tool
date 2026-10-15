@@ -36,7 +36,7 @@ import { runQualityChecksOnUnits } from "../quality/checks";
 import type { QualityCheckInput, QualityReport } from "../quality/types";
 import { TARGET_LANGUAGE_OPTIONS } from "../utils/targetLanguage";
 import type { TranslationProfile } from "../utils/translationProfiles";
-import { LOCKED_KEY_REGEX } from "../rules/patterns";
+import { shouldLockCell } from "../utils/translatorShared";
 import type {
   AgentDocumentKind,
   AgentFailureSummary,
@@ -469,12 +469,14 @@ const processExcel = async (
     const payload = sourceBatch.map((row, offset) => {
       const sanitized: POCTRecord = {};
       Object.entries(row).forEach(([key, value]) => {
-        const locked = LOCKED_KEY_REGEX.test(key);
+        // Same lock rule as the web app: identifier columns are locked, but a value containing
+        // source-language text (such as the column's own header) is still translated.
+        const locked = shouldLockCell(key, value);
         if (
           !locked &&
           shouldTranslateCellValue(key, value, targetLanguage, {
             requireTargetLanguageEvidence: true,
-            shouldLockCell: (cellKey) => LOCKED_KEY_REGEX.test(cellKey)
+            shouldLockCell
           })
         ) {
           const guard = guardTranslationTokens(String(value));
@@ -522,7 +524,7 @@ const processExcel = async (
     cellStyles: true,
     cellFormula: true
   });
-  const reopenedParsed = parseExcelWorkbook(reopened);
+  const reopenedParsed = parseExcelWorkbook(reopened, { keysFrom: parsed.context });
   const sourceSheetNames = workbook.SheetNames;
   const targetSheetNames = reopened.SheetNames;
   const checks: AgentStructureCheck[] = [

@@ -194,7 +194,7 @@ const runExcelSmoke = async () => {
   const { parseExcelWorkbook, exportToExcel } = await bundleTsModule(realPath("utils/excel.ts"));
   const { runQualityChecks } = await bundleTsModule(realPath("quality/checks.ts"));
   const source = parseExcelWorkbook(XLSX.readFile(sourcePath, { cellStyles: true }));
-  const translated = parseExcelWorkbook(XLSX.readFile(translatedPath, { cellStyles: true }));
+  const translated = parseExcelWorkbook(XLSX.readFile(translatedPath, { cellStyles: true }), { keysFrom: source.context });
   const report = runQualityChecks(source.records, translated.records, { targetLang: caseConfig.targetLang });
   const outPath = path.join(os.tmpdir(), `poct-real-excel-${Date.now()}.xlsx`);
   const exportStats = exportToExcel(translated.records, outPath, source.context);

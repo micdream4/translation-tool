@@ -11,6 +11,7 @@ import { runAgentTranslationTask } from "../agent/taskRunner.ts";
 
 const translateText = (value) =>
   String(value)
+    .replaceAll("编号", "Numéro")
     .replaceAll("白细胞", "leucocytes")
     .replaceAll("升高", "élevés")
     .replaceAll("状态", "état")

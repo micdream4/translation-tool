@@ -13,4 +13,6 @@ export type DocxIssueDetail = {
   chineseChars: number;
   lowPriority: boolean;
   issueType: 'source' | 'placeholder' | 'glue';
+  /** Retries keep returning the same text: shown as "needs confirmation", not retried again. */
+  retryStuck?: boolean;
 };

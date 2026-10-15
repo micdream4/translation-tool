@@ -50,6 +50,8 @@ export const shouldTranslateCellValue = (
 export type TextSegmentIssueDetail = {
   index: number;
   lowPriority: boolean;
+  /** Retries keep returning the same text; never retried automatically again. */
+  retryStuck?: boolean;
 };
 
 export const groupRetryIssueKeys = (
@@ -190,10 +192,12 @@ export const buildTextSegmentRetryPlan = (
   details: TextSegmentIssueDetail[],
   pendingIndices: number[]
 ) => {
+  const stuck = new Set(details.filter((item) => item.retryStuck).map((item) => item.index));
   const recommendedIndices = details
-    .filter((item) => !item.lowPriority)
+    .filter((item) => !item.lowPriority && !item.retryStuck)
     .map((item) => item.index);
-  const targetIndices = recommendedIndices.length > 0 ? recommendedIndices : pendingIndices;
+  const targetIndices =
+    recommendedIndices.length > 0 ? recommendedIndices : pendingIndices.filter((index) => !stuck.has(index));
   return {
     targetIndices,
     recommendedIndices,

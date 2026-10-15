@@ -103,6 +103,26 @@ for (const lang of Object.keys(LANGS)) {
   add({ id: `${L.code}-model-id-changed`, targetLang: lang, category: "locked_code_changed", sourceText: "YH-HC500", translatedText: "YH-HC 500", expect: "flag", expectTypes: ["idMismatch"], origin: "template" });
   add({ id: `${L.code}-empty`, targetLang: lang, category: "empty_translation", sourceText: "按下电源键启动分析仪。", translatedText: "", expect: "flag", expectTypes: ["emptyTranslations"], origin: "template" });
 
+  // 6b. Missed errors found in the 2026-10-14 audit -> flag. Each has a "pass" twin below so the
+  //     fix cannot simply tighten everything.
+  if (!isChinese(lang)) {
+    // Chinese prose that merely ends in a company name is still untranslated prose.
+    add({ id: `${L.code}-cjk-sentence-with-company`, targetLang: lang, category: "prose_untranslated", sourceText: "请联系深圳市某某医疗有限公司获取帮助", translatedText: "请联系深圳市某某医疗有限公司", expect: "flag", expectTypes: ["chinese", "nonTargetLanguage"], origin: "audit-2026-10-14" });
+    add({ id: `${L.code}-label-company-zh`, targetLang: lang, category: "company_name", sourceText: "制造商：湖南伊鸿健康科技有限公司", translatedText: `${L.manufacturer}${colon(lang)}湖南伊鸿健康科技有限公司`, expect: "pass", origin: "audit-2026-10-14" });
+  }
+  if (lang !== "English") {
+    // Ordinary English words that also occur in address names are not protected terms.
+    add({ id: `${L.code}-common-words-untranslated`, targetLang: lang, category: "prose_untranslated", sourceText: "Park the analyzer on a smart, level surface away from the garden.", translatedText: "Park the analyzer on a smart, level surface away from the garden.", expect: "flag", expectTypes: ["nonTargetLanguage"], origin: "audit-2026-10-14" });
+  }
+  // Code words must survive translation unchanged.
+  const portsSource = "接口 USB2 RS232 COM1 COM2 LAN1 LAN2 HDMI1 HDMI2 RS485 DC12 DC24 可用";
+  const portsTarget = (codes) => `${L.wbc.split(/\s/)[0]} ${codes}`;
+  add({ id: `${L.code}-codes-kept-11`, targetLang: lang, category: "locked_code", sourceText: portsSource, translatedText: portsTarget("USB2 RS232 COM1 COM2 LAN1 LAN2 HDMI1 HDMI2 RS485 DC12 DC24"), expect: "pass", origin: "audit-2026-10-14" });
+  add({ id: `${L.code}-codes-lost-11`, targetLang: lang, category: "locked_code_changed", sourceText: portsSource, translatedText: portsTarget("USB2 RS232 COM1 COM2 LAN1 LAN2 HDMI1 HDMI2 RS485 DC12 RS2320__"), expect: "flag", expectTypes: ["idMismatch", "placeholders"], origin: "audit-2026-10-14" });
+  add({ id: `${L.code}-codes-kept-analytes`, targetLang: lang, category: "locked_code", sourceText: "SpO2、HbA1c、IPX4、CO2", translatedText: "SpO2, HbA1c, IPX4, CO2", expect: "pass", origin: "audit-2026-10-14" });
+  add({ id: `${L.code}-codes-split-analytes`, targetLang: lang, category: "locked_code_changed", sourceText: "SpO2、HbA1c、IPX4、CO2", translatedText: "SpO 2, HbA 1 c, IPX 4, CO 2", expect: "flag", expectTypes: ["idMismatch"], origin: "audit-2026-10-14" });
+  add({ id: `${L.code}-units-respaced`, targetLang: lang, category: "locked_code", sourceText: "加入10mL样本", translatedText: `${L.wbc.split(/\s/)[0]} 10 mL`, expect: "pass", origin: "audit-2026-10-14" });
+
   // 7. Policy-ambiguous: address with generic words half kept, half translated.
   if (lang === "Russian") {
     add({ id: `${L.code}-address-half-kept`, targetLang: lang, category: "address_mixed", sourceText: "Address: Room 103, Xueshi Street, Yuelu District, Changsha, Hunan, China", translatedText: "Адрес: комната 103, Xueshi Street, Yuelu District, Changsha, Hunan, Китай", expect: "either", origin: "template" });

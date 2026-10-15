@@ -144,9 +144,11 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
       currentBatch: 0
     });
     const documentBatchPolicy = getDocumentBatchPolicy();
+    // Source text and translation-memory keys always come from the original segment, so a
+    // resumed run never stores a partial translation as if it were source text.
     const batches = buildAdaptiveTextBatches<DocxSegment>({
       items: candidates,
-      getText: (segment) => getDocxSegmentText(segment) || segment.original,
+      getText: (segment) => segment.original || getDocxSegmentText(segment),
       maxItems: documentBatchPolicy.maxItems,
       maxChars: documentBatchPolicy.maxChars
     });
@@ -170,13 +172,13 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
           const batchNum = batchIndex + 1;
           const chunkChars = sumBatchTextChars(
             chunk,
-            (segment) => getDocxSegmentText(segment) || segment.original
+            (segment) => segment.original || getDocxSegmentText(segment)
           );
           addLog(`Docx Batch ${batchNum}/${totalBatches}: ${chunk.length} 个语义段，约 ${chunkChars} 字符`);
           batchMonitor.begin({ kind: 'docx', batchNum, totalBatches, items: chunk.length, unit: 'segments' });
           const memoryStats = createTranslationMemoryStats();
           const memoryHits = await lookupReusableTranslations(
-            chunk.map((segment) => getDocxSegmentText(segment) || segment.original)
+            chunk.map((segment) => segment.original || getDocxSegmentText(segment))
           );
           const leaders: Array<{
             segment: typeof chunk[number];
@@ -189,7 +191,7 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
           const seenInBatch = new Set<string>();
 
           chunk.forEach((segment) => {
-            const rawText = getDocxSegmentText(segment) || segment.original;
+            const rawText = segment.original || getDocxSegmentText(segment);
             const memoryKey = getTranslationMemoryKey(rawText);
             const memoryTarget = memoryHits.get(memoryKey);
             if (memoryTarget) {
@@ -330,17 +332,19 @@ const retryDocxSegments = async () => {
     const context = docxContextRef.current;
     if (!context) return;
     let pendingIndices = docxIssueIndices;
+    let issueDetails = docxIssueDetails;
     if (pendingIndices.length === 0) {
       const { pending, details } = buildDocxIssueDetails(context);
       setDocxIssueIndices(pending);
       setDocxIssueDetails(details);
       pendingIndices = pending;
+      issueDetails = details;
     }
     if (pendingIndices.length === 0) {
       addLog('Docx: 当前没有需要重译的段落。');
       return;
     }
-    const retryPlan = buildTextSegmentRetryPlan(docxIssueDetails, pendingIndices);
+    const retryPlan = buildTextSegmentRetryPlan(issueDetails, pendingIndices);
     const targetIndices = retryPlan.targetIndices;
     if (retryPlan.fallbackToLowPriority) {
       addLog('Docx Retry: 当前剩余问题均为低优先级短文本，将尝试全量重译。');
@@ -350,7 +354,7 @@ const retryDocxSegments = async () => {
       );
     }
     const detailByIndex = new Map<number, DocxIssueDetail>(
-      docxIssueDetails.map((item) => [item.index, item])
+      issueDetails.map((item) => [item.index, item])
     );
     let targets = targetIndices
       .map(index => context.segments[index])
@@ -360,9 +364,7 @@ const retryDocxSegments = async () => {
     let locallyFixed = 0;
     targets.forEach((segment) => {
       const rawText = getDocxSegmentText(segment) || segment.original;
-      const detail = detailByIndex.get(
-        Number(segment.id.replace('docx-segment-', ''))
-      );
+      const detail = detailByIndex.get(context.segments.indexOf(segment));
       if (!detail || detail.issueType !== 'placeholder') return;
       const placeholders = docxPlaceholderStore.current.get(segment.id);
       if (!placeholders) return;
@@ -444,7 +446,7 @@ const retryDocxSegments = async () => {
             translatedBatch = await translationHub.translateBatch({
               records: payload,
               targetLang,
-              options: getDocumentQualityTranslationOptions()
+              options: { ...getDocumentQualityTranslationOptions(), bypassCache: true }
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);

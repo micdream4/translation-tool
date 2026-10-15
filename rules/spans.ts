@@ -16,7 +16,7 @@
 // language; they may also be translated. Checks only judge the prose around them.
 
 import { getProtectedTermPatterns } from '../utils/translationTokens';
-import { MEDICAL_CODE_LIST } from './patterns';
+import { CODE_WORD_REGEX, MEDICAL_CODE_LIST } from './patterns';
 
 export type KeptSpanCategory = 'LOCKED' | 'ENTITY' | 'PROPER';
 
@@ -52,7 +52,13 @@ const LATIN_COMPANY_SPAN_REGEX = new RegExp(
   `(?<![A-Za-z])(?:[A-Z][A-Za-z0-9&'’\\-]*\\.?\\s+){1,8}${LEGAL_SUFFIX}(?![A-Za-z])`,
   'g'
 );
-const CJK_COMPANY_SPAN_REGEX = /[一-鿿（）()]{2,40}?(?:股份有限公司|有限责任公司|有限公司|集团)/g;
+// A Chinese company name must be a whole CJK run: not glued to other Chinese text on either side
+// ("请联系深圳市某某医疗有限公司获取帮助" is a sentence, not a name).
+const CJK_COMPANY_SPAN_REGEX =
+  /(?<![一-鿿])[一-鿿（）()]{2,40}?(?:股份有限公司|有限责任公司|有限公司|集团)(?![一-鿿])/g;
+// Sentence words that never occur inside a company name.
+const CJK_SENTENCE_WORD_REGEX = /请|联系|咨询|使用|由|向|关于|如需|以及|或者|并且|获取|购买|生产的|提供/;
+const isPlausibleCjkEntity = (span: KeptSpan) => !CJK_SENTENCE_WORD_REGEX.test(span.text);
 
 // Address block: a run of comma-separated parts in which several parts carry address signals.
 const ADDRESS_KEYWORD_REGEX =
@@ -162,8 +168,9 @@ export const annotateKeptSpans = (text: string): KeptSpan[] => {
     ...collectRegexSpans(value, STANDARD_SPAN_REGEX, 'LOCKED', 'standard'),
     ...collectRegexSpans(value, NUMERIC_UNIT_SPAN_REGEX, 'LOCKED', 'numeric-unit'),
     ...collectRegexSpans(value, MEDICAL_CODE_SPAN_REGEX, 'LOCKED', 'medical-code'),
+    ...collectRegexSpans(value, new RegExp(CODE_WORD_REGEX.source, 'g'), 'LOCKED', 'code-word'),
     ...collectRegexSpans(value, LATIN_COMPANY_SPAN_REGEX, 'ENTITY', 'legal-entity').filter(isPlausibleLegalEntity),
-    ...collectRegexSpans(value, CJK_COMPANY_SPAN_REGEX, 'ENTITY', 'legal-entity'),
+    ...collectRegexSpans(value, CJK_COMPANY_SPAN_REGEX, 'ENTITY', 'legal-entity').filter(isPlausibleCjkEntity),
     ...findAddressSpans(value)
   ]);
   return spans.map((span) => ({ ...span, text: value.slice(span.start, span.end) }));

@@ -57,10 +57,10 @@ const buildHeaderKeys = (
   return keys;
 };
 
-const detectDataStartRow = (headerRow: number) => {
-  // Always include rows below the first header row so multi-line headers are translated too.
-  return headerRow + 1;
-};
+// The header row is itself translatable text: it is included as the first record of each sheet,
+// so it is translated, quality-checked, retried and written back like any other row. Its cell
+// values double as the internal column keys, which stay in the source language.
+const detectDataStartRow = (headerRow: number) => headerRow;
 
 export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
   return new Promise((resolve, reject) => {
@@ -86,7 +86,15 @@ export async function parseExcelFile(file: File): Promise<ExcelParseResult> {
   });
 }
 
-export function parseExcelWorkbook(workbook: XLSX.WorkBook): ExcelParseResult {
+export interface ParseExcelOptions {
+  /**
+   * Column keys of the source workbook. Pass them when parsing a translated copy so its columns
+   * are matched to the source by position, not by (translated) header text.
+   */
+  keysFrom?: ExcelContext;
+}
+
+export function parseExcelWorkbook(workbook: XLSX.WorkBook, options: ParseExcelOptions = {}): ExcelParseResult {
   const records: POCTRecord[] = [];
   const sheets: ExcelSheetContext[] = [];
 
@@ -97,7 +105,10 @@ export function parseExcelWorkbook(workbook: XLSX.WorkBook): ExcelParseResult {
     const range = XLSX.utils.decode_range(ref);
     const headerRow = range.s.r;
     const dataStartRow = detectDataStartRow(headerRow);
-    const headerKeys = buildHeaderKeys(worksheet, headerRow, range);
+    const sourceSheet = options.keysFrom?.sheets?.[sheets.length];
+    const ownKeys = buildHeaderKeys(worksheet, headerRow, range);
+    const headerKeys =
+      sourceSheet && sourceSheet.headerKeys.length === ownKeys.length ? sourceSheet.headerKeys : ownKeys;
     const startIndex = records.length;
 
     for (let r = dataStartRow; r <= range.e.r; r++) {

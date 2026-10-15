@@ -153,15 +153,17 @@ test("Excel parser flattens multiple sheets and export writes each row back to i
   );
 
   const { records, context } = parseExcelWorkbook(workbook);
-  assert.equal(records.length, 3);
+  // The header row is the first record of each sheet, so it is translated and checked too.
+  assert.equal(records.length, 5);
   assert.equal(context.sheets.length, 2);
   assert.deepEqual(
     context.sheets.map((sheet) => [sheet.sheetName, sheet.startIndex, sheet.rowCount]),
     [
-      ["Sheet A", 0, 2],
-      ["Sheet B", 2, 1]
+      ["Sheet A", 0, 3],
+      ["Sheet B", 3, 2]
     ]
   );
+  assert.deepEqual(records[0], { ID: "ID", Text: "Text" });
 
   const outPath = path.join(os.tmpdir(), `poct-export-${Date.now()}.xlsx`);
   exportToExcel(
@@ -174,7 +176,16 @@ test("Excel parser flattens multiple sheets and export writes each row back to i
   assert.equal(exported.Sheets["Sheet A"].B2.v, "白细胞 translated");
   assert.equal(exported.Sheets["Sheet A"].B3.v, "红细胞 translated");
   assert.equal(exported.Sheets["Sheet B"].B2.v, "血小板 translated");
+  assert.equal(exported.Sheets["Sheet A"].B1.v, "Text translated");
   fs.rmSync(outPath, { force: true });
+
+  // A translated copy is matched to the source by column position, not by its translated headers.
+  const translatedCopy = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(translatedCopy, XLSX.utils.aoa_to_sheet([["编号", "文本"], [1, "WBC"], [2, "RBC"]]), "Sheet A");
+  XLSX.utils.book_append_sheet(translatedCopy, XLSX.utils.aoa_to_sheet([["编号", "文本"], [3, "PLT"]]), "Sheet B");
+  const reparsed = parseExcelWorkbook(translatedCopy, { keysFrom: context });
+  assert.deepEqual(reparsed.records[0], { ID: "编号", Text: "文本" });
+  assert.equal(reparsed.records[4].Text, "PLT");
 
   const styleWorkbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
@@ -228,14 +239,20 @@ test("Excel formula cells are never translated or flattened during export", asyn
     sourceBytes.byteOffset + sourceBytes.byteLength
   );
 
-  assert.equal(isExcelFormulaCell(parsed.context, 0, "Computed"), true);
-  assert.equal(isExcelFormulaCell(parsed.context, 0, "Text"), false);
+  // Record 0 is the header row; record 1 holds the formula.
+  assert.equal(isExcelFormulaCell(parsed.context, 0, "Computed"), false);
+  assert.equal(isExcelFormulaCell(parsed.context, 1, "Computed"), true);
+  assert.equal(isExcelFormulaCell(parsed.context, 1, "Text"), false);
 
-  const outputRows = parsed.records.map((row) => ({
-    ...row,
-    Text: "White blood cell",
-    Computed: "must not replace formula"
-  }));
+  const outputRows = parsed.records.map((row, index) =>
+    index === 0
+      ? row
+      : {
+          ...row,
+          Text: "White blood cell",
+          Computed: "must not replace formula"
+        }
+  );
   const outPath = path.join(os.tmpdir(), `poct-formula-${Date.now()}.xlsx`);
   const normalStats = exportToExcel(outputRows, outPath, parsed.context);
   const normalExport = XLSX.read(fs.readFileSync(outPath), { type: "buffer", cellFormula: true });
@@ -283,27 +300,45 @@ test("Excel skip scope resolves row and column rules across sheets", async () =>
   const { records, context } = parseExcelWorkbook(workbook);
   const scope = parseExcelSkipScope("rows: 2\nSheet B!cols: C", context);
 
+  // Records: Sheet A header = 0, rows 2-3 = 1-2; Sheet B header = 3, row 2 = 4.
   assert.deepEqual(scope.errors, []);
-  assert.equal(isExcelRowFullySkipped(scope, 0), true);
-  assert.equal(isExcelCellSkipped(scope, 0, "Text"), true);
-  assert.equal(isExcelCellSkipped(scope, 1, "Text"), false);
-  assert.equal(isExcelCellSkipped(scope, 2, "Note"), true);
+  assert.equal(isExcelRowFullySkipped(scope, 1), true);
+  assert.equal(isExcelCellSkipped(scope, 1, "Text"), true);
+  assert.equal(isExcelCellSkipped(scope, 2, "Text"), false);
+  assert.equal(isExcelCellSkipped(scope, 4, "Note"), true);
 
   const ignoreSkipped = {
     shouldIgnoreCell: (rowIndex, columnKey) => isExcelCellSkipped(scope, rowIndex, columnKey)
   };
   const summary = summarizeUntranslated(records, "English", ignoreSkipped);
-  assert.equal(summary.details.some((item) => item.rowIndex === 0), false);
-  assert.equal(summary.details.some((item) => item.rowIndex === 2 && item.columnKey === "Note"), false);
-  assert.equal(summary.details.some((item) => item.rowIndex === 1 && item.columnKey === "Text"), true);
+  assert.equal(summary.details.some((item) => item.rowIndex === 1), false);
+  assert.equal(summary.details.some((item) => item.rowIndex === 4 && item.columnKey === "Note"), false);
+  assert.equal(summary.details.some((item) => item.rowIndex === 2 && item.columnKey === "Text"), true);
 
   const report = runQualityChecks(records, records, {
     targetLang: "English",
     shouldIgnoreUnit: (unit) => isExcelCellSkipped(scope, unit.rowIndex, unit.columnKey)
   });
-  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 0), false);
-  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 2 && item.columnKey === "Note"), false);
-  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 1 && item.columnKey === "Text"), true);
+  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 1), false);
+  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 4 && item.columnKey === "Note"), false);
+  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 2 && item.columnKey === "Text"), true);
+});
+
+test("Excel header row is translated and an untranslated Chinese header is reported", async () => {
+  const { parseExcelWorkbook } = await bundleTsModule(path.join(repoRoot, "utils/excel.ts"), { external: ["xlsx", "jszip", "@xmldom/xmldom"] });
+  const { runQualityChecks } = await bundleTsModule(path.join(repoRoot, "quality/checks.ts"));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["编号", "产品名称", "说明"], ["A-01", "血常规", "按说明使用"]]), "Sheet1");
+  const { records } = parseExcelWorkbook(workbook);
+  assert.equal(records.length, 2);
+  const translated = records.map((row, index) =>
+    index === 0 ? { ...row } : { ...row, 产品名称: "Complete blood count", 说明: "Use as instructed" }
+  );
+  const report = runQualityChecks(records, translated, { targetLang: "English" });
+  // The header cells were left in Chinese, so they are reported; the ID column header too.
+  const headerIssues = report.issues.chinese.filter((item) => item.rowIndex === 0).map((item) => item.columnKey);
+  assert.deepEqual(headerIssues.sort(), ["产品名称", "编号", "说明"].sort());
+  assert.equal(report.issues.chinese.some((item) => item.rowIndex === 1), false);
 });
 
 // App.tsx is being split into hooks and components, so source-level checks read all of them.

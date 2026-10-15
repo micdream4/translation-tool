@@ -56,6 +56,8 @@ export interface QualityIssue {
   severity?: QualitySeverity;
   /** Why the severity was lowered; 'retry-stuck' = retries keep returning the same text. */
   reason?: 'retry-stuck';
+  /** Extra context, e.g. the code words missing from the translation. */
+  detail?: string;
 }
 
 export interface QualityReport {

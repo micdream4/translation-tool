@@ -6,7 +6,13 @@ import {
   isRussianDisallowedLatinResidue
 } from "./languageProfiles";
 import { isTraditionalChineseTaiwanTarget } from "./targetLanguage";
-import { isLikelyIdentifier, isProtectedTerm, stripProtectedTerms, stripPreservedUiLabels } from "./translationTokens";
+import {
+  hasUntranslatedUiLabelResidue,
+  isLikelyIdentifier,
+  isProtectedTerm,
+  stripProtectedTerms,
+  stripPreservedUiLabels
+} from "./translationTokens";
 import { getProseForLanguageCheck } from "../rules/spans";
 import { isQualityExceptionAccepted } from "../quality/exceptions";
 import { CJK_REGEX as SHARED_CJK_REGEX, LOCKED_KEY_REGEX as SHARED_LOCKED_KEY_REGEX } from "../rules/patterns";
@@ -643,7 +649,9 @@ const isAllowedTechnicalLatinText = (text: string) => {
 };
 
 const hasDisallowedLatinResidue = (text: string, targetLang?: TargetLanguage) => {
-  const tokens = stripUrls(text).match(LATIN_TOKEN_REGEX) || [];
+  // Strip protected phrases first so multi-word names ("Country Garden Wisdom Garden") are judged
+  // as a whole, not word by word.
+  const tokens = stripProtectedTerms(stripUrls(text)).match(LATIN_TOKEN_REGEX) || [];
   return tokens.some((token) => {
     if (targetLang && targetLangToCode(targetLang) === "ru" && isRussianDisallowedLatinResidue(token)) {
       return true;
@@ -755,7 +763,7 @@ export const detectUntranslatedCells = (
       const trimmed = value.trim();
       if (!trimmed) return;
       if (
-        LOCKED_KEY_REGEX.test(key) ||
+        (LOCKED_KEY_REGEX.test(key) && !SHARED_CJK_REGEX.test(trimmed)) ||
         ID_TOKEN_REGEX.test(trimmed) ||
         isNeutralToken(trimmed) ||
         isLikelyIdentifier(trimmed)
@@ -769,7 +777,8 @@ export const detectUntranslatedCells = (
       const prose = getProseForLanguageCheck(trimmed);
       const residue =
         (prose && !isLikelyTargetLanguage(prose, targetLang)) ||
-        isVerbatimSourceProse(sourceText, trimmed, targetLang);
+        isVerbatimSourceProse(sourceText, trimmed, targetLang) ||
+        hasUntranslatedUiLabelResidue(trimmed, sourceText, targetLang);
       if (
         residue &&
         (options.ignoreExceptions ||

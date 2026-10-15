@@ -230,13 +230,15 @@ const retryPdfSegments = async () => {
     });
 
     try {
+      // Retries always start from the original source text (as DOCX does), never from the flagged
+      // translation, so the model is not asked to translate its own output.
       const result = await runStage('translate', async () => {
         let completed = 0;
         let paused = false;
         const documentBatchPolicy = getDocumentBatchPolicy();
         const batches = buildAdaptiveTextBatches<PdfSegment>({
           items: targets,
-          getText: (segment) => getPdfSegmentText(segment) || segment.original,
+          getText: (segment) => segment.original || getPdfSegmentText(segment),
           maxItems: documentBatchPolicy.maxItems,
           maxChars: documentBatchPolicy.maxChars
         });
@@ -251,14 +253,14 @@ const retryPdfSegments = async () => {
           const batchNum = batchIndex + 1;
           const chunkChars = sumBatchTextChars(
             chunk,
-            (segment) => getPdfSegmentText(segment) || segment.original
+            (segment) => segment.original || getPdfSegmentText(segment)
           );
           addLog(`PDF Retry Batch ${batchNum}/${totalBatches}: ${chunk.length} 个文本段，约 ${chunkChars} 字符`);
           let translatedBatch: POCTRecord[];
           const batchStartedAt = Date.now();
           try {
             const payload = chunk.map((segment) => {
-              const rawText = getPdfSegmentText(segment) || segment.original;
+              const rawText = segment.original || getPdfSegmentText(segment);
               const { sanitized, placeholders } = guardTranslationTokens(rawText);
               if (placeholders) {
                 docxPlaceholderStore.current.set(segment.id, placeholders);
@@ -270,7 +272,7 @@ const retryPdfSegments = async () => {
             translatedBatch = await translationHub.translateBatch({
               records: payload,
               targetLang,
-              options: getDocumentQualityTranslationOptions()
+              options: { ...getDocumentQualityTranslationOptions(), bypassCache: true }
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -287,7 +289,7 @@ const retryPdfSegments = async () => {
 
           chunk.forEach((segment, index) => {
             const translatedRecord = translatedBatch[index] || {};
-            const rawText = getPdfSegmentText(segment) || segment.original;
+            const rawText = segment.original || getPdfSegmentText(segment);
             const placeholders = docxPlaceholderStore.current.get(segment.id);
             const sanitizedResult =
               typeof translatedRecord.content === 'string'

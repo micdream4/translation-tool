@@ -801,7 +801,8 @@ const App: React.FC = () => {
       issueType: DocxIssueDetail['issueType'],
       lowPriority: boolean,
       issueText?: string,
-      locationLabel?: string
+      locationLabel?: string,
+      retryStuck = false
     ) => {
       const segment = segments[rowIndex];
       if (!segment) return;
@@ -819,23 +820,29 @@ const App: React.FC = () => {
         snippet: toDocxSnippet(text),
         chineseChars: countChineseChars(text),
         lowPriority,
-        issueType
+        issueType,
+        ...(retryStuck ? { retryStuck } : {})
       });
     };
 
     report.issues.nonTargetLanguage.forEach((issue) => {
-      // Retries keep returning the same text: leave it to a person (report shows "needs confirmation").
-      if (issue.reason === 'retry-stuck') return;
+      // Retries keep returning the same text: still listed (as low priority, "needs confirmation"),
+      // but left out of automatic retries, the same as in Excel.
       const text = issue.value || getText(segments[issue.rowIndex], issue.rowIndex);
       addIssue(
         issue.rowIndex,
         'source',
-        issue.severity === 'low' || isLowPriorityDocxIssue(text),
+        issue.severity === 'low' || issue.reason === 'retry-stuck' || isLowPriorityDocxIssue(text),
         text,
-        issue.locationLabel
+        issue.locationLabel,
+        issue.reason === 'retry-stuck'
       );
     });
     report.issues.placeholders.forEach((issue) => {
+      addIssue(issue.rowIndex, 'placeholder', false, issue.value, issue.locationLabel);
+    });
+    // A code word from the source (SpO2, RS232, model number) is missing or altered.
+    report.issues.idMismatch.forEach((issue) => {
       addIssue(issue.rowIndex, 'placeholder', false, issue.value, issue.locationLabel);
     });
     report.issues.spacing

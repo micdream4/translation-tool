@@ -23,7 +23,7 @@ import { isChineseTarget } from '../utils/targetLanguage';
 import { getProseForFormatCheck, getProseForLanguageCheck } from '../rules/spans';
 import { isQualityExceptionAccepted } from './exceptions';
 import { isRetryStuck } from './retryConvergence';
-import { CJK_REGEX, LOCKED_KEY_REGEX } from '../rules/patterns';
+import { CJK_REGEX, LOCKED_KEY_REGEX, extractCodeWords } from '../rules/patterns';
 
 export type {
   QualityCheckInput,
@@ -203,6 +203,10 @@ const shouldCheckTargetLanguage = (unit: QualityUnit, proseText: string) => {
   return !isLikelyIdentifier(unprotectedText);
 };
 
+const translatedText = (unit: { translatedText: string }) => Boolean(String(unit.translatedText || '').trim());
+const hasCodeWord = (text: string, code: string) =>
+  new RegExp(`(?<![A-Za-z0-9])${code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9])`).test(text);
+
 export const runQualityChecksOnUnits = (
   input: QualityCheckInput,
   options: QualityCheckOptions = {}
@@ -366,7 +370,24 @@ export const runQualityChecksOnUnits = (
       });
     }
 
-    if (shouldLockCell(unit.columnKey, unit.originalValue) && unit.translatedValue !== unit.originalValue) {
+    // Every code word in the source (SpO2, RS232, DC24, YH-HC500 ...) must appear unchanged in the
+    // translation. Decidable against the source, so it is an error, not a judgement call.
+    const lostCodes = translatedText(unit)
+      ? extractCodeWords(unit.originalText).filter((code) => !hasCodeWord(unit.translatedText, code))
+      : [];
+    if (lostCodes.length && !accepted('idMismatch')) {
+      totals.idMismatches += 1;
+      idMismatchRows.add(unit.rowIndex);
+      issues.idMismatch.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        locationLabel: unit.locationLabel,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: 'idMismatch',
+        detail: lostCodes.join(', ')
+      });
+    } else if (shouldLockCell(unit.columnKey, unit.originalValue) && unit.translatedValue !== unit.originalValue) {
       totals.idMismatches += 1;
       idMismatchRows.add(unit.rowIndex);
       issues.idMismatch.push({

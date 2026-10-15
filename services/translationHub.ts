@@ -17,6 +17,8 @@ export interface TranslationRequest {
       model?: "cloudflare-ai" | "deepseek" | "gemini";
       providerModel?: string;
       profile?: TranslationProfile;
+      /** Skip the in-memory result cache. Retries set this so a retry really asks the model again. */
+      bypassCache?: boolean;
   };
 }
 
@@ -302,7 +304,7 @@ export class TranslationHub {
       mode: this.proxy ? "proxy" : "direct"
     });
 
-    if (this.cache.has(cacheKey)) {
+    if (!req.options?.bypassCache && this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
     }
 

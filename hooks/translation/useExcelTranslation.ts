@@ -489,7 +489,8 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
             );
             const stillUntranslated =
               detectUntranslatedCells([finalResults[rowIdx]], targetLang, {
-                shouldIgnoreCell: (_localRowIndex, columnKey) => shouldSkipExcelCell(rowIdx, columnKey)
+                shouldIgnoreCell: (_localRowIndex, columnKey) => shouldSkipExcelCell(rowIdx, columnKey),
+                sourceRecords: [data[rowIdx]]
               }).length > 0;
             if (stillUntranslated) {
               incompleteRows.push(rowIdx);
@@ -719,6 +720,7 @@ const retryMissingRows = async (
             records: chunk.map(item => item.sanitizedRow),
             targetLang,
             options: {
+              bypassCache: true,
               model,
               providerModel:
                 model === 'cloudflare-ai' && isCloudflareAiModelValue(translationModelPreference)
@@ -801,7 +803,8 @@ const retryMissingRows = async (
         );
         const stillUntranslated =
           detectUntranslatedCells([baseProcessed[rowIdx]], targetLang, {
-            shouldIgnoreCell: (_localRowIndex, columnKey) => shouldSkipExcelCell(rowIdx, columnKey)
+            shouldIgnoreCell: (_localRowIndex, columnKey) => shouldSkipExcelCell(rowIdx, columnKey),
+            sourceRecords: [data[rowIdx]]
           }).length > 0;
         const isComplete = !stillUntranslated;
         updatedFlags[rowIdx] = isComplete;
@@ -943,6 +946,7 @@ const retryCellsByKeys = async (
             records: chunk.map(item => item.sanitizedRow),
             targetLang,
             options: {
+              bypassCache: true,
               model,
               providerModel:
                 model === 'cloudflare-ai' && isCloudflareAiModelValue(translationModelPreference)

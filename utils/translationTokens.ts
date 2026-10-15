@@ -33,11 +33,6 @@ const DEFAULT_PROTECTED_TERMS = [
   "in vitro",
   "Sysmex",
   "e-CHECK",
-  "Country",
-  "Garden",
-  "Smart",
-  "Wisdom",
-  "Park",
   "Country Garden Smart Park",
   "Country Garden Wisdom Garden",
   "Xueshi",
@@ -46,7 +41,6 @@ const DEFAULT_PROTECTED_TERMS = [
   "Hunan",
   "Yulian",
   "Liandong",
-  "Valley",
   "Liandong U Valley",
   "Taenia",
   "Brachylaime",
@@ -115,8 +109,11 @@ const escapeRegex = (value: string) =>
 const buildProtectedTermPattern = (value: string) => {
   const escaped = escapeRegex(value).replace(/\\ /g, "\\s+");
   const trimmed = String(value || "").trim();
+  // Single words match case-sensitively: "EN", "LOT" or "REF" are protected, "en", "a lot" or
+  // "ref" in a sentence are not. Generic address words (Park, Garden, Smart ...) are protected
+  // only as part of their full address phrase.
   if (/^[A-Za-z0-9#%+_.\/-]{1,12}$/.test(trimmed)) {
-    return new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "gi");
+    return new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, "g");
   }
   return new RegExp(escaped, "gi");
 };

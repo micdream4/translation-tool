@@ -3,6 +3,7 @@ import React from 'react';
 import { describeEmbeddedVisualsForLog, hasEmbeddedVisuals } from '../../utils/embeddedVisuals';
 import type { DocxIssueDetail } from '../../components/translator/types';
 import type { QualityReport } from '../../quality/types';
+import { resetRetryConvergence } from '../../quality/retryConvergence';
 import {
   POCTRecord,
   ProcessingState,
@@ -147,6 +148,8 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
     setPreviewFocus(null);
     resetSampleReviewState();
     resetModelReviewState();
+    // "Stuck after retries" is per document: a new file starts with a clean slate.
+    resetRetryConvergence();
     const identifier = `${uploadedFile.name}-${uploadedFile.size}-${uploadedFile.lastModified || Date.now()}`;
     setFileId(identifier);
     setQualityReport(null);

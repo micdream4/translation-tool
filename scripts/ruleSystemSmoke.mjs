@@ -6,9 +6,17 @@ import test from "node:test";
 import { annotateKeptSpans, getProseForLanguageCheck } from "../rules/spans.ts";
 import { renderRetentionPolicyForPrompt, renderRetentionPolicyForReview } from "../rules/policy.ts";
 import { runQualityChecksOnUnits } from "../quality/checks.ts";
-import { acceptQualityException, clearQualityExceptions, serializeExceptionsAsGoldenCases } from "../quality/exceptions.ts";
+import {
+  acceptQualityException,
+  clearQualityExceptions,
+  listQualityExceptions,
+  mergeRemoteQualityExceptions,
+  removeQualityException,
+  serializeExceptionsAsGoldenCases
+} from "../quality/exceptions.ts";
 import { noteRetryOutcome, resetRetryConvergence } from "../quality/retryConvergence.ts";
 import { detectUntranslatedCells } from "../utils/language.ts";
+import * as qaFeedbackApi from "../functions/api/qa-feedback.ts";
 import { buildTranslationPrompt } from "../utils/translationProfiles.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
@@ -73,6 +81,72 @@ test("a confirmed-as-correct finding is not reported again by either entry point
   assert.equal(check("Russian", text, text, { ignoreExceptions: true }).issues.nonTargetLanguage.length, 1);
   assert.match(serializeExceptionsAsGoldenCases(), /"expect":"pass"/);
   clearQualityExceptions();
+});
+
+test("a confirmation covers only its own source text, stays listed as pending review, and can be undone", () => {
+  clearQualityExceptions();
+  const kept = "Display mode";
+  acceptQualityException({ type: "nonTarget", targetLang: "Russian", sourceText: "显示模式", translatedText: kept });
+  const report = check("Russian", "显示模式", kept);
+  assert.equal(report.issues.nonTargetLanguage.length, 0);
+  assert.equal(report.accepted.length, 1);
+  assert.equal(report.accepted[0].pendingReview, true);
+  // The same translation of a different sentence is still reported.
+  assert.equal(check("Russian", "显示方式", kept).issues.nonTargetLanguage.length, 1);
+  // A translated file checked on its own (no separate source) still honours the confirmation.
+  assert.equal(check("Russian", kept, kept).issues.nonTargetLanguage.length, 0);
+  // Undo: reported again.
+  removeQualityException(listQualityExceptions()[0].key);
+  assert.equal(check("Russian", "显示模式", kept).issues.nonTargetLanguage.length, 1);
+  clearQualityExceptions();
+});
+
+test("an issue that does not fire does not count as a used confirmation", () => {
+  clearQualityExceptions();
+  acceptQualityException({ type: "nonTarget", targetLang: "Russian", sourceText: "显示模式", translatedText: "Режим отображения" });
+  assert.equal(check("Russian", "显示模式", "Режим отображения").accepted.length, 0);
+  clearQualityExceptions();
+});
+
+test("shared confirmations: the store wins, undo elsewhere removes, unsynced local entries are kept", () => {
+  clearQualityExceptions();
+  const local = acceptQualityException({ type: "nonTarget", targetLang: "Russian", sourceText: "显示模式", translatedText: "Display mode" });
+  const remote = { ...acceptQualityException({ type: "spacing", targetLang: "Russian", sourceText: "a", translatedText: "b  c" }) };
+  clearQualityExceptions();
+  acceptQualityException(local);
+  // Remote has one entry, already reviewed; the local one was never pushed.
+  const unsynced = mergeRemoteQualityExceptions([{ ...remote, reviewStatus: "reviewed" }]);
+  assert.deepEqual(unsynced.map((item) => item.key), [local.key]);
+  assert.equal(listQualityExceptions().length, 2);
+  assert.equal(listQualityExceptions().find((item) => item.key === remote.key).reviewStatus, "reviewed");
+  // Undone on the other computer: the synced entry disappears here too.
+  mergeRemoteQualityExceptions([]);
+  assert.deepEqual(listQualityExceptions().map((item) => item.key), [local.key]);
+  clearQualityExceptions();
+});
+
+test("qa-feedback endpoint stores, lists and deletes confirmations, and is off without the KV binding", async () => {
+  const kv = new Map();
+  const QA_FEEDBACK = {
+    get: async (key) => kv.get(key) ?? null,
+    put: async (key, value) => void kv.set(key, value),
+    delete: async (key) => void kv.delete(key),
+    list: async ({ prefix }) => ({ keys: [...kv.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })), list_complete: true })
+  };
+  const env = { QA_FEEDBACK, REQUIRE_CF_ACCESS_EMAIL: "false" };
+  const entry = { key: "nonTargetLanguage|russian|12-1k12q1o|4-131c6vj", type: "nonTargetLanguage", targetLang: "Russian", sourceText: "显示模式", translatedText: "Display mode" };
+  const url = "https://example.test/api/qa-feedback";
+  const post = await qaFeedbackApi.onRequestPost({ env, request: new Request(url, { method: "POST", body: JSON.stringify({ entry }) }) });
+  assert.equal(post.status, 200);
+  const listed = await (await qaFeedbackApi.onRequestGet({ env, request: new Request(url) })).json();
+  assert.equal(listed.enabled, true);
+  assert.equal(listed.entries[0].reviewStatus, "pending");
+  const bad = await qaFeedbackApi.onRequestPost({ env, request: new Request(url, { method: "POST", body: JSON.stringify({ entry: { ...entry, key: "x" } }) }) });
+  assert.equal(bad.status, 400);
+  await qaFeedbackApi.onRequestDelete({ env, request: new Request(`${url}?key=${encodeURIComponent(entry.key)}`, { method: "DELETE" }) });
+  assert.equal(kv.size, 0);
+  const off = await (await qaFeedbackApi.onRequestGet({ env: { REQUIRE_CF_ACCESS_EMAIL: "false" }, request: new Request(url) })).json();
+  assert.equal(off.enabled, false);
 });
 
 test("a segment that retries keep returning unchanged is downgraded and stops retrying", () => {

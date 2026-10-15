@@ -7,7 +7,7 @@ import QualityReportPanel from '../QualityReportPanel';
 import type { DocxIssueDetail } from './types';
 import type { POCTRecord, SampleReviewAIResult, UntranslatedSummary } from '../../types';
 import type { QualityFinding } from '../../utils/qualityReport';
-import type { QualityReport } from '../../quality/types';
+import type { AcceptedQualityFinding, QualityReport } from '../../quality/types';
 import type { SampleReviewAiSummary, SampleReviewItem } from '../../hooks/useQualityWorkflow';
 import type { QualitySeverity } from '../../quality/checks';
 export interface QualityTabProps {
@@ -42,6 +42,8 @@ export interface QualityTabProps {
   issueCaseCount: number;
   acceptedExceptionCount: number;
   acceptQualityFinding: (finding: QualityFinding) => void;
+  undoQualityException: (key: string) => void;
+  acceptedFindings: AcceptedQualityFinding[];
   exportAcceptedGoldenCases: () => void;
   jumpToPreviewCell: (rowIndex: number, columnKey: string) => void;
   pdfHighPriorityCount: number;
@@ -106,6 +108,8 @@ const QualityTab: React.FC<QualityTabProps> = ({
   issueCaseCount,
   acceptedExceptionCount,
   acceptQualityFinding,
+  undoQualityException,
+  acceptedFindings,
   exportAcceptedGoldenCases,
   jumpToPreviewCell,
   pdfHighPriorityCount,
@@ -251,6 +255,8 @@ const QualityTab: React.FC<QualityTabProps> = ({
         issueCaseCount={issueCaseCount}
         acceptedExceptionCount={acceptedExceptionCount}
         acceptQualityFinding={acceptQualityFinding}
+        undoQualityException={undoQualityException}
+        acceptedFindings={acceptedFindings}
         exportAcceptedGoldenCases={exportAcceptedGoldenCases}
         qualityFindings={qualityFindings}
         sampleReviewCount={sampleReviewCount}

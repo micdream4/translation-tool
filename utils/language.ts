@@ -782,7 +782,12 @@ export const detectUntranslatedCells = (
       if (
         residue &&
         (options.ignoreExceptions ||
-          !isQualityExceptionAccepted({ type: "nonTargetLanguage", targetLang, translatedText: trimmed }))
+          !isQualityExceptionAccepted({
+            type: "nonTargetLanguage",
+            targetLang,
+            translatedText: trimmed,
+            sourceText: sourceText.trim() !== trimmed ? sourceText : ""
+          }))
       ) {
         flagged.push({ rowIndex, columnKey: key, value: trimmed });
       }

@@ -1223,6 +1223,9 @@ const App: React.FC = () => {
     clearIssueCases,
     saveQualityFindingCorrection,
     acceptQualityFinding,
+    undoQualityException,
+    acceptedFindings,
+    pendingAcceptedCount,
     exportAcceptedGoldenCases,
     generateSampleReview,
     runAiSampleReview
@@ -1853,6 +1856,8 @@ const App: React.FC = () => {
                 issueCaseCount={issueCaseCount}
                 acceptedExceptionCount={acceptedExceptionCount}
                 acceptQualityFinding={acceptQualityFinding}
+                undoQualityException={undoQualityException}
+                acceptedFindings={acceptedFindings}
                 exportAcceptedGoldenCases={exportAcceptedGoldenCases}
                 jumpToPreviewCell={jumpToPreviewCell}
                 pdfHighPriorityCount={pdfHighPriorityCount}
@@ -1926,6 +1931,7 @@ const App: React.FC = () => {
             canDownload={canDownload}
             documentKind={documentKind}
             docxBlockingIssueCount={docxBlockingIssueCount}
+            pendingAcceptedCount={pendingAcceptedCount}
             handleDownload={handleDownload}
             handleDownloadPdfDocx={handleDownloadPdfDocx}
             translationStatus={translationStatus}

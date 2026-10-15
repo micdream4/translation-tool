@@ -1,6 +1,7 @@
 import { POCTRecord } from '../types';
 import { rowsToQualityUnits } from './adapters';
 import type {
+  AcceptedQualityFinding,
   QualityCheckInput,
   QualityCheckOptions,
   QualityIssue,
@@ -21,11 +22,12 @@ import {
 } from '../utils/translationTokens';
 import { isChineseTarget } from '../utils/targetLanguage';
 import { getProseForFormatCheck, getProseForLanguageCheck } from '../rules/spans';
-import { isQualityExceptionAccepted } from './exceptions';
+import { findQualityException, isPendingReview } from './exceptions';
 import { isRetryStuck } from './retryConvergence';
 import { CJK_REGEX, LOCKED_KEY_REGEX, extractCodeWords } from '../rules/patterns';
 
 export type {
+  AcceptedQualityFinding,
   QualityCheckInput,
   QualityCheckOptions,
   QualityIssue,
@@ -213,6 +215,7 @@ export const runQualityChecksOnUnits = (
 ): QualityReport => {
   const totals = createQualityTotals(input.rowsScanned);
   const issues = createQualityIssues();
+  const acceptedFindings: AcceptedQualityFinding[] = [];
 
   const chineseRows = new Set<number>();
   const placeholderRows = new Set<number>();
@@ -271,9 +274,30 @@ export const runQualityChecksOnUnits = (
     if (typeof unit.translatedValue !== 'string') return;
     totals.cellsScanned += 1;
 
-    const accepted = (type: string) =>
-      !options.ignoreExceptions &&
-      isQualityExceptionAccepted({ type, targetLang: options.targetLang, translatedText: unit.translatedText });
+    // A finding a person confirmed as correct is not reported, but it is listed (as "pending review")
+    // so a wrong confirmation stays visible and can be undone.
+    const accepted = (type: string) => {
+      if (options.ignoreExceptions) return false;
+      const exception = findQualityException({
+        type,
+        targetLang: options.targetLang,
+        translatedText: unit.translatedText,
+        // A translated file checked on its own has no separate source; match on the translation only.
+        sourceText: unit.originalText.trim() !== unit.translatedText.trim() ? unit.originalText : ''
+      });
+      if (!exception) return false;
+      acceptedFindings.push({
+        rowIndex: unit.rowIndex,
+        columnKey: unit.columnKey,
+        locationLabel: unit.locationLabel,
+        value: unit.translatedText,
+        original: unit.originalText,
+        type: type as QualityIssueType,
+        exceptionKey: exception.key,
+        pendingReview: isPendingReview(exception)
+      });
+      return true;
+    };
     const proseText = getProseForLanguageCheck(unit.translatedText);
     const retryStuck = isRetryStuck(options.targetLang, unit.originalText, unit.translatedText);
 
@@ -299,10 +323,10 @@ export const runQualityChecksOnUnits = (
     );
     if (
       options.targetLang &&
-      !accepted('nonTargetLanguage') &&
       ((shouldCheckTargetLanguage(unit, proseText) &&
         (!isLikelyTargetLanguage(targetLanguageCheckText, options.targetLang) || hasUiLabelResidue)) ||
-        isVerbatimSourceProse(unit.originalText, unit.translatedText, options.targetLang))
+        isVerbatimSourceProse(unit.originalText, unit.translatedText, options.targetLang)) &&
+      !accepted('nonTargetLanguage')
     ) {
       totals.nonTargetCells += 1;
       nonTargetRows.add(unit.rowIndex);
@@ -411,7 +435,8 @@ export const runQualityChecksOnUnits = (
 
   return {
     totals,
-    issues
+    issues,
+    accepted: acceptedFindings
   };
 };
 

@@ -10,6 +10,8 @@ export interface ExportBarProps {
   canDownload: boolean;
   documentKind: "pdf" | "excel" | "docx";
   docxBlockingIssueCount: number;
+  /** Findings confirmed as correct but not yet reviewed into the rule set. */
+  pendingAcceptedCount?: number;
   handleDownload: () => Promise<void>;
   handleDownloadPdfDocx: () => void;
   translationStatus: "running" | "idle" | "paused" | "completed";
@@ -21,6 +23,7 @@ const ExportBar: React.FC<ExportBarProps> = ({
   canDownload,
   documentKind,
   docxBlockingIssueCount,
+  pendingAcceptedCount = 0,
   handleDownload,
   handleDownloadPdfDocx,
   translationStatus
@@ -51,6 +54,9 @@ const ExportBar: React.FC<ExportBarProps> = ({
             : hasEmbeddedVisuals(embeddedVisuals)
               ? t('visuals.export', { parts: describeParts(embeddedVisuals!) })
               : ''}
+        {translationStatus !== 'running' && canDownload && pendingAcceptedCount > 0 && (
+          <span className="block">{t('export.acceptedPending', { count: pendingAcceptedCount })}</span>
+        )}
       </p>
       <div className="flex flex-wrap gap-2">
         {documentKind === 'pdf' && (

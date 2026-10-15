@@ -32,7 +32,13 @@ import {
   type QualityFinding
 } from '../quality/report';
 import { runQualityChecks, runQualityChecksOnUnits, type QualityCheckInput, type QualityReport } from '../quality/checks';
-import { acceptQualityException, listQualityExceptions, serializeExceptionsAsGoldenCases } from '../quality/exceptions';
+import {
+  acceptQualityException,
+  listQualityExceptions,
+  removeQualityException,
+  serializeExceptionsAsGoldenCases
+} from '../quality/exceptions';
+import { deleteRemoteQualityException, pushQualityException, syncQualityExceptions } from '../services/qaFeedbackSync';
 import type { QualityCheckOptions } from '../quality/checks';
 import type { POCTRecord, ReviewSample, SampleReviewAIResult, TargetLanguage } from '../types';
 
@@ -219,6 +225,10 @@ export const useQualityWorkflow = ({
 
   useEffect(() => {
     refreshIssueCaseCount();
+    // Confirmations are shared between computers through the Cloudflare store, when it is set up.
+    void syncQualityExceptions().then((enabled) => {
+      if (enabled) setAcceptedExceptionCount(listQualityExceptions().length);
+    });
   }, []);
 
   const resetSampleReviewState = () => {
@@ -237,6 +247,18 @@ export const useQualityWorkflow = ({
       formatLocationLabel
     });
   }, [qualityReport, currentIssueSummary.details, qualityRowsForDisplay, formatLocationLabel]);
+
+  // Confirmed-as-correct findings in the current document, one per exception and location.
+  const acceptedFindings = useMemo(() => {
+    const seen = new Set<string>();
+    return (qualityReport?.accepted || []).filter((item) => {
+      const id = `${item.exceptionKey}@${item.rowIndex}:${item.columnKey}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [qualityReport]);
+  const pendingAcceptedCount = acceptedFindings.filter((item) => item.pendingReview).length;
 
   const sampleReviewAiSummary = useMemo(
     () =>
@@ -482,9 +504,19 @@ export const useQualityWorkflow = ({
       locationLabel: finding.locationLabel
     });
     setAcceptedExceptionCount(listQualityExceptions().length);
+    void pushQualityException(entry);
     addLog(`Quality Exception: 已确认无误（${finding.locationLabel}），之后的质量检查和重译不再处理同一内容。`);
     runQualityCheck();
     return entry;
+  };
+
+  // Undo a "confirmed as correct" click: the finding is reported (and retried) again.
+  const undoQualityException = (key: string) => {
+    removeQualityException(key);
+    void deleteRemoteQualityException(key);
+    setAcceptedExceptionCount(listQualityExceptions().length);
+    addLog('Quality Exception: 已撤销一条“确认无误”，该内容会重新参与质量检查。');
+    runQualityCheck();
   };
 
   const exportAcceptedGoldenCases = () => {
@@ -789,6 +821,9 @@ export const useQualityWorkflow = ({
     clearIssueCases,
     saveQualityFindingCorrection,
     acceptQualityFinding,
+    undoQualityException,
+    acceptedFindings,
+    pendingAcceptedCount,
     exportAcceptedGoldenCases,
     generateSampleReview,
     runAiSampleReview

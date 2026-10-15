@@ -60,6 +60,13 @@ export interface QualityIssue {
   detail?: string;
 }
 
+/** A finding that was not reported because a person confirmed it as correct. */
+export interface AcceptedQualityFinding extends QualityIssue {
+  exceptionKey: string;
+  /** Confirmed but not yet reviewed into the rule golden set (待审核). */
+  pendingReview: boolean;
+}
+
 export interface QualityReport {
   totals: {
     cellsScanned: number;
@@ -91,4 +98,6 @@ export interface QualityReport {
     structureMismatches: QualityIssue[];
     nonTargetLanguage: QualityIssue[];
   };
+  /** Findings suppressed by a "confirmed as correct" click; still listed in the report and export notes. */
+  accepted?: AcceptedQualityFinding[];
 }

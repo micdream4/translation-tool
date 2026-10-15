@@ -265,6 +265,7 @@ export const buildQualityReportText = ({
     `  - Medium: ${qualityReport.totals.spacingMedium}`,
     `  - Low: ${qualityReport.totals.spacingLow}`,
     `- Structure mismatch: ${qualityReport.totals.structureMismatches} cells / ${qualityReport.totals.structureMismatchRows} rows`,
+    `- Confirmed as correct, pending review: ${(qualityReport.accepted || []).filter((item) => item.pendingReview).length}`,
     ...(describeEmbeddedVisualsForReport(embeddedVisuals)
       ? [`- ${describeEmbeddedVisualsForReport(embeddedVisuals)}`]
       : []),
@@ -279,6 +280,20 @@ export const buildQualityReportText = ({
       `   Target: ${String(item.translated || '').replace(/\s+/g, ' ').trim() || '(empty)'}`
     );
   });
+
+  // Confirmations are listed until they are reviewed into the rule golden set, so a wrong click
+  // is still visible to whoever reads the report.
+  const accepted = qualityReport.accepted || [];
+  if (accepted.length) {
+    lines.push('', 'Confirmed as correct (not reported as findings)');
+    accepted.slice(0, 200).forEach((item, index) => {
+      lines.push(
+        `${index + 1}. [${item.type}${item.pendingReview ? ' / PENDING REVIEW' : ''}] ${item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey)}`,
+        `   Source: ${String(item.original || '').replace(/\s+/g, ' ').trim() || '(empty)'}`,
+        `   Target: ${String(item.value || '').replace(/\s+/g, ' ').trim() || '(empty)'}`
+      );
+    });
+  }
 
   return lines.join('\n');
 };

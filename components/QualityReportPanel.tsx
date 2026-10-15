@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useI18n } from '../hooks/useI18n';
-import type { QualityReport, QualitySeverity } from '../quality/checks';
+import type { AcceptedQualityFinding, QualityReport, QualitySeverity } from '../quality/checks';
 import type { QualityFinding } from '../quality/report';
 import type { SampleReviewAIResult } from '../types';
 
@@ -48,6 +48,8 @@ interface QualityReportPanelProps {
   issueCaseCount: number;
   acceptedExceptionCount: number;
   acceptQualityFinding: (finding: QualityFinding) => void;
+  undoQualityException: (key: string) => void;
+  acceptedFindings: AcceptedQualityFinding[];
   exportAcceptedGoldenCases: () => void;
   qualityFindings: QualityFinding[];
   sampleReviewCount: number;
@@ -98,6 +100,8 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
   issueCaseCount,
   acceptedExceptionCount,
   acceptQualityFinding,
+  undoQualityException,
+  acceptedFindings,
   exportAcceptedGoldenCases,
   qualityFindings,
   sampleReviewCount,
@@ -465,6 +469,57 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     </div>
                   ))}
                 </div>
+              )}
+              {acceptedFindings.length > 0 && (
+                <details className={nestedPanelClass}>
+                  <summary className={`cursor-pointer text-xs font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                    {t('report.accepted.list', { count: acceptedFindings.length })}
+                  </summary>
+                  <p className={`text-[11px] mt-2 ${mutedTextClass}`}>{t('report.accepted.list.hint')}</p>
+                  <div className="mt-2 space-y-2 max-h-[240px] overflow-auto pr-1">
+                    {acceptedFindings.slice(0, 60).map((item) => (
+                      <div
+                        key={`${item.exceptionKey}@${item.rowIndex}:${item.columnKey}`}
+                        className={`${subCardClass} flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between`}
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[11px] text-slate-500">{item.locationLabel || `${item.rowIndex + 1} / ${item.columnKey}`}</p>
+                            {item.pendingReview && (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] ${isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-500/15 text-amber-300'}`}>
+                                {t('report.accepted.pending')}
+                              </span>
+                            )}
+                          </div>
+                          {item.original && item.original.trim() !== item.value.trim() && (
+                            <p className="text-[11px] text-slate-400">
+                              {t('report.finding.original', { text: item.original.replace(/\s+/g, ' ').slice(0, 120) })}
+                            </p>
+                          )}
+                          <p className="text-[11px] text-slate-500">
+                            {t('report.finding.translated', { text: item.value.replace(/\s+/g, ' ').slice(0, 120) })}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => undoQualityException(item.exceptionKey)}
+                            title={t('report.accepted.undo.hint')}
+                            className={`min-h-9 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+                          >
+                            {t('report.accepted.undo')}
+                          </button>
+                          <button
+                            onClick={() => jumpToPreviewCell(item.rowIndex, item.columnKey)}
+                            className={`min-h-9 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+                          >
+                            {t('common.jump')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
             </div>
 

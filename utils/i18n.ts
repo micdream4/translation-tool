@@ -204,6 +204,11 @@ const zh: Dictionary = {
   'report.finding.accept': '确认无误',
   'report.finding.accept.hint': '这条是误报（例如有意保留的名称或地址），之后不再报告也不再重译',
   'report.accepted.export': '导出已确认样本（{count}）',
+  'report.accepted.list': '已确认无误（{count}）',
+  'report.accepted.list.hint': '这些内容你确认过没问题，所以不再报错。审核入库前都标为“待审核”，点错了可以撤销。',
+  'report.accepted.pending': '待审核',
+  'report.accepted.undo': '撤销',
+  'report.accepted.undo.hint': '撤销确认，这条会重新参与质量检查和重译',
   'report.finding.apply': '应用修正',
   'report.finding.remember': '同时写入翻译记忆',
   'report.moreTools': '更多工具',
@@ -258,6 +263,7 @@ const zh: Dictionary = {
   'export.notTranslated': '尚无译文，请先完成翻译。',
   'qc.needTranslation': '翻译完成后即可运行质量检查。',
   'export.risk': '有 {count} 段严重问题，仍可下载，建议先重译。',
+  'export.acceptedPending': '另有 {count} 处是你确认无误、尚待审核的内容，已列在质量报告里。',
   'export.docxBlocking': '检测到 {count} 段严重问题（源语言残留或占位符），建议重译后再下载。',
 
   // embedded pictures
@@ -573,6 +579,11 @@ const en: Dictionary = {
   'report.finding.accept': 'Confirm as correct',
   'report.finding.accept.hint': 'This is a false alarm (for example a name or address kept on purpose); it will not be reported or retried again',
   'report.accepted.export': 'Export confirmed samples ({count})',
+  'report.accepted.list': 'Confirmed as correct ({count})',
+  'report.accepted.list.hint': 'You confirmed these are fine, so they are no longer reported. They stay "pending review" until reviewed into the rule set; undo a wrong click here.',
+  'report.accepted.pending': 'Pending review',
+  'report.accepted.undo': 'Undo',
+  'report.accepted.undo.hint': 'Undo the confirmation; this item is checked and retried again',
   'report.finding.apply': 'Apply correction',
   'report.finding.remember': 'Also save to translation memory',
   'report.moreTools': 'More tools',
@@ -624,6 +635,7 @@ const en: Dictionary = {
   'export.notTranslated': 'No translation yet. Translate the document first.',
   'qc.needTranslation': 'Quality check becomes available once translation is done.',
   'export.risk': '{count} critical segments remain. You can still download, but retranslating first is better.',
+  'export.acceptedPending': '{count} more items were confirmed as correct by you and are pending review; they are listed in the quality report.',
   'export.docxBlocking': '{count} critical segments found (leftover source text or placeholders). Retranslate before downloading.',
 
   // embedded pictures

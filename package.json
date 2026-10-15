@@ -1,7 +1,7 @@
 {
   "name": "copy-of-poct-medical-document-translator",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "prepare:terminology": "node scripts/generateTerminologyAssets.mjs",
@@ -14,6 +14,8 @@
     "test:agent": "node --import tsx --test scripts/agentTranslateSmoke.mjs",
     "test:rules": "node --import tsx --test scripts/ruleSystemSmoke.mjs",
     "test:rule-golden": "node --import tsx scripts/ruleGoldenEval.mjs",
+    "qa-feedback:pull": "node --import tsx scripts/qaFeedback.mjs pull",
+    "qa-feedback:mark-reviewed": "node --import tsx scripts/qaFeedback.mjs mark-reviewed",
     "rule:golden:build": "node scripts/buildRuleGolden.mjs",
     "test:issue-regression": "node scripts/issueRegressionSmoke.mjs",
     "test:real-docs": "node scripts/realDocumentSmoke.mjs",

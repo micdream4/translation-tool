@@ -9,14 +9,15 @@
 // Categories:
 //   LOCKED  codes, units, numbers, standards, URLs, e-mail, phone numbers; must stay verbatim
 //   ENTITY  protected terms (do-not-translate list, user protected terms) and legal entity names
-//   PROPER  address blocks and other proper names; may stay verbatim or be transliterated
+//   PROPER  address blocks, Latin scientific names of organisms and other proper names; may stay
+//           verbatim or be transliterated
 // Everything outside a span is PROSE.
 //
 // Policy (2026-10-14): manufacturer / EU representative address blocks may stay in the original
 // language; they may also be translated. Checks only judge the prose around them.
 
 import { getProtectedTermPatterns } from '../utils/translationTokens';
-import { CODE_WORD_REGEX, MEDICAL_CODE_LIST } from './patterns';
+import { CODE_WORD_REGEX, MEDICAL_CODE_LIST, ORGANISM_GENUS_LIST } from './patterns';
 
 export type KeptSpanCategory = 'LOCKED' | 'ENTITY' | 'PROPER';
 
@@ -48,6 +49,12 @@ const MEDICAL_CODE_SPAN_REGEX = new RegExp(
 
 const LEGAL_SUFFIX =
   '(?:Co\\.\\s?,?\\s?Ltd\\.?|Co\\.,?\\s?Limited|Co\\.|Ltd\\.?|Limited|Inc\\.?|LLC|L\\.L\\.C\\.|GmbH(?:\\s?&\\s?Co\\.\\s?KG)?|AG|KG|S\\.L\\.U?\\.?|S\\.A\\.U?\\.?|S\\.A\\.S\\.?|SAS|SARL|S\\.r\\.l\\.|Srl|S\\.p\\.A\\.|SpA|B\\.V\\.|N\\.V\\.|Sp\\.\\s?z\\s?o\\.\\s?o\\.|Pty\\.?\\s?Ltd\\.?|A\\.Ş\\.|Ltd\\.\\s?Şti\\.|Corporation|Corp\\.|Company|Group)';
+// Latin scientific names: a known genus with an optional species epithet ("Bordetella bronchiseptica",
+// "Staphylococcus spp."), or an abbreviated genus with a Latin-looking epithet ("E. coli", "S. aureus").
+const SCIENTIFIC_NAME_SPAN_REGEX = new RegExp(
+  `\\b(?:(?:${ORGANISM_GENUS_LIST})(?:\\s+(?:spp?\\.|[a-z]{3,}))?|[A-Z]\\.\\s?[a-z]{2,}(?:i|ii|ae|us|a|is|um|es|ensis|ica)\\b)`,
+  'g'
+);
 const LATIN_COMPANY_SPAN_REGEX = new RegExp(
   `(?<![A-Za-z])(?:[A-Z][A-Za-z0-9&'’\\-]*\\.?\\s+){1,8}${LEGAL_SUFFIX}(?![A-Za-z])`,
   'g'
@@ -169,6 +176,7 @@ export const annotateKeptSpans = (text: string): KeptSpan[] => {
     ...collectRegexSpans(value, NUMERIC_UNIT_SPAN_REGEX, 'LOCKED', 'numeric-unit'),
     ...collectRegexSpans(value, MEDICAL_CODE_SPAN_REGEX, 'LOCKED', 'medical-code'),
     ...collectRegexSpans(value, new RegExp(CODE_WORD_REGEX.source, 'g'), 'LOCKED', 'code-word'),
+    ...collectRegexSpans(value, SCIENTIFIC_NAME_SPAN_REGEX, 'PROPER', 'scientific-name'),
     ...collectRegexSpans(value, LATIN_COMPANY_SPAN_REGEX, 'ENTITY', 'legal-entity').filter(isPlausibleLegalEntity),
     ...collectRegexSpans(value, CJK_COMPANY_SPAN_REGEX, 'ENTITY', 'legal-entity').filter(isPlausibleCjkEntity),
     ...findAddressSpans(value)

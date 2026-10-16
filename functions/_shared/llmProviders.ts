@@ -52,6 +52,17 @@ export const raceWithTimeout = async <T>(
   }
 };
 
+/**
+ * Reasoning models (Gemini 3.x, GPT-6) think before answering and the thinking counts against
+ * max_tokens, so a translation batch can be cut off mid-JSON. CLOUDFLARE_AI_REASONING_EFFORT
+ * (e.g. "low") is passed as reasoning_effort to Google and OpenAI models; unset keeps the
+ * provider default.
+ */
+export const getCloudflareAiReasoningEffort = (env: FunctionEnv) =>
+  String(env.CLOUDFLARE_AI_REASONING_EFFORT || "").trim().toLowerCase() || undefined;
+
+const usesReasoningEffort = (model: string) => /^(google|openai)\//i.test(String(model || ""));
+
 export const getDeepSeekKey = (env: FunctionEnv) =>
   String(env.DEEPSEEK_API_KEY || env.Deepseek_API_KEY || "").trim();
 
@@ -83,7 +94,7 @@ export const parseRoutedModel = (rawModel: string): RoutedModel => {
   if (raw.startsWith("deepseek:")) {
     return { raw, engine: "deepseek", model: raw.slice("deepseek:".length) };
   }
-  if (/^deepseek-v/i.test(raw)) {
+  if (/^deepseek-/i.test(raw)) {
     return { raw, engine: "deepseek", model: raw };
   }
   return { raw, engine: "cloudflare-ai", model: raw };
@@ -131,13 +142,15 @@ const buildCloudflareAiInput = ({
   system,
   user,
   maxTokens,
-  json
+  json,
+  reasoningEffort
 }: {
   model: string;
   system: string;
   user: string;
   maxTokens: number;
   json: boolean;
+  reasoningEffort?: string;
 }) => {
   const anthropic = isAnthropicCloudflareModel(model);
   const input: Record<string, unknown> = {
@@ -163,6 +176,10 @@ const buildCloudflareAiInput = ({
     input.temperature = 0;
   }
 
+  if (reasoningEffort && usesReasoningEffort(model)) {
+    input.reasoning_effort = reasoningEffort;
+  }
+
   if (json && !isThirdPartyCloudflareModel(model)) {
     input.response_format = { type: "json_object" };
   }
@@ -178,7 +195,8 @@ export const callCloudflareAiChat = async ({
   user,
   maxTokens = 8192,
   json = true,
-  timeoutMs = DEFAULT_CLOUDFLARE_AI_TIMEOUT_MS
+  timeoutMs = DEFAULT_CLOUDFLARE_AI_TIMEOUT_MS,
+  reasoningEffort
 }: {
   ai: CloudflareAiBinding;
   gatewayId: string;
@@ -188,10 +206,11 @@ export const callCloudflareAiChat = async ({
   maxTokens?: number;
   json?: boolean;
   timeoutMs?: number;
+  reasoningEffort?: string;
 }) => {
   const result = await raceWithTimeout(
     (signal) =>
-      ai.run(model, buildCloudflareAiInput({ model, system, user, maxTokens, json }), {
+      ai.run(model, buildCloudflareAiInput({ model, system, user, maxTokens, json, reasoningEffort }), {
         gateway: { id: gatewayId },
         signal
       }),
@@ -200,11 +219,16 @@ export const callCloudflareAiChat = async ({
   );
   const text = extractChatText(result);
   if (!text) {
-    const finishReason = (result as any)?.candidates?.[0]?.finishReason;
+    const raw = result as any;
+    const finishReason =
+      raw?.candidates?.[0]?.finishReason ??
+      raw?.choices?.[0]?.finish_reason ??
+      raw?.stop_reason ??
+      raw?.result?.stop_reason;
+    // The shape is logged so a provider-specific response format can be recognised later.
+    const shape = raw && typeof raw === "object" ? Object.keys(raw).slice(0, 8).join(",") : typeof raw;
     throw new Error(
-      finishReason
-        ? `Cloudflare AI returned empty content (${finishReason}).`
-        : "Cloudflare AI returned empty content."
+      `Cloudflare AI returned empty content${finishReason ? ` (${finishReason})` : ""} [keys: ${shape}].`
     );
   }
   return text;
@@ -298,7 +322,9 @@ export const callRoutedChat = async ({
         system,
         user,
         maxTokens,
-        json
+        json,
+        timeoutMs: getCloudflareAiTimeoutMs(env),
+        reasoningEffort: getCloudflareAiReasoningEffort(env)
       })
     };
   }

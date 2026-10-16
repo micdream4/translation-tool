@@ -54,8 +54,12 @@ const NUMERIC_UNIT_TEXT_REGEX = /^[\s\d.,×xX^+\-~–—/()％%μµA-Za-z]+$/;
 const LATIN_UNIT_TOKEN_REGEX = /[A-Za-zμµ]+/g;
 const LOCKED_KEY_REGEX = SHARED_LOCKED_KEY_REGEX;
 const ID_TOKEN_REGEX = /^(id|uuid)$/i;
+// Only words whose simplified form differs from the traditional one belong here. Words written the
+// same in both scripts (提示, 完成, 血小板, 中性粒) would flag correct Traditional Chinese.
+// The single-character class holds simplified-only characters (each has a different traditional form).
+// 信息/文件/硬件/打印/屏幕/窗口 are also script-identical but stay: Taiwan uses 資訊/檔案/硬體/列印/螢幕/視窗.
 const TAIWAN_SIMPLIFIED_RESIDUE_REGEX =
-  /(质量|信息|启用|打印|样本|软件|硬件|默认|设置|数据|检测|检验结果|参数|菜单|窗口|上传|下载|文件|记录|审核|审查|运行|导出|导入|步骤|说明书|说明|错误|异常|提示|当前|完成|开始|暂停|恢复|细胞|白细胞|红细胞|血小板|中性粒|淋巴细胞|血红蛋白|计数|数量|浓度|范围|单位|用户|设备|仪器|厂商|条码|键盘|屏幕|连接|网络|服务器|数据库|登录|注册|密码|权限|质量控制|参考范围|临床|医疗)|[检测数质样设说译语误认读诊请项页风馆马验鱼鸟龙]/;
+  /(质量|信息|启用|打印|样本|软件|硬件|默认|设置|数据|检测|检验结果|参数|菜单|窗口|上传|下载|文件|记录|审核|审查|运行|导出|导入|步骤|说明书|说明|错误|异常|当前|开始|暂停|恢复|细胞|白细胞|红细胞|淋巴细胞|血红蛋白|计数|数量|浓度|范围|单位|用户|设备|仪器|厂商|条码|键盘|屏幕|连接|网络|服务器|数据库|登录|注册|密码|权限|质量控制|参考范围|临床|医疗)|[检测数质样设说译语误认读诊请项页风馆马验鱼鸟龙细应发热见败脓组织损伤严显预导维迟状临断释识记忆标减轻缓颗总疗药剂肿肾胆脏脑钙钾钠铁级统规则结论类为与时这个们对问题将从过还进动现实经际产务长开关门]/;
 
 const LANGUAGE_HINTS: Record<Exclude<LangCode, "zh" | "ru" | "unknown">, string[]> = {
   en: [

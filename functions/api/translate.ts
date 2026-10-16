@@ -17,6 +17,7 @@ import {
   extractChatText,
   getCloudflareAiBinding,
   getCloudflareAiGatewayId,
+  getCloudflareAiReasoningEffort,
   getCloudflareAiTimeoutMs,
   getDeepSeekKey
 } from "../_shared/llmProviders";
@@ -279,7 +280,8 @@ export const onRequestPost = async (context: any) => {
               user: prompt,
               maxTokens: maxOutputTokens,
               json: true,
-              timeoutMs: Math.min(getCloudflareAiTimeoutMs(env), remainingMs())
+              timeoutMs: Math.min(getCloudflareAiTimeoutMs(env), remainingMs()),
+              reasoningEffort: getCloudflareAiReasoningEffort(env)
             })
           );
           const parsed = parseModelJsonArray(text);

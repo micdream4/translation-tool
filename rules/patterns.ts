@@ -20,3 +20,8 @@ export const CODE_WORD_REGEX =
 /** Distinct code words in `text`, in order of first appearance. */
 export const extractCodeWords = (text: string) =>
   Array.from(new Set(String(text || '').match(CODE_WORD_REGEX) || []));
+
+// Genera of organisms that veterinary and human POCT texts name (bacteria, fungi, parasites).
+// Their Latin scientific names stay in Latin in every target language.
+export const ORGANISM_GENUS_LIST =
+  'Acinetobacter|Actinomyces|Aelurostrongylus|Anaplasma|Ancylostoma|Angiostrongylus|Aspergillus|Babesia|Bacillus|Bacteroides|Bartonella|Blastomyces|Bordetella|Borrelia|Brucella|Campylobacter|Candida|Chlamydia|Chlamydophila|Clostridium|Clostridioides|Coccidioides|Corynebacterium|Coxiella|Cryptococcus|Cryptosporidium|Ctenocephalides|Cystoisospora|Cytauxzoon|Demodex|Dipylidium|Dirofilaria|Echinococcus|Ehrlichia|Enterobacter|Enterococcus|Escherichia|Francisella|Fusobacterium|Giardia|Haemophilus|Helicobacter|Hepatozoon|Histoplasma|Isospora|Klebsiella|Legionella|Leishmania|Leptospira|Listeria|Malassezia|Microsporum|Mycobacterium|Mycoplasma|Neisseria|Neospora|Nocardia|Otodectes|Pasteurella|Plasmodium|Porphyromonas|Prevotella|Proteus|Pseudomonas|Rickettsia|Salmonella|Sarcoptes|Serratia|Shigella|Staphylococcus|Streptococcus|Taenia|Toxocara|Toxoplasma|Treponema|Trichomonas|Trichophyton|Trichuris|Tritrichomonas|Trypanosoma|Vibrio|Yersinia';

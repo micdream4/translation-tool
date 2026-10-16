@@ -2905,6 +2905,50 @@ test("Cloudflare AI provider calls use provider-compatible schemas", async () =>
   assert.equal(calls[2].input.response_format, undefined);
 });
 
+test("Cloudflare AI reasoning effort reaches Google and OpenAI models only", async () => {
+  const { callCloudflareAiChat, getCloudflareAiReasoningEffort, parseRoutedModel } = await bundleTsModule(
+    path.join(repoRoot, "functions/_shared/llmProviders.ts")
+  );
+  const calls = [];
+  const ai = {
+    run: async (model, input) => {
+      calls.push({ model, input });
+      return { choices: [{ message: { content: '{"records":[]}' } }] };
+    }
+  };
+  const base = { ai, gatewayId: "default", system: "Return JSON only.", user: "Translate.", maxTokens: 1024, json: true };
+  await callCloudflareAiChat({ ...base, model: "google/gemini-3.6-flash", reasoningEffort: "low" });
+  await callCloudflareAiChat({ ...base, model: "openai/gpt-6-luna", reasoningEffort: "low" });
+  await callCloudflareAiChat({ ...base, model: "anthropic/claude-haiku-5.5", reasoningEffort: "low" });
+  await callCloudflareAiChat({ ...base, model: "google/gemini-3-flash", reasoningEffort: undefined });
+
+  assert.deepEqual(
+    calls.map((call) => call.input.reasoning_effort),
+    ["low", "low", undefined, undefined]
+  );
+  assert.equal(getCloudflareAiReasoningEffort({ CLOUDFLARE_AI_REASONING_EFFORT: " Low " }), "low");
+  assert.equal(getCloudflareAiReasoningEffort({}), undefined);
+  assert.equal(parseRoutedModel("deepseek-flash").engine, "deepseek");
+  assert.equal(parseRoutedModel("deepseek-v4-pro").engine, "deepseek");
+});
+
+test("Cloudflare AI empty content error names the stop reason and response shape", async () => {
+  const { callCloudflareAiChat } = await bundleTsModule(path.join(repoRoot, "functions/_shared/llmProviders.ts"));
+  const ai = { run: async () => ({ content: [], stop_reason: "max_tokens", usage: {} }) };
+  await assert.rejects(
+    callCloudflareAiChat({
+      ai,
+      gatewayId: "default",
+      model: "anthropic/claude-haiku-5.5",
+      system: "Return JSON only.",
+      user: "Translate.",
+      maxTokens: 1024,
+      json: true
+    }),
+    /empty content \(max_tokens\) \[keys: content,stop_reason,usage\]/
+  );
+});
+
 test("API translate reports every failed model when no engine can serve the request", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const calls = [];

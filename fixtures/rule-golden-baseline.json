@@ -1,7 +1,7 @@
 {
   "totals": {
-    "cases": 652,
-    "ok": 651,
+    "cases": 664,
+    "ok": 663,
     "falsePositive": 0,
     "falseNegative": 0,
     "unscored": 1
@@ -658,6 +658,18 @@
     "real-ru-display-mode": "ok",
     "real-ru-dc-interface": "ok",
     "real-ru-address-kept": "ok",
-    "real-es-warranty": "ok"
+    "real-es-warranty": "ok",
+    "real-zhtw-clinical-hint": "ok",
+    "real-zhtw-acute-inflammation": "ok",
+    "real-zhtw-segmented-chronic": "ok",
+    "real-zhtw-platelet-window": "ok",
+    "real-zhtw-neutrophil-ratio": "ok",
+    "real-zhtw-untranslated-wbc": "ok",
+    "real-zhtw-untranslated-left-shift": "ok",
+    "real-ru-bordetella": "ok",
+    "real-ru-ecoli-abbrev": "ok",
+    "real-fr-staph-aureus": "ok",
+    "real-ru-english-word-not-species": "ok",
+    "real-ru-capitalized-english-pair": "ok"
   }
 }

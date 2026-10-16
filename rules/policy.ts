@@ -37,6 +37,12 @@ export const RETENTION_POLICY: RetentionRule[] = [
     review: 'Fixed regulatory expressions and symbol texts such as "Rx only", "EC REP", "IVD", "REF", "LOT", "CE".'
   },
   {
+    id: 'scientific-name',
+    translate:
+      'Keep Latin scientific names of organisms in Latin, as medical texts do in every language (e.g. "Bordetella bronchiseptica", "Staphylococcus aureus", "E. coli"); translate the words around them.',
+    review: 'Latin scientific names of organisms (e.g. "Bordetella bronchiseptica", "E. coli") kept in Latin.'
+  },
+  {
     id: 'prose',
     translate:
       'Everything else (sentences, headings, table text, labels, UI text, and the descriptive words around kept items, e.g. "Manufacturer:", "Address:") must be fully translated.',

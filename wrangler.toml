@@ -1,5 +1,4 @@
 name = "translation-tool"
-account_id = "73457896feb6b91191150dac4c5f5897"
 compatibility_date = "2026-02-26"
 pages_build_output_dir = "dist"
 compatibility_flags = ["nodejs_compat"]

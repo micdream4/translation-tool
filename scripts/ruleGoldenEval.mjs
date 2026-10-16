@@ -9,10 +9,15 @@ import { runQualityChecksOnUnits } from "../quality/checks.ts";
 import { detectUntranslatedCells } from "../utils/language.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const caseFiles = [
-  path.join(repoRoot, "fixtures/rule-golden.jsonl"),
-  path.join(repoRoot, "fixtures/rule-golden-captured.jsonl")
-];
+const caseFileArgs = process.argv.flatMap((arg, index, args) =>
+  arg === "--case-file" && args[index + 1] ? [path.resolve(args[index + 1])] : []
+);
+const caseFiles = caseFileArgs.length
+  ? caseFileArgs
+  : [
+      path.join(repoRoot, "fixtures/rule-golden.jsonl"),
+      path.join(repoRoot, "fixtures/rule-golden-captured.jsonl")
+    ];
 const baselinePath = path.join(repoRoot, "fixtures/rule-golden-baseline.json");
 const updateBaseline = process.argv.includes("--update-baseline");
 const verbose = process.argv.includes("--verbose");
@@ -108,7 +113,13 @@ if (!fs.existsSync(baselinePath)) {
 const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
 const regressions = Object.entries(results).filter(([id, verdict]) => baseline.results[id] === "ok" && verdict !== "ok" && verdict !== "unscored");
 const improvements = Object.entries(results).filter(([id, verdict]) => baseline.results[id] && baseline.results[id] !== "ok" && verdict === "ok");
+const currentFailures = Object.entries(results).filter(([, verdict]) => verdict === "falsePositive" || verdict === "falseNegative");
 if (improvements.length) console.log(`Improved vs baseline: ${improvements.length} (run --update-baseline to lock in)`);
+if (currentFailures.length) {
+  console.error(`CURRENT GOLDEN FAILURES: ${currentFailures.length}`);
+  currentFailures.forEach(([id, verdict]) => console.error(`  ${id}: ${verdict}`));
+  process.exit(1);
+}
 if (regressions.length) {
   console.error(`REGRESSIONS vs baseline: ${regressions.length}`);
   regressions.forEach(([id, verdict]) => console.error(`  ${id}: ok -> ${verdict}`));

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +13,10 @@ import * as XLSX from "xlsx";
 import JSZip from "jszip";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
+
+// SheetJS 0.20+ does not automatically bind Node's filesystem in its ESM build.
+// Browser exports still use the download path; Node regression exports opt in here.
+XLSX.set_fs(fs);
 
 const collectExecutableCandidates = (command) => {
   const pathCandidates = String(process.env.PATH || "")
@@ -3500,4 +3504,47 @@ test("audit fixes: quality check and download need a translation, review lab and
   const preview = fs.readFileSync(path.join(repoRoot, "components/translator/PreviewPanel.tsx"), "utf8");
   assert.match(preview, /PREVIEW_PAGE_SIZE/);
   assert.match(fs.readFileSync(path.join(repoRoot, "index.html"), "utf8"), /<html lang="zh-CN">/);
+});
+
+test("rule golden gate rejects a newly added failing case before it enters the baseline", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "poct-rule-gate-"));
+  const casePath = path.join(tmpDir, "new-case.jsonl");
+  fs.writeFileSync(
+    casePath,
+    `${JSON.stringify({
+      schema: "poct.rule_golden_case.v1",
+      id: "new-unbaselined-false-positive",
+      targetLang: "English",
+      category: "prose_translated",
+      sourceText: "按下电源键启动分析仪。",
+      translatedText: "按下电源键启动分析仪。",
+      expect: "pass",
+      origin: "regression-test"
+    })}\n`
+  );
+  try {
+    const result = spawnSync(
+      process.execPath,
+      ["--import", "tsx", path.join(repoRoot, "scripts/ruleGoldenEval.mjs"), "--case-file", casePath],
+      { cwd: repoRoot, encoding: "utf8" }
+    );
+    assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(`${result.stdout}\n${result.stderr}`, /CURRENT GOLDEN FAILURES/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("Excel import returns the run monitor to idle and the page declares a favicon", () => {
+  const documentIo = fs.readFileSync(path.join(repoRoot, "hooks/translation/useDocumentIO.ts"), "utf8");
+  const excelBranch = documentIo.slice(documentIo.indexOf("setDocumentKind('excel')"));
+  assert.match(excelBranch, /setProcessingState\(\{\s*status: 'idle'/);
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  assert.match(html, /<link\s+rel="icon"/);
+});
+
+test("production config binds shared QA feedback to Cloudflare KV", () => {
+  const wrangler = fs.readFileSync(path.join(repoRoot, "wrangler.toml"), "utf8");
+  assert.match(wrangler, /\[\[kv_namespaces\]\][\s\S]*binding = "QA_FEEDBACK"/);
+  assert.match(wrangler, /binding = "QA_FEEDBACK"[\s\S]*id = "[0-9a-f]{32}"/);
 });

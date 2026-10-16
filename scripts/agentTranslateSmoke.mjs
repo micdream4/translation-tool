@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fsSync from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +9,8 @@ import * as XLSX from "xlsx";
 import "../agent/nodeRuntime.ts";
 import { parseDocxFile } from "../utils/docx.ts";
 import { runAgentTranslationTask } from "../agent/taskRunner.ts";
+
+XLSX.set_fs(fsSync);
 
 const translateText = (value) =>
   String(value)

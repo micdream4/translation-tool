@@ -276,7 +276,7 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
       setMissingRowIndices([]);
       setWriteFailedRowIndices([]);
       setProcessingState({
-        status: 'analyzing',
+        status: 'idle',
         progress: 0,
         total: records.length,
         currentBatch: 0

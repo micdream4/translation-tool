@@ -2,13 +2,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import * as esbuild from "esbuild";
 import JSZip from "jszip";
+import * as XLSX from "xlsx";
 
-const require = createRequire(import.meta.url);
-const XLSX = require("xlsx");
+XLSX.set_fs(fs);
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const manifestPath = path.join(repoRoot, "fixtures/real-document-regression.json");

@@ -838,7 +838,10 @@ const drawEmbeddedPdfText = (
   const lineHeight = measured.lineHeight;
   const maxLines = Math.max(1, Math.floor((maxHeight - verticalPadding * 2) / lineHeight));
   const visibleLines = lines.slice(0, maxLines);
-  if (!visibleLines.length) return false;
+  // Lines that do not fit the source text box even at the smallest font size are cut off; the
+  // caller reports them so the export warning and the quality report can list the segment.
+  const hiddenLines = Math.max(0, lines.length - visibleLines.length);
+  if (!visibleLines.length) return { drawn: false, hiddenLines };
 
   page.drawRectangle({
     x,
@@ -859,13 +862,22 @@ const drawEmbeddedPdfText = (
       lineHeight
     });
   });
-  return true;
+  return { drawn: true, hiddenLines };
 };
 
-export async function exportPdfTranslationAsPdf(
-  context: PdfContext,
-  filename: string
-) {
+export interface PdfOverflowSegment {
+  segmentIndex: number;
+  pageNumber: number;
+  hiddenLines: number;
+  text: string;
+}
+
+export const formatPdfOverflowLocation = (item: PdfOverflowSegment) =>
+  `PDF page ${item.pageNumber}, segment ${item.segmentIndex + 1}`;
+
+export async function buildPdfTranslationBytes(context: PdfContext) {
+  const overflow: PdfOverflowSegment[] = [];
+  const segmentIndexById = new Map(context.segments.map((segment, index) => [segment.id, index]));
   const output = await PDFDocument.create();
   output.registerFontkit(fontkit);
   const latinFont = await output.embedFont(StandardFonts.Helvetica);
@@ -914,7 +926,7 @@ export async function exportPdfTranslationAsPdf(
       const height = Math.min(pageHeight - segment.y, maxHeight);
       const backgroundColor = segment.backgroundColor || [255, 255, 255];
       const font = standardText ? latinFont : await getMultilingualFont();
-      drawEmbeddedPdfText(
+      const { hiddenLines } = drawEmbeddedPdfText(
         page,
         textToDraw,
         x,
@@ -926,10 +938,26 @@ export async function exportPdfTranslationAsPdf(
         pageHeight,
         backgroundColor
       );
+      if (hiddenLines > 0) {
+        overflow.push({
+          segmentIndex: segmentIndexById.get(segment.id) ?? -1,
+          pageNumber: segment.pageNumber,
+          hiddenLines,
+          text
+        });
+      }
     }
   }
 
-  const bytes = await output.save();
+  return { bytes: await output.save(), overflow };
+}
+
+/** Downloads the PDF and returns the segments whose text was cut off to fit the source box. */
+export async function exportPdfTranslationAsPdf(
+  context: PdfContext,
+  filename: string
+) {
+  const { bytes, overflow } = await buildPdfTranslationBytes(context);
   const blob = new Blob([bytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -939,4 +967,5 @@ export async function exportPdfTranslationAsPdf(
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  return { overflow };
 }

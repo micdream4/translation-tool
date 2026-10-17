@@ -4010,3 +4010,142 @@ test("production config binds shared QA feedback to Cloudflare KV", () => {
   assert.match(wrangler, /\[\[kv_namespaces\]\][\s\S]*binding = "QA_FEEDBACK"/);
   assert.match(wrangler, /binding = "QA_FEEDBACK"[\s\S]*id = "[0-9a-f]{32}"/);
 });
+
+test("PDF export reports text cut off to fit its box, and the quality report lists it", async () => {
+  const pdf = await bundleTsModule(path.join(repoRoot, "utils/pdf.ts"));
+  const { withLayoutOverflow, buildQualityFindings } = await bundleTsModule(path.join(repoRoot, "utils/qualityReport.ts"));
+  const longText = Array.from({ length: 40 }, () => "Insert the test card into the analyzer slot.").join(" ");
+  const segment = (id, translated, height) => ({
+    id, pageNumber: 1, original: "原文", translated, x: 20, y: 20, width: 120, height, fontSize: 10
+  });
+  const segments = [segment("fits", "OK", 14), segment("long", longText, 14)];
+  const context = {
+    fileName: "a.pdf", sourceData: new Uint8Array(), pageCount: 1, images: [], coverageWarnings: [], segments,
+    pages: [{ pageNumber: 1, width: 300, height: 300, segments, imageCount: 0, images: [] }]
+  };
+  const { bytes, overflow } = await pdf.buildPdfTranslationBytes(context);
+  assert.ok(bytes.length > 0);
+  assert.equal(overflow.length, 1);
+  assert.equal(overflow[0].segmentIndex, 1);
+  assert.ok(overflow[0].hiddenLines > 0);
+  assert.equal(pdf.formatPdfOverflowLocation(overflow[0]), "PDF page 1, segment 2");
+
+  const empty = { chinese: [], placeholders: [], idMismatch: [], spacing: [], emptyTranslations: [], structureMismatches: [], nonTargetLanguage: [] };
+  const report = withLayoutOverflow({ totals: {}, issues: empty }, overflow.map((item) => ({ ...item, locationLabel: "PDF page 1, segment 2" })));
+  const findings = buildQualityFindings({
+    qualityReport: report, nonTargetDetails: [], qualityRows: { sourceRows: [], targetRows: [] }, formatLocationLabel: () => ""
+  });
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].category, "layoutOverflow");
+  const io = fs.readFileSync(path.join(repoRoot, "hooks/translation/useDocumentIO.ts"), "utf8");
+  assert.match(io, /withLayoutOverflow\(/);
+  assert.match(io, /PDF export warning: \$\{overflowItems\.length\}/);
+});
+
+test("empty translations are reported for DOCX and PDF, including short PDF text", async () => {
+  const { runQualityChecksOnUnits } = await bundleTsModule(path.join(repoRoot, "quality/checks.ts"));
+  const { segmentsToQualityUnits } = await bundleTsModule(path.join(repoRoot, "quality/adapters.ts"));
+  const segments = [{ id: "a", original: "确定", translated: "" }, { id: "b", original: "取消", translated: "Cancel" }];
+  const report = runQualityChecksOnUnits(segmentsToQualityUnits(segments, "pdf", (s) => s.translated), { targetLang: "English" });
+  assert.deepEqual(report.issues.emptyTranslations.map((issue) => issue.rowIndex), [0]);
+  const app = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  // The issue list takes empty translations from the shared report (DOCX and PDF alike) ...
+  assert.match(app, /report\.issues\.emptyTranslations\.forEach/);
+  // ... and PDF checks read the raw translation, not the getter that falls back to the source.
+  assert.doesNotMatch(app, /getPdfSegmentText\(/);
+  assert.match(app, /getText: \(segment\) => segment\.translated/);
+  for (const file of ["hooks/translation/useDocxTranslation.ts", "workflows/pdfTranslationWorkflow.ts"]) {
+    const source = fs.readFileSync(path.join(repoRoot, file), "utf8");
+    assert.doesNotMatch(source, /typeof translatedRecord\.content === ['"]string['"]\s*\?\s*translatedRecord\.content\s*:\s*rawText/);
+  }
+});
+
+test("translation memory only keeps output that passes the shared quality checks", async () => {
+  const { isTrustedMemoryPair } = await bundleTsModule(path.join(repoRoot, "quality/memoryGate.ts"));
+  assert.equal(isTrustedMemoryPair("白细胞计数升高", "White blood cell count elevated", "English"), true);
+  assert.equal(isTrustedMemoryPair("SpO2 测量", "SpO2 measurement", "English"), true);
+  assert.equal(isTrustedMemoryPair("白细胞计数升高", "__ID_0 count elevated", "English"), false);
+  assert.equal(isTrustedMemoryPair("白细胞计数升高", "White blood cell __ID_0", "English"), false);
+  assert.equal(isTrustedMemoryPair("白细胞计数升高", "白细胞计数升高", "English"), false);
+  assert.equal(isTrustedMemoryPair("白细胞计数升高", "", "English"), false);
+  const sentence = "Insert the test card into the analyzer slot.";
+  assert.equal(isTrustedMemoryPair(sentence, sentence, "French"), false);
+  assert.equal(isTrustedMemoryPair(sentence, "Insérez la carte de test dans la fente de l’analyseur.", "French"), true);
+  const app = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  const remember = app.slice(app.indexOf("const rememberTranslationPairs"), app.indexOf("const logTranslationMemoryStats"));
+  // The session cache is written only after the gate.
+  assert.ok(remember.indexOf("isUsableMemoryPair(") < remember.indexOf("translationMemorySessionRef.current.set"));
+  assert.match(app, /isTrustedMemoryPair\(sourceText, trimmed, lang\)/);
+});
+
+test("DOCX numbering for non-Chinese targets drops CJK wording and full-width brackets", async () => {
+  const { normalizeCjkNumberingText } = await bundleTsModule(path.join(repoRoot, "utils/docx.ts"));
+  assert.equal(normalizeCjkNumberingText("第%1章"), "%1.");
+  assert.equal(normalizeCjkNumberingText("第%1条："), "%1:");
+  assert.equal(normalizeCjkNumberingText("（%1）"), "(%1)");
+  assert.equal(normalizeCjkNumberingText("【%1】"), "[%1]");
+  assert.equal(normalizeCjkNumberingText("%1、"), "%1.");
+  assert.equal(normalizeCjkNumberingText("一、"), "1.");
+  assert.equal(normalizeCjkNumberingText("(%1)"), "(%1)");
+});
+
+test("DOCX/PDF translate and retry refresh the quality report, not only the issue list", () => {
+  for (const file of ["hooks/translation/useDocxTranslation.ts", "hooks/translation/usePdfTranslation.ts"]) {
+    const source = fs.readFileSync(path.join(repoRoot, file), "utf8");
+    assert.match(source, /const \{ pending, details, qualityReport \} = build(Docx|Pdf)IssueDetails\(context\);[\s\S]{0,300}setQualityReport\(qualityReport\)/);
+  }
+});
+
+test("PDF run: failed batches are not 100%, missing replies stay empty, Resume sends only pending segments", async () => {
+  const { runPdfTranslationWorkflow } = await bundleTsModule(path.join(repoRoot, "workflows/pdfTranslationWorkflow.ts"));
+  const segments = ["甲", "乙", "丙", "丁"].map((original, index) => ({
+    id: `s${index}`, pageNumber: 1, original, translated: "", x: 0, y: 0, width: 10, height: 10, fontSize: 10
+  }));
+  const context = { pageCount: 1, segments, pages: [] };
+  const sent = [];
+  let call = 0;
+  const translationHub = {
+    getLastEngine: () => "mock",
+    translateBatch: async ({ records }) => {
+      call += 1;
+      sent.push(records.map((record) => record.content));
+      if (call === 2) throw new Error("batch failed");
+      // First batch: the model skips its second row.
+      return records.map((record, index) => (call === 1 && index === 1 ? {} : { content: `EN-${record.content}` }));
+    }
+  };
+  const states = [];
+  let status = "";
+  const run = (mode) =>
+    runPdfTranslationWorkflow({
+      context, mode, batchSize: 2, batchCharLimit: 1000, targetLang: "English", documentKind: "pdf",
+      translationHub, placeholderStore: new Map(), pauseRequestedRef: { current: false }, addLog: () => {},
+      shouldTranslateText: () => true, // Full mode: every segment qualifies
+      dedupeLeadingRepeat: (_source, translated) => translated,
+      getTranslationOptions: () => ({}),
+      createTranslationMemoryStats: () => ({ hits: 0, deduped: 0, stored: 0 }),
+      lookupReusableTranslations: async () => new Map(),
+      getTranslationMemoryKey: (text) => text,
+      rememberTranslationPairs: async () => {},
+      logTranslationMemoryStats: () => {},
+      runStage: async (_key, task) => task(),
+      setPdfStats: () => {},
+      setTranslationStatus: (value) => { status = value; },
+      setProcessingState: (update) => states.push(typeof update === "function" ? update(states.at(-1) || {}) : update)
+    });
+  await run("fresh");
+  assert.equal(segments[0].translated, "EN-甲");
+  assert.equal(segments[1].translated, "", "a missing reply is not filled with the source");
+  assert.equal(segments[2].translated, "");
+  assert.equal(status, "paused");
+  assert.ok(states.at(-1).progress < 100);
+  call = 10;
+  sent.length = 0;
+  await run("resume");
+  assert.deepEqual(sent.flat().sort(), ["丁", "丙", "乙"].sort(), "Resume re-sends only untranslated segments");
+  assert.equal(status, "completed");
+  assert.equal(states.at(-1).progress, 100);
+  const docx = fs.readFileSync(path.join(repoRoot, "hooks/translation/useDocxTranslation.ts"), "utf8");
+  assert.match(docx, /mode === 'resume'\s*\?\s*isPendingSegment\(segment\.original, getDocxSegmentText\(segment\)\)/);
+  assert.match(docx, /failedSegments \+= chunk\.length/);
+});

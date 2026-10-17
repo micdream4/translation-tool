@@ -57,7 +57,6 @@ import {
   type ModelReviewResult
 } from './utils/modelReview';
 import type { PdfContext, PdfSegment } from './utils/pdf';
-import { getPdfSegmentText } from './utils/pdfSegments';
 import { fixSpacingArtifacts,polishTranslation } from './utils/postprocess';
 import {
   PLACEHOLDER_REGEX,
@@ -109,6 +108,7 @@ import type {
   ThemeMode,
   TranslationMemoryStats
 } from './utils/translatorShared';
+import { isTrustedMemoryPair } from './quality/memoryGate';
 import {
   ALL_STRING_TARGETS,
   APP_VERSION,
@@ -368,9 +368,10 @@ const App: React.FC = () => {
   const getTranslationMemoryKey = (sourceText: string, lang: TargetLanguage = targetLang) =>
     buildTranslationMemoryKey(sourceText, lang);
 
-  const isUsableMemoryTarget = (targetText: string, lang: TargetLanguage = targetLang) => {
+  // Session cache and saved memory share one gate (quality/memoryGate), checked before either is written.
+  const isUsableMemoryPair = (sourceText: string, targetText: string, lang: TargetLanguage = targetLang) => {
     const trimmed = String(targetText || '').trim();
-    return Boolean(trimmed) && !valueNeedsTranslation(trimmed, lang);
+    return Boolean(trimmed) && !valueNeedsTranslation(trimmed, lang) && isTrustedMemoryPair(sourceText, trimmed, lang);
   };
 
   const lookupReusableTranslations = async (
@@ -386,7 +387,7 @@ const App: React.FC = () => {
       if (!normalized) return;
       const key = getTranslationMemoryKey(sourceText, lang);
       const sessionValue = translationMemorySessionRef.current.get(key);
-      if (sessionValue && isUsableMemoryTarget(sessionValue, lang)) {
+      if (sessionValue && isUsableMemoryPair(sourceText, sessionValue, lang)) {
         output.set(key, sessionValue);
         return;
       }
@@ -401,7 +402,7 @@ const App: React.FC = () => {
         }))
       );
       entries.forEach((entry, key) => {
-        if (!isUsableMemoryTarget(entry.targetText, lang)) return;
+        if (!isUsableMemoryPair(lookupItems.get(key) || entry.sourceText, entry.targetText, lang)) return;
         translationMemorySessionRef.current.set(key, entry.targetText);
         output.set(key, entry.targetText);
       });
@@ -417,7 +418,7 @@ const App: React.FC = () => {
     if (!translationMemoryEnabled) return;
     const uniquePairs = new Map<string, TranslationMemoryPair>();
     pairs.forEach((pair) => {
-      if (!isUsableMemoryTarget(pair.targetText, pair.targetLang)) return;
+      if (!isUsableMemoryPair(pair.sourceText, pair.targetText, pair.targetLang)) return;
       const key = buildTranslationMemoryKey(pair.sourceText, pair.targetLang, pair.sourceLang);
       translationMemorySessionRef.current.set(key, pair.targetText);
       uniquePairs.set(key, pair);
@@ -782,15 +783,13 @@ const App: React.FC = () => {
     kind,
     getText,
     getOriginal,
-    getLocationLabel,
-    includeEmptyTranslations = false
+    getLocationLabel
   }: {
     segments: T[];
     kind: 'docx' | 'pdf';
     getText: (segment: T, index: number) => string;
     getOriginal: (segment: T, index: number) => string;
     getLocationLabel: (segment: T, index: number) => string;
-    includeEmptyTranslations?: boolean;
   }) => {
     const report = runQualityChecksOnUnits(
       segmentsToQualityUnits<T>(
@@ -860,15 +859,11 @@ const App: React.FC = () => {
       .forEach((issue) => {
         addIssue(issue.rowIndex, 'glue', false, issue.value, issue.locationLabel);
       });
-    if (includeEmptyTranslations) {
-      segments.forEach((segment, index) => {
-        const original = String(getOriginal(segment, index) || '').trim();
-        const translated = String(getText(segment, index) || '').trim();
-        if (original && !translated) {
-          addIssue(index, 'source', false, original, getLocationLabel(segment, index));
-        }
-      });
-    }
+    // Empty model replies and segments whose batch failed: listed with the source text so they
+    // can be retried. Uses the shared quality core, so DOCX and PDF report them the same way.
+    report.issues.emptyTranslations.forEach((issue) => {
+      addIssue(issue.rowIndex, 'source', false, issue.original, issue.locationLabel);
+    });
 
     const details = Array.from(byIndex.values()).sort((a, b) => a.index - b.index);
     return {
@@ -892,10 +887,11 @@ const App: React.FC = () => {
     return buildDocumentIssueDetailsFromQuality<PdfSegment>({
       segments: context.segments,
       kind: 'pdf',
-      getText: (segment) => getPdfSegmentText(segment),
+      // The raw translation, not getPdfSegmentText (which falls back to the source for export):
+      // an untranslated segment must read as empty, not as translated.
+      getText: (segment) => segment.translated,
       getOriginal: (segment) => segment.original,
-      getLocationLabel: (segment, index) => `PDF page ${segment.pageNumber}, segment ${index + 1}`,
-      includeEmptyTranslations: true
+      getLocationLabel: (segment, index) => `PDF page ${segment.pageNumber}, segment ${index + 1}`
     });
   };
 
@@ -925,7 +921,7 @@ const App: React.FC = () => {
     if (documentKind === 'pdf' && pdfContextRef.current) {
       return segmentsToQualityRows<PdfSegment>(
         pdfContextRef.current.segments,
-        (segment) => getPdfSegmentText(segment)
+        (segment) => segment.translated
       );
     }
     return null;
@@ -945,7 +941,7 @@ const App: React.FC = () => {
       return segmentsToQualityUnits<PdfSegment>(
         pdfContextRef.current.segments,
         'pdf',
-        (segment) => getPdfSegmentText(segment),
+        (segment) => segment.translated,
         (segment) => segment.original,
         (segment, index) => `PDF page ${segment.pageNumber}, segment ${index + 1}`
       );
@@ -1186,7 +1182,7 @@ const App: React.FC = () => {
     if (documentKind === 'pdf' && pdfContextRef.current) {
       return segmentsToQualityRows<PdfSegment>(
         pdfContextRef.current.segments,
-        (segment) => getPdfSegmentText(segment)
+        (segment) => segment.translated
       );
     }
     return {
@@ -1492,6 +1488,7 @@ const App: React.FC = () => {
 
   const { runPdfTranslation, retryPdfSegments } = usePdfTranslation({
     addLog,
+    setQualityReport,
     batchMonitor,
     buildPdfIssueDetails,
     createTranslationMemoryStats,
@@ -1524,6 +1521,7 @@ const App: React.FC = () => {
 
   const { runDocxTranslation, retryDocxSegments } = useDocxTranslation({
     addLog,
+    setQualityReport,
     batchMonitor,
     buildDocxIssueDetails,
     createTranslationMemoryStats,
@@ -1636,6 +1634,7 @@ const App: React.FC = () => {
   const { handleFileUpload, applySavedProgress, discardSavedProgress, handleDownload, handleDownloadPdfDocx } = useDocumentIO({
     addLog,
     buildDocxIssueDetails,
+    buildPdfIssueDetails,
     data,
     documentKind,
     docxContextRef,

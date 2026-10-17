@@ -4,6 +4,7 @@ import { describeEmbeddedVisualsForLog, hasEmbeddedVisuals } from '../../utils/e
 import type { DocxIssueDetail } from '../../components/translator/types';
 import type { QualityReport } from '../../quality/types';
 import { resetRetryConvergence } from '../../quality/retryConvergence';
+import { withLayoutOverflow } from '../../utils/qualityReport';
 import {
   POCTRecord,
   ProcessingState,
@@ -36,6 +37,7 @@ import {
 export interface DocumentIOContext {
   addLog: (msg: string) => void;
   buildDocxIssueDetails: (context: DocxContext) => { pending: number[]; details: DocxIssueDetail[]; qualityReport: QualityReport; };
+  buildPdfIssueDetails: (context: PdfContext) => { pending: number[]; details: DocxIssueDetail[]; qualityReport: QualityReport; };
   data: POCTRecord[];
   documentKind: "docx" | "pdf" | "excel";
   docxContextRef: React.RefObject<DocxContext>;
@@ -86,6 +88,7 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
   const {
     addLog,
     buildDocxIssueDetails,
+    buildPdfIssueDetails,
     data,
     documentKind,
     docxContextRef,
@@ -395,14 +398,34 @@ const handleDownload = async () => {
       }
       const baseName = file?.name?.replace(/\.pdf$/i, '') || 'Result';
       const filename = `Translated_${targetLang}_${baseName}.pdf`;
-      const { exportPdfTranslationAsPdf, getPdfTextLayerStats } = await import('../../utils/pdf');
+      const { exportPdfTranslationAsPdf, formatPdfOverflowLocation, getPdfTextLayerStats } = await import('../../utils/pdf');
       const textLayerStats = getPdfTextLayerStats(context);
       addLog(
         `PDF text layer: ${textLayerStats.selectableSegments}/${textLayerStats.totalSegments} 段将写入可复制文本层，${textLayerStats.imageFallbackSegments} 段回退为图片文本。`
       );
       addLog(`Generating file: ${filename}`);
       void exportPdfTranslationAsPdf(context, filename)
-        .then(() => addLog(`PDF export completed: ${filename}`))
+        .then(({ overflow }) => {
+          addLog(`PDF export completed: ${filename}`);
+          // Text that does not fit its source box is cut off in the PDF; say where, and put it in
+          // the quality report (and so the Debug Package) until the next export or check.
+          const overflowItems = overflow.map((item) => ({
+            ...item,
+            locationLabel: formatPdfOverflowLocation(item),
+            original: context.segments[item.segmentIndex]?.original
+          }));
+          const baseReport = buildPdfIssueDetails(context).qualityReport;
+          setQualityReport(withLayoutOverflow(baseReport, overflowItems));
+          if (overflowItems.length > 0) {
+            const preview = overflowItems
+              .slice(0, 5)
+              .map((item) => `${item.locationLabel}（隐藏 ${item.hiddenLines} 行）`)
+              .join('；');
+            addLog(
+              `PDF export warning: ${overflowItems.length} 段译文超出原文框，导出时被截断：${preview}${overflowItems.length > 5 ? ' 等' : ''}。请缩短译文或改用审阅版 DOCX 核对全文。`
+            );
+          }
+        })
         .catch((error) => {
           addLog(`PDF export failed: ${error instanceof Error ? error.message : String(error)}`);
         });

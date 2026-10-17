@@ -44,3 +44,13 @@ export const buildAdaptiveTextBatches = <T>({
 
 export const formatElapsedSeconds = (elapsedMs: number) =>
   `${Math.max(0, elapsedMs / 1000).toFixed(1)}s`;
+
+/**
+ * A segment still needs a model call on Resume when it has no translation yet (never sent, its
+ * batch failed, or the model returned nothing) or the "translation" is just the source text.
+ * Resume sends only these, also in Full mode, instead of re-sending every segment.
+ */
+export const isPendingSegment = (originalText: string, currentText: string) => {
+  const current = String(currentText || '').trim();
+  return !current || current === String(originalText || '').trim();
+};

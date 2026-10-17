@@ -12,7 +12,8 @@ export type QualityFindingCategory =
   | 'placeholder'
   | 'idMismatch'
   | 'spacing'
-  | 'structureMismatch';
+  | 'structureMismatch'
+  | 'layoutOverflow';
 
 export interface QualityFinding {
   id: string;
@@ -61,6 +62,7 @@ export const mapQualityFindingToIssueType = (finding: QualityFinding): Translati
     case 'spacing':
       return 'number-unit-format';
     case 'structureMismatch':
+    case 'layoutOverflow':
       return 'layout';
     case 'emptyTranslation':
     default:
@@ -143,6 +145,7 @@ export const buildQualityFindings = ({
   appendQualityIssues('idMismatch', qualityReport.issues.idMismatch, '锁定字段与原文不一致');
   appendQualityIssues('spacing', qualityReport.issues.spacing, '格式或空格异常');
   appendQualityIssues('structureMismatch', qualityReport.issues.structureMismatches, '表结构与原文不一致');
+  appendQualityIssues('layoutOverflow', qualityReport.issues.layoutOverflow || [], '导出 PDF 时译文超出原文框，部分文字被截断');
 
   const order: Record<QualityFindingCategory, number> = {
     nonTarget: 0,
@@ -151,7 +154,8 @@ export const buildQualityFindings = ({
     placeholder: 3,
     idMismatch: 4,
     chinese: 5,
-    spacing: 6
+    spacing: 6,
+    layoutOverflow: 7
   };
 
   return [...findingMap.values()].sort((a, b) => {
@@ -160,6 +164,30 @@ export const buildQualityFindings = ({
     return a.columnKey.localeCompare(b.columnKey);
   });
 };
+
+/**
+ * Adds the PDF export's cut-off segments to the report (replacing any from an earlier export),
+ * so the findings list, report text and Debug Package show them like any other issue.
+ */
+export const withLayoutOverflow = (
+  report: QualityReport,
+  overflow: Array<{ segmentIndex: number; locationLabel: string; hiddenLines: number; text: string; original?: string }>
+): QualityReport => ({
+  ...report,
+  issues: {
+    ...report.issues,
+    layoutOverflow: overflow.map((item) => ({
+      rowIndex: item.segmentIndex,
+      columnKey: 'content',
+      locationLabel: item.locationLabel,
+      value: item.text,
+      original: item.original,
+      type: 'layoutOverflow',
+      severity: 'high',
+      detail: `${item.hiddenLines} line(s) hidden`
+    }))
+  }
+});
 
 export const buildQualityReportText = ({
   qualityReport,
@@ -242,6 +270,12 @@ export const buildQualityReportText = ({
     ...qualityReport.issues.spacing.map((item) => ({
       type: 'Spacing issue',
       severity: item.severity || 'medium',
+      location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
+      ...resolveFindingText(qualityRows, item.rowIndex, item.columnKey, item.original, item.value)
+    })),
+    ...(qualityReport.issues.layoutOverflow || []).map((item) => ({
+      type: `PDF text cut off (${item.detail || 'overflow'})`,
+      severity: item.severity,
       location: item.locationLabel || formatLocationLabel(item.rowIndex, item.columnKey),
       ...resolveFindingText(qualityRows, item.rowIndex, item.columnKey, item.original, item.value)
     }))

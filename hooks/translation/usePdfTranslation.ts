@@ -68,6 +68,7 @@ export interface PdfTranslationContext {
   setPdfIssueIndices: React.Dispatch<React.SetStateAction<number[]>>;
   setPdfStats: React.Dispatch<React.SetStateAction<{ pages: number; total: number; translated: number; }>>;
   setProcessingState: React.Dispatch<React.SetStateAction<ProcessingState>>;
+  setQualityReport: (report: QualityReport) => void;
   setTranslationStatus: React.Dispatch<React.SetStateAction<"paused" | "completed" | "idle" | "running">>;
   shouldTranslateDocxText: (text: string) => boolean;
   syncDocumentIssueSummary: (details: DocxIssueDetail[]) => void;
@@ -103,6 +104,7 @@ export const usePdfTranslation = (ctx: PdfTranslationContext) => {
     setProcessingState,
     setTranslationStatus,
     shouldTranslateDocxText,
+    setQualityReport,
     syncDocumentIssueSummary,
     targetLang,
     translationHub
@@ -291,10 +293,10 @@ const retryPdfSegments = async () => {
             const translatedRecord = translatedBatch[index] || {};
             const rawText = segment.original || getPdfSegmentText(segment);
             const placeholders = docxPlaceholderStore.current.get(segment.id);
-            const sanitizedResult =
-              typeof translatedRecord.content === 'string'
-                ? translatedRecord.content
-                : rawText;
+            // A missing or empty reply keeps the current text (still listed as an issue) rather
+            // than overwriting it with the source.
+            if (typeof translatedRecord.content !== 'string' || !translatedRecord.content.trim()) return;
+            const sanitizedResult = translatedRecord.content;
             const restored = restoreTranslationTokens(sanitizedResult, placeholders);
             const polished = dedupeLeadingRepeat(
               rawText || '',
@@ -352,10 +354,12 @@ const retryPdfSegments = async () => {
 const auditPdfTranslation = () => {
     const context = pdfContextRef.current;
     if (!context) return;
-    const { pending, details } = buildPdfIssueDetails(context);
+    const { pending, details, qualityReport } = buildPdfIssueDetails(context);
     setPdfIssueIndices(pending);
     setPdfIssueDetails(details);
     syncDocumentIssueSummary(details);
+    // Same report the Quality Check button builds; the Debug Package reads it, so both stay current.
+    setQualityReport(qualityReport);
     if (pending.length === 0) {
       addLog('PDF audit: 所有文本段均已通过源语言/占位符/粘词检查。');
       return;

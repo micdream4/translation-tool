@@ -9,7 +9,8 @@ export type QualityIssueType =
   | 'spacing'
   | 'emptyTranslation'
   | 'structureMismatch'
-  | 'nonTargetLanguage';
+  | 'nonTargetLanguage'
+  | 'layoutOverflow';
 
 export type QualitySeverity = 'high' | 'medium' | 'low';
 
@@ -97,6 +98,8 @@ export interface QualityReport {
     emptyTranslations: QualityIssue[];
     structureMismatches: QualityIssue[];
     nonTargetLanguage: QualityIssue[];
+    /** Set by PDF export: translated text cut off because it does not fit the source text box. */
+    layoutOverflow?: QualityIssue[];
   };
   /** Findings suppressed by a "confirmed as correct" click; still listed in the report and export notes. */
   accepted?: AcceptedQualityFinding[];

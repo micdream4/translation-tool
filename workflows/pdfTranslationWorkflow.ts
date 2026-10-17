@@ -6,6 +6,7 @@ import { polishTranslation } from "../utils/postprocess";
 import {
   buildAdaptiveTextBatches,
   formatElapsedSeconds,
+  isPendingSegment,
   sumBatchTextChars
 } from "../utils/translationBatching";
 import { guardTranslationTokens, restoreTranslationTokens } from "../utils/translationTokens";
@@ -88,8 +89,11 @@ export const runPdfTranslationWorkflow = async ({
 }: PdfTranslationWorkflowOptions) => {
   const segments = context.segments;
   const candidates = segments.filter((segment) =>
-    shouldTranslateText(getPdfSegmentText(segment) || segment.original)
+    mode === "resume"
+      ? isPendingSegment(segment.original, segment.translated) && shouldTranslateText(segment.original)
+      : shouldTranslateText(getPdfSegmentText(segment) || segment.original)
   );
+  const countTranslated = () => segments.filter((segment) => segment.translated.trim()).length;
   if (!candidates.length) {
     addLog("PDF: 当前文档已经是目标语言或没有可翻译的文本。");
     return;
@@ -97,7 +101,7 @@ export const runPdfTranslationWorkflow = async ({
 
   pauseRequestedRef.current = false;
   const alreadyTranslated = Math.max(0, segments.length - candidates.length);
-  setPdfStats({ pages: context.pageCount, total: segments.length, translated: alreadyTranslated });
+  setPdfStats({ pages: context.pageCount, total: segments.length, translated: countTranslated() });
   setTranslationStatus("running");
   if (mode === "resume") {
     addLog(
@@ -114,6 +118,7 @@ export const runPdfTranslationWorkflow = async ({
   try {
     const result = await runStage("translate", async () => {
       let completed = 0;
+      let failedSegments = 0;
       let paused = false;
       // Source text and translation-memory keys always come from the original segment, so a
       // resumed run never stores a partial translation as if it were source text.
@@ -210,6 +215,7 @@ export const runPdfTranslationWorkflow = async ({
             )}：${errMsg}`
           );
           batchMonitor?.end('pdf', batchNum, 'failed', errMsg);
+          failedSegments += chunk.length;
           continue;
         }
 
@@ -219,13 +225,14 @@ export const runPdfTranslationWorkflow = async ({
           const translatedRecord = translatedBatch[index] || {};
           const rawText = leader.rawText;
           const placeholders = leader.placeholders || placeholderStore.get(segment.id);
+          // No reply for this segment: leave it empty so it is reported and retried, never
+          // filled with the source text as if it had been translated.
           const sanitizedResult =
-            typeof translatedRecord.content === "string" ? translatedRecord.content : rawText;
-          const restored = restoreTranslationTokens(sanitizedResult, placeholders);
-          const polished = dedupeLeadingRepeat(
-            rawText || "",
-            polishTranslation(rawText || "", restored, targetLang)
-          );
+            typeof translatedRecord.content === "string" ? translatedRecord.content : "";
+          const restored = sanitizedResult.trim() ? restoreTranslationTokens(sanitizedResult, placeholders) : "";
+          const polished = restored
+            ? dedupeLeadingRepeat(rawText || "", polishTranslation(rawText || "", restored, targetLang))
+            : "";
           setPdfSegmentText(segment, polished);
           (followers.get(leader.memoryKey) || []).forEach((follower) => {
             setPdfSegmentText(follower, polished);
@@ -246,7 +253,7 @@ export const runPdfTranslationWorkflow = async ({
         setPdfStats({
           pages: context.pageCount,
           total: segments.length,
-          translated: Math.min(alreadyTranslated + completed, segments.length)
+          translated: countTranslated()
         });
         setProcessingState((prev) => ({
           ...prev,
@@ -267,6 +274,20 @@ export const runPdfTranslationWorkflow = async ({
         return "paused";
       }
 
+      if (failedSegments > 0) {
+        // Failed batches are not "done": show the real progress and leave Resume available,
+        // which sends only the segments that are still untranslated.
+        setProcessingState((prev) => ({
+          ...prev,
+          status: "idle",
+          progress: Math.round((completed / candidates.length) * 100)
+        }));
+        setTranslationStatus("paused");
+        addLog(
+          `PDF Translation incomplete: ${completed}/${candidates.length} 个文本段完成，${failedSegments} 段因批次失败未翻译。点击 Resume 只补译未完成的段。`
+        );
+        return "paused";
+      }
       setProcessingState((prev) => ({
         ...prev,
         status: "completed",

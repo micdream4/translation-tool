@@ -75,7 +75,6 @@ const UPPER_ABBR_REGEX = /^[A-Z]{2,}(?:[-/][A-Z0-9]{1,})*$/;
 const CODE_WITH_DIGIT_REGEX = /^(?=.*\d)[A-Za-z0-9][A-Za-z0-9_\-/:+().#]*$/;
 const CJK_NUMBER_FORMAT_REGEX = /(chinese|japanese|korean|taiwanese|ideograph)/i;
 const CJK_NUMBER_LITERAL_REGEX = /^[一二三四五六七八九十百千万零〇]+[、。．.]?$/;
-const CJK_NUMBER_SEPARATOR_REGEX = /[、。．]/;
 const CJK_NUMBER_SEPARATOR_GLOBAL_REGEX = /[、。．]/g;
 
 type DocxSearchRoot = ParentNode & {
@@ -444,10 +443,31 @@ const setValAttribute = (node: Element, value: string) => {
   node.setAttribute("val", value);
 };
 
-const normalizeCjkNumberingText = (value: string) => {
-  const normalized = value.replace(CJK_NUMBER_SEPARATOR_GLOBAL_REGEX, ".");
-  if (CJK_NUMBER_LITERAL_REGEX.test(normalized)) return "1.";
-  if (/%\d+$/.test(normalized)) return `${normalized}.`;
+// Any CJK ideograph or full-width punctuation in a list marker: 第%1章, （%1）, %1、, 一、
+const CJK_MARKER_CHAR_REGEX = /[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]/;
+const FULLWIDTH_MARKER_PUNCTUATION: Record<string, string> = {
+  "（": "(",
+  "）": ")",
+  "【": "[",
+  "】": "]",
+  "：": ":",
+  "　": " "
+};
+
+/**
+ * A list marker for a non-Chinese target: CJK separators become ".", full-width brackets become
+ * ASCII, and ideographs around the number (第…章, 第…条) are dropped, so 第%1章 → %1. and
+ * （%1） → (%1). A marker that is only a CJK numeral becomes 1.
+ */
+export const normalizeCjkNumberingText = (value: string) => {
+  if (CJK_NUMBER_LITERAL_REGEX.test(value)) return "1.";
+  let normalized = value
+    .replace(CJK_NUMBER_SEPARATOR_GLOBAL_REGEX, ".")
+    .replace(/[（）【】：　]/g, (char) => FULLWIDTH_MARKER_PUNCTUATION[char] || char)
+    .replace(/[\u3400-\u9fff]+/g, "")
+    .trim();
+  if (!normalized) return "1.";
+  if (/%\d+$/.test(normalized)) normalized = `${normalized}.`;
   return normalized;
 };
 
@@ -457,13 +477,13 @@ const normalizeDocxNumbering = (xmlDoc: Document) => {
     const lvlText = findDirectChildElement(level, ["w:lvlText", "lvlText"]);
     const format = getValAttribute(numFmt);
     const marker = getValAttribute(lvlText);
-    const usesCjkNumbering =
-      CJK_NUMBER_FORMAT_REGEX.test(format) ||
-      CJK_NUMBER_SEPARATOR_REGEX.test(marker) ||
-      CJK_NUMBER_LITERAL_REGEX.test(marker);
-    if (!usesCjkNumbering || !numFmt || !lvlText) return;
+    const usesCjkFormat = CJK_NUMBER_FORMAT_REGEX.test(format);
+    const usesCjkMarker = CJK_MARKER_CHAR_REGEX.test(marker);
+    if ((!usesCjkFormat && !usesCjkMarker) || !numFmt || !lvlText) return;
 
-    setValAttribute(numFmt, "decimal");
+    // Either one is enough: 第%1章 can sit on a decimal format, and a chineseCounting format
+    // can have a plain %1 marker.
+    if (usesCjkFormat) setValAttribute(numFmt, "decimal");
     setValAttribute(lvlText, normalizeCjkNumberingText(marker));
   });
 };

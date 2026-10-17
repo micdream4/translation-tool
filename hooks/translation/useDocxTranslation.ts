@@ -25,6 +25,7 @@ import { polishTranslation } from '../../utils/postprocess';
 import {
   buildAdaptiveTextBatches,
   formatElapsedSeconds,
+  isPendingSegment,
   sumBatchTextChars
 } from '../../utils/translationBatching';
 import {
@@ -67,6 +68,7 @@ export interface DocxTranslationContext {
   setDocxIssueIndices: React.Dispatch<React.SetStateAction<number[]>>;
   setDocxStats: React.Dispatch<React.SetStateAction<{ total: number; translated: number; }>>;
   setProcessingState: React.Dispatch<React.SetStateAction<ProcessingState>>;
+  setQualityReport: (report: QualityReport) => void;
   setTranslationStatus: React.Dispatch<React.SetStateAction<"paused" | "completed" | "idle" | "running">>;
   shouldTranslateDocxText: (text: string) => boolean;
   syncDocumentIssueSummary: (details: DocxIssueDetail[]) => void;
@@ -102,6 +104,7 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
     setProcessingState,
     setTranslationStatus,
     shouldTranslateDocxText,
+    setQualityReport,
     syncDocumentIssueSummary,
     targetLang,
     translationHub
@@ -119,8 +122,12 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
       return;
     }
     const candidates = segments.filter((segment) =>
-      shouldTranslateDocxText(getDocxSegmentText(segment) || segment.original)
+      mode === 'resume'
+        ? isPendingSegment(segment.original, getDocxSegmentText(segment)) && shouldTranslateDocxText(segment.original)
+        : shouldTranslateDocxText(getDocxSegmentText(segment) || segment.original)
     );
+    const countTranslated = () =>
+      segments.filter((segment) => !isPendingSegment(segment.original, getDocxSegmentText(segment))).length;
     if (!candidates.length) {
       addLog('Docx: 当前文档已经是目标语言或没有可翻译的文本。');
       return;
@@ -128,7 +135,7 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
 
     pauseRequestedRef.current = false;
     const alreadyTranslated = Math.max(0, segments.length - candidates.length);
-    setDocxStats({ total: segments.length, translated: alreadyTranslated });
+    setDocxStats({ total: segments.length, translated: mode === 'resume' ? countTranslated() : alreadyTranslated });
     setDocxIssueIndices([]);
     setDocxIssueDetails([]);
     setTranslationStatus('running');
@@ -159,6 +166,7 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
     try {
       const result = await runStage('translate', async () => {
         let completed = 0;
+        let failedSegments = 0;
         let paused = false;
         const totalBatches = batches.length;
 
@@ -247,6 +255,7 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
               )}：${errMsg}`
             );
             batchMonitor.end('docx', batchNum, 'failed', errMsg);
+            failedSegments += chunk.length;
             continue;
           }
 
@@ -256,15 +265,14 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
             const translatedRecord = translatedBatch[index] || {};
             const rawText = leader.rawText;
             const placeholders = leader.placeholders || docxPlaceholderStore.current.get(segment.id);
+            // No reply (or an empty one) leaves the segment empty, so the issue list reports it and
+            // Resume / retry send it again; it is never filled with the source as if translated.
             const sanitizedResult =
-              typeof translatedRecord.content === 'string'
-                ? translatedRecord.content
-                : rawText;
-            const restored = restoreTranslationTokens(sanitizedResult, placeholders);
-            const polished = dedupeLeadingRepeat(
-              rawText || '',
-              polishTranslation(rawText || '', restored, targetLang)
-            );
+              typeof translatedRecord.content === 'string' ? translatedRecord.content : '';
+            const restored = sanitizedResult.trim() ? restoreTranslationTokens(sanitizedResult, placeholders) : '';
+            const polished = restored
+              ? dedupeLeadingRepeat(rawText || '', polishTranslation(rawText || '', restored, targetLang))
+              : '';
             setDocxSegmentText(segment, polished);
             (followers.get(leader.memoryKey) || []).forEach((follower) => {
               setDocxSegmentText(follower, polished);
@@ -284,7 +292,7 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
           completed += chunk.length;
           setDocxStats({
             total: segments.length,
-            translated: Math.min(alreadyTranslated + completed, segments.length)
+            translated: countTranslated()
           });
           const progress = Math.round((completed / candidates.length) * 100);
           setProcessingState((prev) => ({
@@ -306,6 +314,20 @@ export const useDocxTranslation = (ctx: DocxTranslationContext) => {
           return 'paused';
         }
 
+        if (failedSegments > 0) {
+          // Failed batches are not "done": show the real progress and leave Resume available,
+          // which sends only the segments that are still untranslated.
+          setProcessingState((prev) => ({
+            ...prev,
+            status: 'idle',
+            progress: Math.round((completed / candidates.length) * 100)
+          }));
+          setTranslationStatus('paused');
+          addLog(
+            `DOCX Translation incomplete: ${completed}/${candidates.length} 个语义段完成，${failedSegments} 段因批次失败未翻译。点击 Resume 只补译未完成的段。`
+          );
+          return 'paused';
+        }
         setProcessingState((prev) => ({
           ...prev,
           status: 'completed',
@@ -467,10 +489,10 @@ const retryDocxSegments = async () => {
             const translatedRecord = translatedBatch[index] || {};
             const rawText = segment.original || getDocxSegmentText(segment);
             const placeholders = docxPlaceholderStore.current.get(segment.id);
-            const sanitizedResult =
-              typeof translatedRecord.content === 'string'
-                ? translatedRecord.content
-                : rawText;
+            // A missing or empty reply keeps the current text (still listed as an issue) rather
+            // than overwriting it with the source.
+            if (typeof translatedRecord.content !== 'string' || !translatedRecord.content.trim()) return;
+            const sanitizedResult = translatedRecord.content;
             const restored = restoreTranslationTokens(sanitizedResult, placeholders);
             const polished = dedupeLeadingRepeat(
               rawText || '',
@@ -483,7 +505,7 @@ const retryDocxSegments = async () => {
           completed += chunk.length;
           setDocxStats(prev => ({
             total: prev.total || context.segments.length,
-            translated: Math.min((prev.translated || 0) + chunk.length, prev.total || context.segments.length)
+            translated: context.segments.filter((segment) => !isPendingSegment(segment.original, getDocxSegmentText(segment))).length
           }));
           const progress = Math.round((completed / targets.length) * 100);
           setProcessingState(prev => ({
@@ -529,10 +551,12 @@ const retryDocxSegments = async () => {
 const auditDocxTranslation = () => {
     const context = docxContextRef.current;
     if (!context) return;
-    const { pending, details } = buildDocxIssueDetails(context);
+    const { pending, details, qualityReport } = buildDocxIssueDetails(context);
     setDocxIssueIndices(pending);
     setDocxIssueDetails(details);
     syncDocumentIssueSummary(details);
+    // Same report the Quality Check button builds; the Debug Package reads it, so both stay current.
+    setQualityReport(qualityReport);
     if (pending.length === 0) {
       addLog('Docx audit: 所有段落均已通过源语言/占位符/粘词检查。');
     } else {

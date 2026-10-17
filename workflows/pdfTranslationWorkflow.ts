@@ -20,7 +20,7 @@ type TranslationMemoryStats = {
 type SetProcessingState = (
   value: ProcessingState | ((previous: ProcessingState) => ProcessingState)
 ) => void;
-type StageResult = "paused" | "completed" | void;
+type StageResult = "paused" | "completed" | "stale" | void;
 
 export interface PdfTranslationWorkflowOptions {
   context: PdfContext;

@@ -240,6 +240,8 @@ const App: React.FC = () => {
     [excelSkipScope, excelContext, documentKind, data]
   );
   const pauseRequestedRef = useRef(false);
+  // Bumped on every upload: a run or retry started for an older file drops its late results.
+  const documentJobRef = useRef(0);
   const snapshotPromptKeyRef = useRef<string>('');
   const translationMemorySessionRef = useRef<Map<string, string>>(new Map());
 
@@ -992,6 +994,7 @@ const App: React.FC = () => {
     updateStageStatus(key, 'running');
     try {
       const result = await task();
+      if (result === 'stale') return result;
       if (result === 'paused') {
         updateStageStatus(key, 'pending', '流程已暂停，可继续');
       } else {
@@ -1007,7 +1010,8 @@ const App: React.FC = () => {
   };
 
   const handlePause = () => {
-    if (translationStatus !== 'running' || activeStage !== 'translate') return;
+    // Excel retries ("重译问题项") run outside the translate stage but are pausable too.
+    if (!isRetryingMissing && (translationStatus !== 'running' || activeStage !== 'translate')) return;
     pauseRequestedRef.current = true;
   };
 
@@ -1021,10 +1025,15 @@ const App: React.FC = () => {
     (documentKind === 'excel' || documentKind === 'docx' || documentKind === 'pdf') &&
     translationStatus === 'paused' &&
     activeStage === null;
-  const showPauseResume = isTranslating || canResume;
-  const pauseResumeLabel = isTranslating ? 'Pause' : 'Resume';
-  const pauseResumeDisabled = isTranslating ? activeStage !== 'translate' : !canResume;
-  const pauseResumeHandler = isTranslating ? handlePause : () => runTranslation('resume');
+  // While a run or a retry is busy, the file, target language and Run stay locked; while a run is
+  // paused the target language stays locked too, so Resume continues in the same language.
+  const isBusy = isTranslating || isRetryingMissing;
+  const inputsLocked = processingState.status === 'processing' || isBusy;
+  const targetLangLocked = inputsLocked || translationStatus === 'paused';
+  const showPauseResume = isBusy || canResume;
+  const pauseResumeLabel = isBusy ? 'Pause' : 'Resume';
+  const pauseResumeDisabled = isTranslating ? activeStage !== 'translate' : isRetryingMissing ? false : !canResume;
+  const pauseResumeHandler = isBusy ? handlePause : () => runTranslation('resume');
   const docxLowPriorityCount = useMemo(
     () => docxIssueDetails.filter((item) => item.lowPriority).length,
     [docxIssueDetails]
@@ -1568,6 +1577,7 @@ const App: React.FC = () => {
     logTranslationMemoryStats,
     lookupReusableTranslations,
     missingRowIndices,
+    documentJobRef,
     pauseRequestedRef,
     persistProgress,
     processedData,
@@ -1635,6 +1645,7 @@ const App: React.FC = () => {
     file,
     fileId,
     getSpreadsheetBatchSize,
+    documentJobRef,
     pauseRequestedRef,
     pdfContextRef,
     processedData,
@@ -1717,6 +1728,8 @@ const App: React.FC = () => {
       <main className="flex-1 max-w-[1180px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-6">
         <SettingsPanel
           isLight={isLight}
+          inputsLocked={inputsLocked}
+          targetLangLocked={targetLangLocked}
           embeddedVisuals={embeddedVisuals}
           AUTO_MODEL={AUTO_MODEL}
           applySavedProgress={applySavedProgress}

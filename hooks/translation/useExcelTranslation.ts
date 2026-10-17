@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useRef } from 'react';
 import type { TranslationRequest } from '../../services/translationHub';
 import {
   buildExcelRetryTargets
@@ -84,6 +84,7 @@ export interface ExcelTranslationContext {
   lookupReusableTranslations: (sourceTexts: string[], lang?: TargetLanguage) => Promise<Map<string, string>>;
   missingRowIndices: number[];
   pauseRequestedRef: React.RefObject<boolean>;
+  documentJobRef: React.MutableRefObject<number>;
   persistProgress: (records: POCTRecord[], flags: boolean[], missingRows: number[], writeFailedRows?: number[]) => void;
   processedData: POCTRecord[];
   refreshTranslationIssues: (records: POCTRecord[]) => { summary: UntranslatedSummary; refreshedMissing: number[]; refreshedWriteFailed: number[]; mergedRowIndices: number[]; };
@@ -141,6 +142,7 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
     lookupReusableTranslations,
     missingRowIndices,
     pauseRequestedRef,
+    documentJobRef,
     persistProgress,
     processedData,
     refreshTranslationIssues,
@@ -173,6 +175,9 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
     writeFailedRowIndices
   } = ctx;
 
+  // Target language of the run that can be resumed; Resume refuses another language.
+  const runTargetLangRef = useRef<TargetLanguage | null>(null);
+
   const runTranslation = async (mode: 'fresh' | 'resume' = 'fresh') => {
     if (mode === 'fresh') setBatchRuns([]);
     if (documentKind === 'docx') {
@@ -184,8 +189,17 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
       return;
     }
     if (data.length === 0) return;
+    if (mode === 'resume' && runTargetLangRef.current && runTargetLangRef.current !== targetLang) {
+      addLog(
+        `无法继续：上次翻译的目标语言是 ${runTargetLangRef.current}，现在是 ${targetLang}。请点击“开始翻译”重新开始。`
+      );
+      return;
+    }
+    const jobId = documentJobRef.current;
+    const isStale = () => jobId !== documentJobRef.current;
 
     const shouldResume = mode === 'resume' && processedData.length === data.length;
+    if (!shouldResume) runTargetLangRef.current = targetLang;
     const baseResults = data.map(row => ({ ...row }));
     const workingResults = shouldResume ? [...processedData] : baseResults;
     const rowHasUnskippedTranslatableCell = (row: POCTRecord, rowIndex: number) =>
@@ -260,7 +274,9 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
     setTranslationStatus('running');
 
     let latestResults: POCTRecord[] = [...workingResults];
-    let result: 'paused' | 'completed' | void;
+    let latestFlags: boolean[] = [...workingFlags];
+    let latestWriteFailed: number[] = [];
+    let result: 'paused' | 'completed' | 'stale' | void;
 
     try {
       result = await runStage('translate', async () => {
@@ -274,6 +290,7 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
         let paused = false;
 
         for (let i = startIndex; i < data.length; i += spreadsheetBatchSize) {
+          if (isStale()) return 'stale';
           const chunkIndices: number[] = [];
           for (let offset = 0; offset < spreadsheetBatchSize && i + offset < data.length; offset++) {
             chunkIndices.push(i + offset);
@@ -391,6 +408,7 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
                 targetLang,
                 options: getTranslationOptions()
               });
+              if (isStale()) return 'stale';
               addLog(
                 `Batch ${batchNum} 使用引擎: ${translationHub.getLastEngine()}，模型: ${getUsedModelLabel()}，用时 ${formatElapsedSeconds(
                   Date.now() - modelCallStartedAt
@@ -476,6 +494,7 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
             );
           });
           await rememberTranslationPairs(memoryPairs, memoryStats);
+          if (isStale()) return 'stale';
           logTranslationMemoryStats(`Batch ${batchNum}`, memoryStats);
 
           pendingIndices.forEach((rowIdx) => {
@@ -551,6 +570,8 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
         setProcessedData(snapshot);
         persistProgress(snapshot, [...flags], missingSnapshot, writeFailedSnapshot);
         latestResults = snapshot;
+        latestFlags = [...flags];
+        latestWriteFailed = writeFailedSnapshot;
 
         if (paused) {
           setProcessingState(prev => ({ ...prev, status: 'idle' }));
@@ -583,16 +604,21 @@ export const useExcelTranslation = (ctx: ExcelTranslationContext) => {
       return;
     }
 
+    if (result === 'stale') {
+      addLog('已更换文件：上一个文件的翻译结果已丢弃。');
+      return;
+    }
     if (result !== 'paused') {
       setTranslationStatus('completed');
-      await auditTranslation(latestResults);
+      // The run's own flags and write failures, not React state captured before the run started.
+      await auditTranslation(latestResults, latestFlags, latestWriteFailed);
     }
   };
 
-const auditTranslation = async (records: POCTRecord[]) => {
+const auditTranslation = async (records: POCTRecord[], flags: boolean[], writeFailed: number[]) => {
     const summary = summarizeUntranslated(records, targetLang, untranslatedOptions);
     const mergedRowIndices = [...summary.rowIndices];
-    const filteredWriteFailed = writeFailedRowIndices.filter((idx) => mergedRowIndices.includes(idx));
+    const filteredWriteFailed = writeFailed.filter((idx) => mergedRowIndices.includes(idx));
     const mergedSummary: IssueSummaryState = {
       ...summary,
       rowIndices: mergedRowIndices,
@@ -616,17 +642,23 @@ const auditTranslation = async (records: POCTRecord[]) => {
       `Translation audit: 检测到 ${summary.cells} 个未翻译单元格，涉及 ${summary.rowIndices.length} 行；未写入 ${filteredWriteFailed.length} 行。`
     );
 
-    await retryMissingRows(mergedRowIndices, records);
+    await retryMissingRows(mergedRowIndices, records, { flags, writeFailed: filteredWriteFailed });
   };
 
 const retryMissingRows = async (
     rowIndices: number[],
-    baseSnapshot?: POCTRecord[]
+    baseSnapshot?: POCTRecord[],
+    runState?: { flags: boolean[]; writeFailed: number[] }
   ) => {
     if (isRetryingMissing) {
       addLog('重译问题项: 正在处理中，请等待当前重译完成。');
       return;
     }
+    const jobId = documentJobRef.current;
+    const isStale = () => jobId !== documentJobRef.current;
+    const currentFlags = runState?.flags ?? translatedFlags;
+    const currentWriteFailed = runState?.writeFailed ?? writeFailedRowIndices;
+    pauseRequestedRef.current = false;
     setIsRetryingMissing(true);
     try {
       const uniqueIndices = Array.from(new Set(rowIndices))
@@ -669,8 +701,8 @@ const retryMissingRows = async (
           ? sourceRecords.map(row => ({ ...row }))
           : data.map(row => ({ ...row }));
       const flagsSnapshot =
-        translatedFlags.length === data.length
-          ? [...translatedFlags]
+        currentFlags.length === data.length
+          ? [...currentFlags]
           : Array(data.length).fill(false);
       const { summary: refreshedSummary, refreshedMissing, refreshedWriteFailed, mergedRowIndices } = refreshTranslationIssues(
         synced
@@ -697,16 +729,24 @@ const retryMissingRows = async (
         ? sourceRecords.map(row => ({ ...row }))
         : data.map(row => ({ ...row }));
     const updatedFlags =
-      translatedFlags.length === data.length
-        ? [...translatedFlags]
+      currentFlags.length === data.length
+        ? [...currentFlags]
         : Array(data.length).fill(false);
     const missingSet = new Set<number>(missingSummary.rowIndices);
     const writeFailedSet = new Set<number>(
-      writeFailedRowIndices.filter((idx) => missingSummary.rowIndices.includes(idx))
+      currentWriteFailed.filter((idx) => missingSummary.rowIndices.includes(idx))
     );
 
     const totalBatches = Math.ceil(retryItems.length / RETRY_BATCH_SIZE);
     for (let i = 0; i < retryItems.length; i += RETRY_BATCH_SIZE) {
+      if (isStale()) {
+        addLog('重译问题项: 已更换文件，停止重译。');
+        return;
+      }
+      if (pauseRequestedRef.current) {
+        addLog('重译问题项: 已暂停，可再次点击“重译问题项”继续。');
+        break;
+      }
       const chunk = retryItems.slice(i, i + RETRY_BATCH_SIZE);
       const batchNum = Math.floor(i / RETRY_BATCH_SIZE) + 1;
       addLog(`重译问题项: Batch ${batchNum}/${totalBatches} 重译 ${chunk.length} 行...`);
@@ -730,6 +770,10 @@ const retryMissingRows = async (
                     : undefined
             }
           });
+          if (isStale()) {
+            addLog('重译问题项: 已更换文件，丢弃旧文件的重译结果。');
+            return;
+          }
           addLog(
             `重译问题项: Batch ${batchNum} 使用 ${attemptLabel} 成功，用时 ${formatElapsedSeconds(
               Date.now() - attemptStartedAt
@@ -861,6 +905,7 @@ const retryMissingRows = async (
       );
     }
     } finally {
+      pauseRequestedRef.current = false;
       setIsRetryingMissing(false);
     }
   };
@@ -915,6 +960,15 @@ const retryCellsByKeys = async (
       addLog(`${label}: 当前没有可重译的单元格。`);
       return;
     }
+    if (isRetryingMissing) {
+      addLog(`${label}: 正在处理中，请等待当前重译完成。`);
+      return;
+    }
+    const jobId = documentJobRef.current;
+    const isStale = () => jobId !== documentJobRef.current;
+    pauseRequestedRef.current = false;
+    setIsRetryingMissing(true);
+    try {
 
     addLog(`${label}: 针对 ${retryItems.length} 行重新翻译...`);
 
@@ -933,6 +987,14 @@ const retryCellsByKeys = async (
 
     const totalBatches = Math.ceil(retryItems.length / RETRY_BATCH_SIZE);
     for (let i = 0; i < retryItems.length; i += RETRY_BATCH_SIZE) {
+      if (isStale()) {
+        addLog(`${label}: 已更换文件，停止重译。`);
+        return;
+      }
+      if (pauseRequestedRef.current) {
+        addLog(`${label}: 已暂停。`);
+        break;
+      }
       const chunk = retryItems.slice(i, i + RETRY_BATCH_SIZE);
       const batchNum = Math.floor(i / RETRY_BATCH_SIZE) + 1;
       addLog(`${label}: Batch ${batchNum}/${totalBatches} 重译 ${chunk.length} 行...`);
@@ -956,6 +1018,10 @@ const retryCellsByKeys = async (
                     : undefined
             }
           });
+          if (isStale()) {
+            addLog(`${label}: 已更换文件，丢弃旧文件的重译结果。`);
+            return;
+          }
           addLog(
             `${label}: Batch ${batchNum} 使用 ${attemptLabel} 成功，用时 ${formatElapsedSeconds(
               Date.now() - attemptStartedAt
@@ -1042,6 +1108,10 @@ const retryCellsByKeys = async (
       addLog(`${label}: 完成重译，当前无待补译内容。`);
     } else {
       addLog(`${label}: 完成重译，仍有 ${mergedRowIndices.length} 行待处理。`);
+    }
+    } finally {
+      pauseRequestedRef.current = false;
+      setIsRetryingMissing(false);
     }
   };
 

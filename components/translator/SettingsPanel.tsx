@@ -34,6 +34,10 @@ export interface SettingsPanelProps {
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   isStringTranslating: boolean;
   isTranslating: boolean;
+  /** A run or retry is busy: file upload, target language and Run are locked. */
+  inputsLocked: boolean;
+  /** Also locked while a run is paused, so Resume keeps the same target language. */
+  targetLangLocked: boolean;
   pdfContextRef: React.RefObject<PdfContext>;
   processedData: POCTRecord[];
   processingState: ProcessingState;
@@ -78,6 +82,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   handleFileUpload,
   isStringTranslating,
   isTranslating,
+  inputsLocked,
+  targetLangLocked,
   pdfContextRef,
   processedData,
   processingState,
@@ -124,7 +130,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
           accept=".xlsx,.docx,.pdf"
           onChange={handleFileUpload}
-          disabled={processingState.status === 'processing'}
+          disabled={inputsLocked}
           aria-label={file ? t('settings.upload.replace') : t('settings.upload.cta')}
         />
         <div
@@ -193,7 +199,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             className={fieldClass}
             value={targetLang}
             onChange={(e) => setTargetLang(e.target.value as TargetLanguage)}
-            disabled={processingState.status === 'processing'}
+            disabled={targetLangLocked}
           >
             {TARGET_LANGUAGE_OPTIONS.map((langOption) => (
               <option key={langOption} value={langOption}>
@@ -255,9 +261,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <button
             type="button"
             onClick={() => runTranslation('fresh')}
-            disabled={!canRunTranslation || isTranslating}
+            disabled={!canRunTranslation || inputsLocked}
             className={`inline-flex items-center justify-center w-full whitespace-nowrap rounded-control px-6 h-9 font-semibold transition-all ${
-              !canRunTranslation || isTranslating
+              !canRunTranslation || inputsLocked
                 ? disabledButtonClass
                 : 'bg-primary text-on-primary shadow-sm hover:bg-primary-hover active:scale-[0.99]'
             }`}

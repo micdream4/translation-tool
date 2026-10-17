@@ -46,6 +46,7 @@ export interface DocumentIOContext {
   fileId: string;
   getSpreadsheetBatchSize: () => number;
   pauseRequestedRef: React.RefObject<boolean>;
+  documentJobRef: React.MutableRefObject<number>;
   pdfContextRef: React.RefObject<PdfContext>;
   processedData: POCTRecord[];
   resetModelReviewState: () => void;
@@ -95,6 +96,7 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
     fileId,
     getSpreadsheetBatchSize,
     pauseRequestedRef,
+    documentJobRef,
     pdfContextRef,
     processedData,
     resetModelReviewState,
@@ -141,6 +143,8 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
       return;
     }
 
+    // A run or retry still in flight for the previous file must not write into this one.
+    documentJobRef.current += 1;
     setFile(uploadedFile);
     setExcelSkipScopeRaw('');
     setSavedSnapshot(null);
@@ -262,10 +266,18 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
     setPdfIssueIndices([]);
     setPdfIssueDetails([]);
     setExcelContext(null);
-      setDocxStats({ total: 0, translated: 0 });
-      setPdfStats({ pages: 0, total: 0, translated: 0 });
-      setSavedSnapshot(null);
-      try {
+    // Clear the previous file's rows before parsing: if this file fails to parse, nothing from the
+    // old file may remain under the new file's name.
+    setData([]);
+    setProcessedData([]);
+    setTranslationIssues(createIssueSummary());
+    setTranslatedFlags([]);
+    setMissingRowIndices([]);
+    setWriteFailedRowIndices([]);
+    setDocxStats({ total: 0, translated: 0 });
+    setPdfStats({ pages: 0, total: 0, translated: 0 });
+    setSavedSnapshot(null);
+    try {
       const { records, context } = await parseExcelFile(uploadedFile);
       setData(records);
       setExcelContext(context);

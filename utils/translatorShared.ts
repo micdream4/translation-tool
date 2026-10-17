@@ -136,7 +136,8 @@ export type TranslationMemoryStats = {
   deduped: number;
   stored: number;
 };
-export type StageResult = 'paused' | 'completed' | void;
+// 'stale': the run belonged to a file that has since been replaced; nothing is written.
+export type StageResult = 'paused' | 'completed' | 'stale' | void;
 
 export const parseCloudflareAiModelOptions = (serverModels?: readonly string[]) => {
   if (serverModels && serverModels.length) return Array.from(new Set(serverModels));

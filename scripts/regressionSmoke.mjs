@@ -3029,6 +3029,34 @@ test("spacing cleanup keeps short codes, ordinals and multipliers intact", async
   }
 });
 
+test("Excel runs and retries are tied to the uploaded file and lock the inputs while busy", () => {
+  const read = (file) => fs.readFileSync(path.join(repoRoot, file), "utf8");
+  const io = read("hooks/translation/useDocumentIO.ts");
+  const excel = read("hooks/translation/useExcelTranslation.ts");
+  const panel = read("components/translator/SettingsPanel.tsx");
+  const app = readAppSource();
+  // Upload invalidates in-flight work and clears the old rows before parsing (a failed parse
+  // must not leave the previous file's data under the new name).
+  assert.match(io, /documentJobRef\.current \+= 1;\s*setFile\(uploadedFile\)/);
+  assert.match(io, /setData\(\[\]\);[\s\S]*?try \{\s*const \{ records, context \} = await parseExcelFile/);
+  // Runs and both retry paths drop late results from an older job.
+  assert.ok((excel.match(/const isStale = \(\) => jobId !== documentJobRef\.current;/g) || []).length >= 3);
+  assert.match(excel, /if \(result === 'stale'\)/);
+  // Retries are busy and pausable; keyed retries set the same busy flag.
+  assert.ok((excel.match(/setIsRetryingMissing\(true\)/g) || []).length >= 2);
+  assert.ok((excel.match(/if \(pauseRequestedRef\.current\) \{/g) || []).length >= 3);
+  // Resume keeps the target language of the paused run.
+  assert.match(excel, /runTargetLangRef\.current !== targetLang/);
+  // The post-run audit reads the run's own flags and write failures, not stale React state.
+  assert.match(excel, /auditTranslation\(latestResults, latestFlags, latestWriteFailed\)/);
+  // Upload, target language and Run are locked while busy; the language stays locked while paused.
+  assert.match(app, /const inputsLocked = processingState\.status === 'processing' \|\| isBusy;/);
+  assert.match(app, /const targetLangLocked = inputsLocked \|\| translationStatus === 'paused';/);
+  assert.match(panel, /onChange=\{handleFileUpload\}\s*disabled=\{inputsLocked\}/);
+  assert.match(panel, /disabled=\{targetLangLocked\}/);
+  assert.match(panel, /disabled=\{!canRunTranslation \|\| inputsLocked\}/);
+});
+
 test("engine order is configurable and shared by browser and server", async () => {
   const { parseEngineOrder, orderEngines } = await bundleTsModule(path.join(repoRoot, "utils/engineOrder.ts"));
   assert.deepEqual(parseEngineOrder(""), ["cloudflare-ai", "deepseek", "gemini"]);

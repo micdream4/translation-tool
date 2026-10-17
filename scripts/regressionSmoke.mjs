@@ -3057,6 +3057,16 @@ test("Excel runs and retries are tied to the uploaded file and lock the inputs w
   assert.match(panel, /disabled=\{!canRunTranslation \|\| inputsLocked\}/);
 });
 
+test("browser tab icon and header logo use the same document icon", () => {
+  const favicon = fs.readFileSync(path.join(repoRoot, "public/favicon.svg"), "utf8");
+  const header = fs.readFileSync(path.join(repoRoot, "components/Header.tsx"), "utf8");
+  const paths = (text) => [...text.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(paths(favicon).length, 3);
+  // Header.tsx also holds other icons (theme toggle); every favicon path must be in the logo.
+  for (const d of paths(favicon)) assert.ok(paths(header).includes(d), `header logo lacks ${d}`);
+  assert.match(fs.readFileSync(path.join(repoRoot, "index.html"), "utf8"), /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg">/);
+});
+
 test("engine order is configurable and shared by browser and server", async () => {
   const { parseEngineOrder, orderEngines } = await bundleTsModule(path.join(repoRoot, "utils/engineOrder.ts"));
   assert.deepEqual(parseEngineOrder(""), ["cloudflare-ai", "deepseek", "gemini"]);

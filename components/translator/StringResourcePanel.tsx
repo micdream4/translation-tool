@@ -67,21 +67,21 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
   return (
       <div className="space-y-3">
     <div className="flex items-center justify-between">
-      <p className="text-xs text-muted pr-3">
+      <p className="text-caption text-muted pr-3">
         {t('strings.desc')}
       </p>
     </div>
     <textarea
-      className={'w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:ring-2 focus:ring-primary outline-none transition-all min-h-[140px] shadow-sm'}
+      className={'w-full bg-surface border border-line rounded-control p-3 text-body text-ink focus:ring-2 focus:ring-primary outline-none transition-all min-h-[140px] shadow-sm'}
       placeholder={t('strings.input.placeholder')}
       value={stringInput}
       onChange={(e) => setStringInput(e.target.value)}
       disabled={isStringTranslating}
     />
     <div className="flex flex-col gap-2">
-      <label className="text-xs text-muted">{t('strings.outputLang')}</label>
+      <label className="text-caption text-muted">{t('strings.outputLang')}</label>
       <select
-        className={'bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink shadow-sm'}
+        className={'bg-surface border border-line rounded-control px-3 h-9 text-body text-ink shadow-sm'}
         value={stringOutputTarget}
         onChange={(e) => setStringOutputTarget(e.target.value)}
         disabled={isStringTranslating}
@@ -93,9 +93,9 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           </option>
         ))}
       </select>
-      <p className="text-[11px] text-muted">
+      <p className="text-caption text-muted">
         {t('strings.dateHint')}</p>
-      <p className="text-[11px] text-muted">
+      <p className="text-caption text-muted">
         {t('strings.modelHint', { model: currentModelDisplayLabel })}
       </p>
     </div>
@@ -104,7 +104,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
         <button
           onClick={translateStringResources}
           disabled={!stringInput.trim() || isStringTranslating}
-          className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
+          className={`inline-flex items-center justify-center px-4 h-9 rounded-control font-semibold text-body transition-all shadow-lg ${
             !stringInput.trim() || isStringTranslating
               ? 'bg-strong text-muted cursor-not-allowed'
               : 'bg-primary hover:bg-primary-hover text-on-primary shadow-primary/20 active:scale-95'
@@ -119,7 +119,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
         <button
           onClick={clearStringResources}
           disabled={isStringTranslating || (!stringInput.trim() && !hasStringOutputs)}
-          className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+          className={`inline-flex items-center justify-center px-4 h-9 rounded-control font-semibold text-body transition-all ${
             isStringTranslating || (!stringInput.trim() && !hasStringOutputs)
               ? disabledButtonClass
               : dangerButtonClass
@@ -128,7 +128,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           {t('strings.clearAll')}
         </button>
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted">
+      <label className="flex items-center gap-2 text-caption text-muted">
         <input
           type="checkbox"
           checked={stringAutoFix}
@@ -140,14 +140,14 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
       </label>
     </div>
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-      <span className="text-xs text-muted">
+      <span className="text-caption text-muted">
         {t('strings.history', { count: stringHistoryCount })}
       </span>
       <div className="flex gap-2">
         <button
           onClick={exportCurrentStringOutput}
           disabled={!hasStringOutputs || isStringTranslating}
-          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+          className={`inline-flex items-center justify-center px-3 h-8 rounded-control text-caption font-semibold transition-all ${
             !hasStringOutputs || isStringTranslating
               ? disabledButtonClass
               : 'bg-primary hover:bg-primary-hover text-on-primary'
@@ -158,7 +158,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
         <button
           onClick={exportStringHistory}
           disabled={stringHistoryCount === 0 || isStringTranslating}
-          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+          className={`inline-flex items-center justify-center px-3 h-8 rounded-control text-caption font-semibold transition-all ${
             stringHistoryCount === 0 || isStringTranslating
               ? disabledButtonClass
               : neutralButtonClass
@@ -169,7 +169,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
         <button
           onClick={clearStringHistoryData}
           disabled={stringHistoryCount === 0 || isStringTranslating}
-          className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+          className={`inline-flex items-center justify-center px-3 h-8 rounded-control text-caption font-semibold transition-all ${
             stringHistoryCount === 0 || isStringTranslating
               ? disabledButtonClass
               : dangerButtonClass
@@ -180,12 +180,12 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
       </div>
     </div>
     {stringQualitySummary && (
-      <div className="text-xs text-warning bg-warning-soft border border-warning-border rounded-md px-3 py-2">
+      <div className="text-caption text-warning bg-warning-soft border border-warning-border rounded-control px-3 py-2">
         {stringQualitySummary}
       </div>
     )}
     {stringError && (
-      <div className="text-xs text-danger space-y-1">
+      <div className="text-caption text-danger space-y-1">
         <p>{stringError}</p>
         {stringErrorDetails && (
           <p className="text-danger">{stringErrorDetails}</p>
@@ -197,15 +197,15 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
         {selectedStringTargetLangs.map((lang) => (
           <div
             key={lang}
-            className={'bg-sunken border border-line rounded-lg p-3'}
+            className={'bg-sunken border border-line rounded-control p-3'}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted uppercase">
+              <span className="text-caption text-muted uppercase">
                 {lang}
               </span>
               <button
                 onClick={() => copyStringOutput(lang)}
-                className="text-[10px] text-muted hover:text-ink-soft"
+                className="text-caption text-muted hover:text-ink-soft"
                 disabled={!stringOutputs[lang]}
               >
                 {t('common.copy')}
@@ -213,7 +213,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
             </div>
             <textarea
               readOnly
-              className={'w-full bg-surface border border-line rounded-md p-2 text-xs text-ink min-h-[120px] resize-vertical'}
+              className={'w-full bg-surface border border-line rounded-control p-2 text-caption text-ink min-h-[120px] resize-vertical'}
               value={stringOutputs[lang] || ''}
             />
           </div>

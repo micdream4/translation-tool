@@ -67,7 +67,7 @@ const Header: React.FC<HeaderProps> = ({
         : authStatus === 'checking'
           ? 'bg-warning-solid'
           : 'bg-strong';
-  const iconButtonClass = `inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+  const iconButtonClass = `inline-flex h-9 w-9 items-center justify-center rounded-control border transition-colors ${
     'border-line bg-surface/80 text-ink-soft hover:border-primary-border hover:text-primary-ink'
   }`;
   const navItems = [
@@ -81,18 +81,18 @@ const Header: React.FC<HeaderProps> = ({
     }`}>
       <div className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:min-h-[64px]">
         <div className="order-1 flex min-w-0 flex-1 items-center gap-3 sm:flex-none">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-on-primary shadow-sm">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-primary text-on-primary shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6" />
               <path d="M9 13h6M9 17h4" />
             </svg>
           </div>
-          <h1 className={`truncate text-base font-bold sm:text-lg ${'text-ink'}`}>
+          <h1 className={`truncate text-title font-semibold sm:text-title ${'text-ink'}`}>
             {t('header.title')}
           </h1>
           {version && (
-            <span className={`hidden rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 sm:inline ${
+            <span className={`hidden rounded-full border px-2 py-0.5 text-caption font-semibold leading-4 sm:inline ${
               'border-line text-muted'
             }`}>
               v{version}
@@ -112,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={() => onNavigate?.(item.view)}
                 aria-current={active ? 'page' : undefined}
-                className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm transition-colors ${
+                className={`whitespace-nowrap border-b-2 px-3 py-3 text-body transition-colors ${
                   active
                     ? 'border-primary font-semibold text-ink'
                     : `border-transparent ${'text-muted hover:text-ink'}`
@@ -141,10 +141,10 @@ const Header: React.FC<HeaderProps> = ({
               </svg>
             </button>
             {isGuideOpen && (
-            <div className={`fixed inset-x-4 top-full mt-2 max-h-[calc(100vh-96px)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:w-[460px] overflow-y-auto overscroll-contain rounded-xl border p-4 shadow-2xl ${
+            <div className={`fixed inset-x-4 top-full mt-2 max-h-[calc(100vh-96px)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:w-[460px] overflow-y-auto overscroll-contain rounded-control border p-4 shadow-2xl ${
               'border-line bg-surface text-ink-soft'
             }`}>
-              <div className={`space-y-4 text-xs ${'text-ink-soft'}`}>
+              <div className={`space-y-4 text-caption ${'text-ink-soft'}`}>
                 {([
                   ['basic', 6],
                   ['run', 3],
@@ -152,7 +152,7 @@ const Header: React.FC<HeaderProps> = ({
                   ['sample', 2]
                 ] as const).map(([section, count]) => (
                   <section key={section}>
-                    <h3 className={`mb-2 text-[11px] font-semibold tracking-wider ${'text-ink'}`}>{t(`guide.${section}.title`)}</h3>
+                    <h3 className={`mb-2 text-caption font-semibold tracking-wider ${'text-ink'}`}>{t(`guide.${section}.title`)}</h3>
                     <ol className="space-y-2 list-decimal list-inside">
                       {Array.from({ length: count }, (_, index) => (
                         <li key={index}>{t(`guide.${section}.${index + 1}`)}</li>
@@ -166,7 +166,7 @@ const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div
-            className={`inline-flex items-center rounded-lg border p-0.5 text-xs font-semibold ${
+            className={`inline-flex items-center rounded-control border p-0.5 text-caption font-semibold ${
               'border-line bg-surface/80'
             }`}
             role="group"
@@ -178,7 +178,7 @@ const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={() => setLang(option)}
                 aria-pressed={lang === option}
-                className={`min-h-9 rounded-md px-3 py-1.5 transition-colors sm:min-h-0 sm:px-2.5 ${
+                className={`min-h-9 rounded-control px-3 py-2 transition-colors sm:min-h-0 sm:px-3 ${
                   lang === option
                     ? 'bg-primary text-on-primary'
                     : 'text-ink-soft hover:text-ink'
@@ -209,7 +209,7 @@ const Header: React.FC<HeaderProps> = ({
           </button>
 
           <div
-            className={`relative grid h-9 w-9 place-items-center rounded-full text-xs font-semibold ${
+            className={`relative grid h-9 w-9 place-items-center rounded-full text-caption font-semibold ${
               authStatus === 'blocked'
                 ? 'bg-danger-soft text-danger'
                 : 'bg-primary-soft text-primary-ink'

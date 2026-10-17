@@ -164,7 +164,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
             type="button"
             onClick={runQualityCheck}
             disabled={!canRunQualityCheck || translationStatus === 'running'}
-            className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+            className={`inline-flex items-center justify-center rounded-control px-4 h-9 text-body font-semibold transition-all ${
               !canRunQualityCheck || translationStatus === 'running'
                 ? disabledButtonClass
                 : 'bg-primary text-on-primary hover:bg-primary-hover'
@@ -176,7 +176,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
             type="button"
             onClick={retryAllIssues}
             disabled={!canRetryIssues}
-            className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+            className={`inline-flex items-center justify-center rounded-control px-4 h-9 text-body font-semibold transition-all ${
               !canRetryIssues
                 ? disabledButtonClass
                 : neutralButtonClass
@@ -188,11 +188,11 @@ const QualityTab: React.FC<QualityTabProps> = ({
                 ? t('qc.fix.count', { count: fixableIssueCount })
                 : t('qc.fix')}
           </button>
-          <ol className="flex flex-wrap items-center gap-1.5 text-xs" aria-label={t('qc.flow')}>
+          <ol className="flex flex-wrap items-center gap-2 text-caption" aria-label={t('qc.flow')}>
             {[1, 2, 3, 4].map((step) => (
               <li
                 key={step}
-                className={`rounded-full border px-2.5 py-0.5 ${
+                className={`rounded-full border px-3 py-0.5 ${
                   'border-line text-muted'
                 }`}
               >
@@ -201,16 +201,16 @@ const QualityTab: React.FC<QualityTabProps> = ({
             ))}
           </ol>
         </div>
-        <div className={`space-y-1 text-xs ${mutedTextClass}`}>
+        <div className={`space-y-1 text-caption ${mutedTextClass}`}>
           <p>{t('qc.help.run')}</p>
           <p>{t('qc.help.fix')}</p>
           {documentKind !== 'excel' && <p>{t('qc.help.docx')}</p>}
         </div>
         {!hasTranslationResult && (
-          <p className={`border-t pt-3 text-xs ${sectionDividerClass} ${mutedTextClass}`}>{t('qc.needTranslation')}</p>
+          <p className={`border-t pt-3 text-caption ${sectionDividerClass} ${mutedTextClass}`}>{t('qc.needTranslation')}</p>
         )}
         {hasTranslationResult && (hasTranslationAlerts || hasDocxIssues || hasPdfIssues || placeholderIssueCount > 0) && (
-          <div className={`space-y-1 border-t pt-3 text-xs ${sectionDividerClass} ${'text-warning'}`}>
+          <div className={`space-y-1 border-t pt-3 text-caption ${sectionDividerClass} ${'text-warning'}`}>
             {documentKind === 'excel' && currentIssueSummary.cells > 0 && (
               <p>{t('qc.alert.nonTarget', { cells: currentIssueSummary.cells, rows: currentIssueSummary.rows })}</p>
             )}

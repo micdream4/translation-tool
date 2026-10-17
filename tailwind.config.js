@@ -16,6 +16,24 @@ export default {
   ],
   theme: {
     extend: {
+      // System fonts only (no web font download); Chinese falls back to PingFang / Microsoft YaHei.
+      fontFamily: {
+        sans: ['-apple-system', '"SF Pro Text"', '"Segoe UI"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+        mono: ['ui-monospace', '"SF Mono"', 'Menlo', 'Consolas', 'monospace']
+      },
+      // Type scale 12/13/14/16/20/24: body 14 at 1.5, headings at 1.3.
+      fontSize: {
+        caption: ['12px', { lineHeight: '1.5' }],
+        label: ['13px', { lineHeight: '1.5' }],
+        body: ['14px', { lineHeight: '1.5' }],
+        title: ['16px', { lineHeight: '1.3' }],
+        heading: ['20px', { lineHeight: '1.3' }],
+        display: ['24px', { lineHeight: '1.3' }]
+      },
+      borderRadius: {
+        control: '10px',
+        panel: '16px'
+      },
       colors: {
         bg: token('bg'),
         surface: token('surface'),

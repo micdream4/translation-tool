@@ -2954,7 +2954,7 @@ test("Cloudflare AI empty content error names the stop reason and response shape
   );
 });
 
-test("UI colors come only from the theme tokens", () => {
+test("UI colors, type sizes and radii come only from the theme tokens", () => {
   // Components use token classes (bg-surface, text-muted, bg-primary, text-danger, ...); hues and their
   // light/dark values live in index.css and tailwind.config.js. A raw palette class, a gradient or an
   // inline hex/rgba color in a component brings back the per-component drift this replaced.
@@ -2973,10 +2973,13 @@ test("UI colors come only from the theme tokens", () => {
     /\b(?:bg|text|border|ring|shadow|fill|stroke|divide|outline|accent|placeholder|decoration|from|to|via)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
   const gradient = /\bbg-gradient-to-/;
   const arbitraryColor = /-\[[^\]]*(?:#[0-9a-fA-F]{3,8}\b|rgba?\()/;
+  // Type and shape follow the same tokens: sizes caption/label/body/title/heading/display,
+  // weights 400/500/600, radii control/panel/full.
+  const offScale = /\btext-(?:\[\d+px\]|xs|sm|base|lg|xl|[2-9]xl)\b|\bfont-(?:bold|extrabold|black|light|thin)\b|\brounded-(?:sm|md|lg|xl|2xl|3xl)\b/;
   const offenders = [];
   files.forEach((file) => {
     fs.readFileSync(path.join(repoRoot, file), "utf8").split("\n").forEach((line, index) => {
-      if (rawPalette.test(line) || gradient.test(line) || arbitraryColor.test(line)) {
+      if (rawPalette.test(line) || gradient.test(line) || arbitraryColor.test(line) || offScale.test(line)) {
         offenders.push(`${file}:${index + 1}: ${line.trim().slice(0, 120)}`);
       }
     });

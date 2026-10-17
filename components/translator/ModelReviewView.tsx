@@ -82,14 +82,14 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
 
   return (
           <main className="flex-1 max-w-[1480px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-6">
-            <section className={`${panelClass} space-y-5`}>
+            <section className={`${panelClass} space-y-6`}>
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div>
-                  <p className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.eyebrow')}</p>
-                  <h2 className={`text-2xl font-semibold mt-2 ${'text-ink'}`}>
+                  <p className={`text-caption font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.eyebrow')}</p>
+                  <h2 className={`text-display font-semibold mt-2 ${'text-ink'}`}>
                     {t('review.title')}
                   </h2>
-                  <p className={`text-sm mt-2 max-w-3xl ${mutedTextClass}`}>
+                  <p className={`text-body mt-2 max-w-3xl ${mutedTextClass}`}>
                     {t('review.desc')}
                   </p>
                 </div>
@@ -97,7 +97,7 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setActiveView('translator')}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${neutralButtonClass}`}
+                    className={`inline-flex items-center justify-center px-3 h-8 rounded-control text-caption font-semibold transition-all ${neutralButtonClass}`}
                   >
                     {t('review.back')}
                   </button>
@@ -105,7 +105,7 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
                     type="button"
                     onClick={exportModelReviewReport}
                     disabled={!modelReviewResult || isRunningModelReview}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    className={`inline-flex items-center justify-center px-3 h-8 rounded-control text-caption font-semibold transition-all ${
                       !modelReviewResult || isRunningModelReview ? disabledButtonClass : primaryInlineButtonClass
                     }`}
                   >
@@ -116,34 +116,34 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
 
               <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
                 <div className={metricCardClass}>
-                  <p className={`text-[11px] ${mutedTextClass}`}>{t('review.source')}</p>
-                  <p className={`text-sm font-semibold mt-1 ${'text-ink'}`}>
+                  <p className={`text-caption ${mutedTextClass}`}>{t('review.source')}</p>
+                  <p className={`text-body font-semibold mt-1 ${'text-ink'}`}>
                     {file?.name || t('review.noFile')}
                   </p>
-                  <p className={`text-[11px] mt-1 ${mutedTextClass}`}>{t(`review.sourceLabel.${sourceKind}`)}</p>
+                  <p className={`text-caption mt-1 ${mutedTextClass}`}>{t(`review.sourceLabel.${sourceKind}`)}</p>
                 </div>
                 <div className={metricCardClass}>
-                  <p className={`text-[11px] ${mutedTextClass}`}>{t('review.target')}</p>
-    	              <p className={`text-sm font-semibold mt-1 ${'text-ink'}`}>{getTargetLanguageLabel(targetLang)}</p>
-    	              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                  <p className={`text-caption ${mutedTextClass}`}>{t('review.target')}</p>
+    	              <p className={`text-body font-semibold mt-1 ${'text-ink'}`}>{getTargetLanguageLabel(targetLang)}</p>
+    	              <p className={`text-caption mt-1 ${mutedTextClass}`}>
     	                {t(`review.style.${effectiveModelReviewStyle}`)}
     	              </p>
     	            </div>
                 <div className={metricCardClass}>
-                  <p className={`text-[11px] ${mutedTextClass}`}>{t('review.candidates')}</p>
-                  <p className={`text-sm font-semibold mt-1 ${'text-ink'}`}>
+                  <p className={`text-caption ${mutedTextClass}`}>{t('review.candidates')}</p>
+                  <p className={`text-body font-semibold mt-1 ${'text-ink'}`}>
                     {t('review.translationModels', { count: DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.length })}
                   </p>
-                  <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+                  <p className={`text-caption mt-1 ${mutedTextClass}`}>
                     {t('review.judges', { count: DEFAULT_MODEL_REVIEW_JUDGE_MODELS.length })}
                   </p>
                 </div>
     	            <div className={metricCardClass}>
-    	              <p className={`text-[11px] ${mutedTextClass}`}>{t('review.statusLabel')}</p>
-    	              <p className={`text-sm font-semibold mt-1 ${'text-ink'}`}>
+    	              <p className={`text-caption ${mutedTextClass}`}>{t('review.statusLabel')}</p>
+    	              <p className={`text-body font-semibold mt-1 ${'text-ink'}`}>
     	                {isRunningModelReview ? t('review.status.running') : modelReviewResult ? (hasModelReviewJudgeScores ? t('review.status.completed') : t('review.status.noScore')) : t('review.status.idle')}
     	              </p>
-    	              <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
+    	              <p className={`text-caption mt-1 ${mutedTextClass}`}>
     	                {modelReviewResult
                         ? t('review.candidatesDone', { done: modelReviewSuccessfulCandidates.length, total: modelReviewResult.candidates.length })
                         : t('review.plannedSamples', { count: modelReviewCount })}
@@ -152,11 +152,11 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
               </div>
             </section>
 
-            <section className={`${panelClass} space-y-5`}>
+            <section className={`${panelClass} space-y-6`}>
               <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
-                  <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.run.title')}</h3>
-                  <p className={`text-xs mt-2 ${mutedTextClass}`}>
+                  <h3 className={`text-caption font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.run.title')}</h3>
+                  <p className={`text-caption mt-2 ${mutedTextClass}`}>
                     {t('review.run.hint')}
                   </p>
     	            </div>
@@ -190,7 +190,7 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
                   <button
                     onClick={runModelReview}
                     disabled={!canRunModelReview() || isTranslating || isRunningModelReview}
-                    className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                    className={`inline-flex items-center justify-center px-4 h-9 rounded-control font-semibold text-body transition-all ${
                       !canRunModelReview() || isTranslating || isRunningModelReview
                         ? disabledButtonClass
                         : 'bg-primary hover:bg-primary-hover text-on-primary shadow-sm'
@@ -201,7 +201,7 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
                 </div>
               </div>
 
-    	          <div className={`rounded-xl px-4 py-3 text-xs ${modelReviewStageClass(modelReviewStatus.stage)}`}>
+    	          <div className={`rounded-control px-4 py-3 text-caption ${modelReviewStageClass(modelReviewStatus.stage)}`}>
     	            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
     	              <div className="flex items-center gap-2">
     	                {isRunningModelReview && (
@@ -220,22 +220,22 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
 
     		          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <div className={subCardClass}>
-                  <p className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.preview.title')}</p>
+                  <p className={`text-caption font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.preview.title')}</p>
                   {modelReviewSamplesPreview.length === 0 ? (
-                    <p className={`text-xs mt-3 ${mutedTextClass}`}>{t('review.preview.empty')}</p>
+                    <p className={`text-caption mt-3 ${mutedTextClass}`}>{t('review.preview.empty')}</p>
                   ) : (
                     <div className="space-y-2 mt-3 max-h-[280px] overflow-auto pr-1">
                       {modelReviewSamplesPreview.map((sample) => (
                         <div key={sample.id} className={nestedPanelClass}>
-                          <p className={`text-[11px] font-semibold ${'text-ink'}`}>{sample.location}</p>
-                          <p className={`text-[11px] mt-1 line-clamp-3 ${mutedTextClass}`}>{sample.sourceText}</p>
+                          <p className={`text-caption font-semibold ${'text-ink'}`}>{sample.location}</p>
+                          <p className={`text-caption mt-1 line-clamp-3 ${mutedTextClass}`}>{sample.sourceText}</p>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
     	            <div className={subCardClass}>
-    	              <p className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.models.title')}</p>
+    	              <p className={`text-caption font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.models.title')}</p>
     	              <div className="grid grid-cols-1 gap-2 mt-3">
     	                {DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS.map((model) => {
     	                  const candidate = modelReviewResult?.candidates.find((item) => item.model === model);
@@ -249,10 +249,10 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
     	                  return (
     	                    <div key={model} className={nestedPanelClass}>
     	                      <div className="flex items-center justify-between gap-3">
-    	                        <p className={`text-[11px] ${'text-ink-soft'}`}>
+    	                        <p className={`text-caption ${'text-ink-soft'}`}>
     	                          {getModelLabel(model)}
     	                        </p>
-    	                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+    	                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-caption font-semibold ${
     	                          statusLabel === 'translated'
     	                            ? 'bg-success-soft text-success'
     	                            : statusLabel === 'failed'
@@ -271,24 +271,24 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
             </section>
 
             {modelReviewResult && (
-              <section className={`${panelClass} space-y-5`}>
+              <section className={`${panelClass} space-y-6`}>
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                   <div>
-    	                <h3 className={`text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.results.title')}</h3>
-    	                <p className={`text-xs mt-2 ${mutedTextClass}`}>
+    	                <h3 className={`text-caption font-semibold uppercase tracking-wider ${headingMutedClass}`}>{t('review.results.title')}</h3>
+    	                <p className={`text-caption mt-2 ${mutedTextClass}`}>
     	                  {t('review.results.summary', { samples: modelReviewResult.samples.length, done: modelReviewSuccessfulCandidates.length, total: modelReviewResult.candidates.length, scored: modelReviewScoredRows.length })}
     	                </p>
     	              </div>
                   <button
                     onClick={exportModelReviewReport}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${primaryInlineButtonClass}`}
+                    className={`inline-flex items-center justify-center px-3 h-8 rounded-control text-caption font-semibold transition-all ${primaryInlineButtonClass}`}
                   >
                     {t('review.export')}
     	              </button>
     	            </div>
 
     	            {(modelReviewFailedCandidates.length > 0 || modelReviewFailedJudges.length > 0 || !hasModelReviewJudgeScores) && (
-    	              <div className={`rounded-xl border px-4 py-3 text-xs ${
+    	              <div className={`rounded-control border px-4 py-3 text-caption ${
     	                'border-warning-border bg-warning-soft text-warning'
     	              }`}>
     	                <p className="font-semibold">
@@ -307,16 +307,16 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
     	                <div key={row.model} className={metricCardClass}>
     	                  <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className={`text-[11px] ${mutedTextClass}`}>#{index + 1}</p>
-                          <p className={`text-sm font-semibold truncate ${'text-ink'}`}>
+                          <p className={`text-caption ${mutedTextClass}`}>#{index + 1}</p>
+                          <p className={`text-body font-semibold truncate ${'text-ink'}`}>
     	                        {getModelLabel(row.model)}
     	                      </p>
     	                    </div>
-    	                    <p className={`text-lg font-semibold ${'text-primary-ink'}`}>
+    	                    <p className={`text-title font-semibold ${'text-primary-ink'}`}>
     	                      {row.judgeCount > 0 ? row.overall.toFixed(2) : t('review.notScored')}
     	                    </p>
     	                  </div>
-    	                  <p className={`text-[11px] mt-2 ${mutedTextClass}`}>
+    	                  <p className={`text-caption mt-2 ${mutedTextClass}`}>
     		                    {row.judgeCount > 0
     		                      ? t('review.metrics', { acc: row.accuracy.toFixed(1), fluency: row.fluency.toFixed(1), style: t(`review.metric.${metricKey}`), manual: row.manualStyle.toFixed(1), term: row.terminology.toFixed(1) })
     		                      : t('review.noScoreText')}
@@ -326,28 +326,28 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
     	            </div>
 
     	            {(modelReviewFailedCandidates.length > 0 || modelReviewFailedJudges.length > 0) && (
-    	              <details className={`rounded-xl border p-3 ${'border-line bg-sunken/80'}`}>
-    	                <summary className={`cursor-pointer list-none flex items-center justify-between text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>
+    	              <details className={`rounded-control border p-3 ${'border-line bg-sunken/80'}`}>
+    	                <summary className={`cursor-pointer list-none flex items-center justify-between text-caption font-semibold uppercase tracking-wider ${headingMutedClass}`}>
     	                  <span>{t('review.diag.title')}</span>
     	                  <span>{t('review.diag.count', { count: modelReviewFailedCandidates.length + modelReviewFailedJudges.length })}</span>
     	                </summary>
     	                <div className="mt-3 space-y-2">
     	                  {modelReviewFailedCandidates.map((candidate) => (
     	                    <div key={`candidate-${candidate.model}`} className={nestedPanelClass}>
-    	                      <p className={`text-[11px] font-semibold ${'text-ink'}`}>
+    	                      <p className={`text-caption font-semibold ${'text-ink'}`}>
     	                        {t('review.diag.candidate', { model: getModelLabel(candidate.model) })}
     	                      </p>
-    	                      <p className={`text-[11px] mt-1 whitespace-pre-wrap break-words ${'text-danger'}`}>
+    	                      <p className={`text-caption mt-1 whitespace-pre-wrap break-words ${'text-danger'}`}>
     	                        {candidate.error || t('review.diag.noTranslations')}
     	                      </p>
     	                    </div>
     	                  ))}
     	                  {modelReviewFailedJudges.map((judge) => (
     	                    <div key={`judge-${judge.model}`} className={nestedPanelClass}>
-    	                      <p className={`text-[11px] font-semibold ${'text-ink'}`}>
+    	                      <p className={`text-caption font-semibold ${'text-ink'}`}>
     	                        {t('review.diag.judge', { model: getModelLabel(judge.model) })}
     	                      </p>
-    	                      <p className={`text-[11px] mt-1 whitespace-pre-wrap break-words ${'text-danger'}`}>
+    	                      <p className={`text-caption mt-1 whitespace-pre-wrap break-words ${'text-danger'}`}>
     	                        {judge.error || t('review.diag.noScores')}
     	                      </p>
     	                    </div>
@@ -356,8 +356,8 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
     	              </details>
     	            )}
 
-    	            <details className={`rounded-xl border p-3 ${'border-line bg-sunken/80'}`}>
-                  <summary className={`cursor-pointer list-none flex items-center justify-between text-xs font-semibold uppercase tracking-wider ${headingMutedClass}`}>
+    	            <details className={`rounded-control border p-3 ${'border-line bg-sunken/80'}`}>
+                  <summary className={`cursor-pointer list-none flex items-center justify-between text-caption font-semibold uppercase tracking-wider ${headingMutedClass}`}>
                     <span>{t('review.compare.title')}</span>
                     <span>{t('review.samples', { count: modelReviewResult.samples.length })}</span>
                   </summary>
@@ -365,8 +365,8 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
                     {modelReviewResult.samples.map((sample) => (
                       <div key={sample.id} className={`${subCardClass} space-y-3`}>
                         <div>
-                          <p className={`text-xs font-semibold ${'text-ink'}`}>{sample.location}</p>
-                          <p className={`text-[11px] mt-1 whitespace-pre-wrap break-words ${'text-ink-soft'}`}>
+                          <p className={`text-caption font-semibold ${'text-ink'}`}>{sample.location}</p>
+                          <p className={`text-caption mt-1 whitespace-pre-wrap break-words ${'text-ink-soft'}`}>
                             {sample.sourceText}
                           </p>
                         </div>
@@ -375,10 +375,10 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
                             const translation = candidate.translations.find((item) => item.id === sample.id);
                             return (
                               <div key={`${sample.id}-${candidate.model}`} className={nestedPanelClass}>
-                                <p className="text-muted uppercase tracking-wider mb-2 text-[10px]">
+                                <p className="text-muted uppercase tracking-wider mb-2 text-caption">
                                   {getModelLabel(candidate.model)}
                                 </p>
-                                <p className={`${'text-ink-soft'} whitespace-pre-wrap break-words text-[11px]`}>
+                                <p className={`${'text-ink-soft'} whitespace-pre-wrap break-words text-caption`}>
                                   {translation?.translation || candidate.error || '(empty)'}
                                 </p>
                               </div>

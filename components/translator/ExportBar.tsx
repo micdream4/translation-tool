@@ -37,10 +37,10 @@ const ExportBar: React.FC<ExportBarProps> = ({
   } = getUiClasses(isLight);
 
   return (
-    <div className={`static z-30 flex flex-wrap items-center justify-end gap-3 rounded-2xl border px-4 py-3 sm:sticky sm:bottom-4 sm:px-5 backdrop-blur ${
+    <div className={`static z-30 flex flex-wrap items-center justify-end gap-3 rounded-panel border px-4 py-3 sm:sticky sm:bottom-4 sm:px-4 backdrop-blur ${
       'border-line bg-surface/95 shadow-[var(--shadow-panel)]'
     }`}>
-      <p className={`min-w-0 flex-1 text-sm empty:hidden ${
+      <p className={`min-w-0 flex-1 text-body empty:hidden ${
         docxBlockingIssueCount > 0 && translationStatus !== 'running'
           ? 'text-danger'
           : mutedTextClass
@@ -64,7 +64,7 @@ const ExportBar: React.FC<ExportBarProps> = ({
             type="button"
             onClick={handleDownloadPdfDocx}
             disabled={!canDownload}
-            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+            className={`inline-flex items-center justify-center rounded-control px-4 h-9 text-body font-semibold transition-all ${
               !canDownload ? disabledButtonClass : neutralButtonClass
             }`}
           >
@@ -75,7 +75,7 @@ const ExportBar: React.FC<ExportBarProps> = ({
           type="button"
           onClick={handleDownload}
           disabled={!canDownload}
-          className={`rounded-xl px-6 py-2.5 text-sm font-semibold transition-all ${
+          className={`inline-flex items-center justify-center rounded-control px-6 h-9 text-body font-semibold transition-all ${
             !canDownload
               ? disabledButtonClass
               : 'bg-primary text-on-primary shadow-sm hover:bg-primary-hover'

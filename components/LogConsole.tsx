@@ -32,7 +32,7 @@ const LogConsole: React.FC<LogConsoleProps> = ({ logs, theme = 'dark', onClear }
 
   return (
     <div
-      className={`flex h-72 flex-col rounded-2xl border p-4 font-mono text-xs ${
+      className={`flex h-72 flex-col rounded-panel border p-4 font-mono text-caption ${
         'border-line bg-surface'
       }`}
     >
@@ -41,7 +41,7 @@ const LogConsole: React.FC<LogConsoleProps> = ({ logs, theme = 'dark', onClear }
           <button
             type="button"
             onClick={onClear}
-            className={`text-xs ${'text-primary-ink hover:text-primary-ink'}`}
+            className={`text-caption ${'text-primary-ink hover:text-primary-ink'}`}
           >
             {t('logs.clear')}
           </button>

@@ -49,16 +49,16 @@ const EmbeddedVisualsNotice: React.FC<EmbeddedVisualsNoticeProps> = ({ isLight, 
   return (
     <div
       role="note"
-      className={`rounded-xl border px-4 py-3 text-sm ${
+      className={`rounded-control border px-4 py-3 text-body ${
         'border-warning-border bg-warning-soft text-warning'
       }`}
     >
       <p className="font-semibold">{t('visuals.title')}</p>
       <p className="mt-1">{t('visuals.summary', { parts: describeParts(summary) })}</p>
-      <p className={`mt-1 text-xs ${'text-warning'}`}>
+      <p className={`mt-1 text-caption ${'text-warning'}`}>
         {t('visuals.where', { areas: describeAreas(summary) })}
       </p>
-      <p className={`mt-1 text-xs ${'text-warning'}`}>{t('visuals.advice')}</p>
+      <p className={`mt-1 text-caption ${'text-warning'}`}>{t('visuals.advice')}</p>
     </div>
   );
 };

@@ -70,11 +70,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   return (
     <section
       ref={previewSectionRef}
-      className={`overflow-hidden rounded-xl border ${sectionDividerClass}`}
+      className={`overflow-hidden rounded-control border ${sectionDividerClass}`}
     >
       <div className={`p-4 border-b flex justify-between items-center ${'border-line bg-sunken/80'}`}>
         <div className="flex items-center gap-4">
-          <h2 className={`text-sm font-semibold uppercase ${'text-ink'}`}>{t('preview.title')}</h2>
+          <h2 className={`text-body font-semibold uppercase ${'text-ink'}`}>{t('preview.title')}</h2>
           {previewData.length > 0 && (
             <div className="flex items-center gap-2">
               <label className="relative inline-flex items-center cursor-pointer">
@@ -85,14 +85,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                   onChange={() => setShowComparison(!showComparison)}
                 />
                 <div className="w-9 h-5 bg-strong peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-line after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-line after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                <span className={`ml-2 text-xs font-medium ${headingMutedClass}`}>{t('preview.verify')}</span>
+                <span className={`ml-2 text-caption font-medium ${headingMutedClass}`}>{t('preview.verify')}</span>
               </label>
             </div>
           )}
         </div>
         <div className="flex items-center gap-3">
           {previewFocus && (
-            <div className={`flex items-center gap-2 text-[10px] ${'text-primary-ink'}`}>
+            <div className={`flex items-center gap-2 text-caption ${'text-primary-ink'}`}>
               <span>{t('preview.focused', { label: formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey) })}</span>
               <button
                 onClick={() => setPreviewFocus(null)}
@@ -102,7 +102,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               </button>
             </div>
           )}
-          <div className={`text-[10px] ${mutedTextClass}`}>
+          <div className={`text-caption ${mutedTextClass}`}>
             {previewData.length > 0
               ? previewFocus
                 ? t('preview.showingFocused', { count: previewRowIndices.length })
@@ -120,12 +120,12 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         <div className={`px-4 py-3 border-b ${'border-line bg-sunken'}`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <p className={`text-[11px] font-semibold uppercase tracking-wider ${'text-primary-ink'}`}>
+              <p className={`text-caption font-semibold uppercase tracking-wider ${'text-primary-ink'}`}>
                 {t('preview.focusedCell')}
               </p>
-              <p className={`text-xs mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
+              <p className={`text-caption mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
             </div>
-            <span className={`text-[10px] ${mutedTextClass}`}>
+            <span className={`text-caption ${mutedTextClass}`}>
               {focusedPreviewCell.skipped
                 ? t('preview.skippedKept')
                 : focusedPreviewCell.changed ? t('preview.changed') : t('preview.identical')}
@@ -133,15 +133,15 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </div>
           <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
             <div className={nestedPanelClass}>
-              <p className="text-[10px] text-muted uppercase tracking-wider mb-2">{t('preview.target')}</p>
-              <p className={`text-sm whitespace-pre-wrap break-words ${'text-ink'}`}>
+              <p className="text-caption text-muted uppercase tracking-wider mb-2">{t('preview.target')}</p>
+              <p className={`text-body whitespace-pre-wrap break-words ${'text-ink'}`}>
                 {focusedPreviewCell.translated || t('common.empty')}
               </p>
             </div>
             {showComparison && (
               <div className={nestedPanelClass}>
-                <p className="text-[10px] text-muted uppercase tracking-wider mb-2">{t('preview.source')}</p>
-                <p className={`text-sm whitespace-pre-wrap break-words ${'text-ink-soft'}`}>
+                <p className="text-caption text-muted uppercase tracking-wider mb-2">{t('preview.source')}</p>
+                <p className={`text-body whitespace-pre-wrap break-words ${'text-ink-soft'}`}>
                   {focusedPreviewCell.original || t('common.empty')}
                 </p>
               </div>
@@ -152,12 +152,12 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
       <div className={'overflow-auto h-[410px] scrollbar-thin'}>
         {previewData.length === 0 ? (
-          <div className={`h-full flex items-center justify-center text-sm italic ${'text-muted'}`}>
+          <div className={`h-full flex items-center justify-center text-body italic ${'text-muted'}`}>
             {t('preview.waiting')}
           </div>
         ) : (
           <table className="w-full text-left border-collapse min-w-full table-fixed">
-            <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${'bg-sunken text-muted'}`}>
+            <thead className={`sticky top-0 text-caption font-semibold uppercase z-10 shadow-sm ${'bg-sunken text-muted'}`}>
               <tr>
                 <th className={`px-4 py-3 border-b w-20 ${'border-line'}`}>{t('preview.row')}</th>
                 {shownColumnKeys.map(key => (
@@ -176,7 +176,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                     key={actualIndex}
                     className={`${'hover:bg-primary-soft'} transition-colors ${isFocusedRow ? 'bg-primary-soft' : ''}`}
                   >
-                    <td className={`px-4 py-3 border-b text-[11px] text-muted font-mono ${'border-line'}`}>
+                    <td className={`px-4 py-3 border-b text-caption text-muted font-mono ${'border-line'}`}>
                       R{formatExcelRowNumber(actualIndex)}
                     </td>
                     {shownColumnKeys.map((key, j) => {
@@ -195,7 +195,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                           <div className="flex flex-col gap-0.5">
                             <span
                               title={String(val)}
-                              className={`text-xs truncate whitespace-nowrap ${isDiff ? ('text-primary-ink font-medium') : ('text-ink-soft')}`}
+                              className={`text-caption truncate whitespace-nowrap ${isDiff ? ('text-primary-ink font-medium') : ('text-ink-soft')}`}
                             >
                               {String(val)}
                             </span>
@@ -203,13 +203,13 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                             {showComparison && isDiff && (
                               <span
                                 title={String(origVal)}
-                                className={`text-[10px] text-muted truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${'bg-surface border-line'}`}
+                                className={`text-caption text-muted truncate whitespace-nowrap px-2 py-0.5 rounded border w-fit max-w-full ${'bg-surface border-line'}`}
                               >
                                 {String(origVal)}
                               </span>
                             )}
                             {isSkippedCell && (
-                              <span className={`text-[10px] truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${'bg-warning-soft text-warning border-warning-border'}`}>
+                              <span className={`text-caption truncate whitespace-nowrap px-2 py-0.5 rounded border w-fit max-w-full ${'bg-warning-soft text-warning border-warning-border'}`}>
                                 {t('preview.skipped')}
                               </span>
                             )}
@@ -225,17 +225,17 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         )}
       </div>
       {!focused && previewData.length > 0 && (rowPageCount > 1 || columnPageCount > 1) && (
-        <div className={`flex flex-wrap items-center justify-between gap-3 border-t px-4 py-2 text-xs ${sectionDividerClass} ${mutedTextClass}`}>
+        <div className={`flex flex-wrap items-center justify-between gap-3 border-t px-4 py-2 text-caption ${sectionDividerClass} ${mutedTextClass}`}>
           <div className="flex items-center gap-2">
-            <button type="button" disabled={safeRowPage === 0} onClick={() => setRowPage(safeRowPage - 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.prev')}</button>
+            <button type="button" disabled={safeRowPage === 0} onClick={() => setRowPage(safeRowPage - 1)} className="min-h-9 rounded-control px-3 disabled:opacity-40">{t('preview.prev')}</button>
             <span className="tabular-nums">{safeRowPage + 1} / {rowPageCount}</span>
-            <button type="button" disabled={safeRowPage >= rowPageCount - 1} onClick={() => setRowPage(safeRowPage + 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.next')}</button>
+            <button type="button" disabled={safeRowPage >= rowPageCount - 1} onClick={() => setRowPage(safeRowPage + 1)} className="min-h-9 rounded-control px-3 disabled:opacity-40">{t('preview.next')}</button>
           </div>
           {columnPageCount > 1 && (
             <div className="flex items-center gap-2">
-              <button type="button" disabled={safeColumnPage === 0} onClick={() => setColumnPage(safeColumnPage - 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.prevCols')}</button>
+              <button type="button" disabled={safeColumnPage === 0} onClick={() => setColumnPage(safeColumnPage - 1)} className="min-h-9 rounded-control px-3 disabled:opacity-40">{t('preview.prevCols')}</button>
               <span className="tabular-nums">{safeColumnPage + 1} / {columnPageCount}</span>
-              <button type="button" disabled={safeColumnPage >= columnPageCount - 1} onClick={() => setColumnPage(safeColumnPage + 1)} className="min-h-9 rounded-lg px-3 disabled:opacity-40">{t('preview.nextCols')}</button>
+              <button type="button" disabled={safeColumnPage >= columnPageCount - 1} onClick={() => setColumnPage(safeColumnPage + 1)} className="min-h-9 rounded-control px-3 disabled:opacity-40">{t('preview.nextCols')}</button>
             </div>
           )}
         </div>

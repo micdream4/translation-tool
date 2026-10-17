@@ -1714,7 +1714,7 @@ const App: React.FC = () => {
   targetLang={targetLang}
 />
       ) : (
-      <main className="flex-1 max-w-[1180px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-5">
+      <main className="flex-1 max-w-[1180px] mx-auto w-full p-4 lg:px-8 lg:py-8 space-y-6">
         <SettingsPanel
           isLight={isLight}
           embeddedVisuals={embeddedVisuals}
@@ -1787,7 +1787,7 @@ const App: React.FC = () => {
                 aria-selected={resultTab === tab.key}
                 aria-controls={`result-panel-${tab.key}`}
                 onClick={() => setResultTab(tab.key)}
-                className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
+                className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-body font-semibold transition-colors ${
                   resultTab === tab.key
                     ? 'border-primary text-primary-ink'
                     : `border-transparent ${'text-muted hover:text-ink'}`
@@ -1795,7 +1795,7 @@ const App: React.FC = () => {
               >
                 {tab.label}
                 {tab.badge > 0 && (
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${'bg-danger-soft text-danger'}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-caption ${'bg-danger-soft text-danger'}`}>
                     {tab.badge}
                   </span>
                 )}

@@ -67,7 +67,7 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
   }, [batchRuns, issuesOnly]);
 
   const statusChip = (run: BatchRun) => {
-    const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap';
+    const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-caption font-semibold whitespace-nowrap';
     switch (run.status) {
       case 'running':
         return `${base} ${'bg-primary-soft text-primary-ink'}`;
@@ -84,20 +84,20 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
     <section className={`${panelClass} space-y-4`} aria-label={t('monitor.title')}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">{t('monitor.title')}</h2>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+          <h2 className="text-title font-semibold">{t('monitor.title')}</h2>
+          <span className={`rounded-full px-3 py-0.5 text-caption font-semibold ${
             'bg-subtle text-ink-soft'
           }`}>
             {statusLabel}
           </span>
-          <span className={`text-xs ${mutedTextClass}`}>{t('monitor.autosave')}</span>
+          <span className={`text-caption ${mutedTextClass}`}>{t('monitor.autosave')}</span>
         </div>
         {showPauseResume && (
           <button
             type="button"
             onClick={onPauseResume}
             disabled={pauseResumeDisabled}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+            className={`inline-flex items-center justify-center rounded-control px-4 h-9 text-body font-semibold transition-all ${
               pauseResumeDisabled ? disabledButtonClass : neutralButtonClass
             }`}
           >
@@ -116,27 +116,27 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
         <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 text-body lg:grid-cols-3">
         <div className={metricCardClass}>
-          <p className={`text-[11px] ${mutedTextClass}`}>{t('monitor.progress')}</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums">{progress}%</p>
+          <p className={`text-caption ${mutedTextClass}`}>{t('monitor.progress')}</p>
+          <p className="mt-1 text-title font-semibold tabular-nums">{progress}%</p>
         </div>
         <div className={metricCardClass}>
-          <p className={`text-[11px] ${mutedTextClass}`}>{t('monitor.batch')}</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums">
+          <p className={`text-caption ${mutedTextClass}`}>{t('monitor.batch')}</p>
+          <p className="mt-1 text-title font-semibold tabular-nums">
             {latestTotal > 0 ? `${latestNum} / ${latestTotal}` : '-'}
           </p>
         </div>
         <div className={`${metricCardClass} col-span-2 lg:col-span-1`}>
-          <p className={`text-[11px] ${mutedTextClass}`}>{t('monitor.model')}</p>
-          <p className="mt-1 truncate text-lg font-semibold" title={lastUsedModel || modelLabel}>{lastUsedModel || modelLabel}</p>
+          <p className={`text-caption ${mutedTextClass}`}>{t('monitor.model')}</p>
+          <p className="mt-1 truncate text-title font-semibold" title={lastUsedModel || modelLabel}>{lastUsedModel || modelLabel}</p>
         </div>
       </div>
 
       {isSlow && running && (
         <div
           role="status"
-          className={`rounded-xl border px-4 py-3 text-sm ${
+          className={`rounded-control border px-4 py-3 text-body ${
             'border-warning-border bg-warning-soft text-warning'
           }`}
         >
@@ -152,7 +152,7 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
               type="button"
               onClick={() => setIssuesOnly((value) => !value)}
               aria-pressed={issuesOnly}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              className={`rounded-full border px-3 py-1 text-caption font-semibold ${
                 issuesOnly
                   ? 'border-primary-border bg-primary-soft text-primary-ink'
                   : 'border-line text-ink-soft'
@@ -164,7 +164,7 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
         </div>
 
         {visibleRuns.length === 0 ? (
-          <p className={`rounded-xl border border-dashed px-4 py-6 text-center text-sm ${
+          <p className={`rounded-control border border-dashed px-4 py-6 text-center text-body ${
             'border-line text-muted'
           }`}>
             {t('monitor.empty')}
@@ -174,24 +174,24 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
             {visibleRuns.map((run) => {
               const elapsed = run.status === 'running' ? waitedMs : run.elapsedMs || 0;
               return (
-                <li key={run.id} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2.5">
-                  <span className="font-mono text-xs tabular-nums">#{run.batchNum}</span>
+                <li key={run.id} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2">
+                  <span className="font-mono text-caption tabular-nums">#{run.batchNum}</span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm" title={run.model || undefined}>
+                    <p className="truncate text-body" title={run.model || undefined}>
                       {t('monitor.units', {
                         count: run.items,
                         unit: run.unit === 'rows' ? t('common.rows') : t('common.segments')
                       })}
                       {run.model ? ` · ${run.model}` : ''}
                     </p>
-                    <p className={`truncate font-mono text-xs tabular-nums ${mutedTextClass}`} title={run.note || undefined}>
+                    <p className={`truncate font-mono text-caption tabular-nums ${mutedTextClass}`} title={run.note || undefined}>
                       {formatSeconds(elapsed)}
                       {run.note ? ` · ${run.note}` : ''}
                     </p>
                   </div>
                   <span className={statusChip(run)}>{t(`monitor.state.${run.status}`)}</span>
                   {run.status === 'failed' && (
-                    <p className={`col-start-2 col-span-2 text-xs ${'text-danger'}`}>
+                    <p className={`col-start-2 col-span-2 text-caption ${'text-danger'}`}>
                       {t('monitor.skippedHint')}
                     </p>
                   )}

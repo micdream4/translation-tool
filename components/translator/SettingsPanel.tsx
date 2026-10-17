@@ -111,11 +111,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   } = getUiClasses(isLight);
 
   return (
-    <section className={`${panelClass} space-y-5`}>
+    <section className={`${panelClass} space-y-6`}>
       <h2 className="sr-only">{t('settings.title')}</h2>
 
       <div
-        className={`relative flex flex-wrap items-center gap-4 rounded-2xl border-2 border-dashed px-4 py-3 transition-colors ${
+        className={`relative flex flex-wrap items-center gap-4 rounded-panel border-2 border-dashed px-4 py-3 transition-colors ${
           'border-primary-border bg-sunken/70 hover:border-primary-border'
         }`}
       >
@@ -128,7 +128,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           aria-label={file ? t('settings.upload.replace') : t('settings.upload.cta')}
         />
         <div
-          className={`grid h-11 w-9 shrink-0 place-items-center rounded-md font-mono text-[11px] font-semibold ${
+          className={`grid h-11 w-9 shrink-0 place-items-center rounded-control font-mono text-caption font-semibold ${
             'bg-primary-soft text-primary-ink'
           }`}
           aria-hidden="true"
@@ -137,10 +137,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium" title={file ? file.name : undefined}>{file ? file.name : t('settings.upload.cta')}</p>
-          <p className={`truncate text-xs ${mutedTextClass}`}>{fileSummaryLine}</p>
+          <p className={`truncate text-caption ${mutedTextClass}`}>{fileSummaryLine}</p>
         </div>
         <span
-          className={`pointer-events-none rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+          className={`inline-flex items-center justify-center pointer-events-none rounded-control border px-3 h-8 text-caption font-semibold ${
             'border-line bg-surface text-ink-soft'
           }`}
         >
@@ -148,7 +148,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </span>
       </div>
       {documentKind === 'docx' && docxContextRef.current && (
-        <div className={`space-y-1 text-xs ${mutedTextClass}`}>
+        <div className={`space-y-1 text-caption ${mutedTextClass}`}>
           <p>{t('settings.docx.coverage', { coverage: formatDocxCoverageSummary(docxContextRef.current.coverage) })}</p>
           {docxContextRef.current.coverageWarnings.length > 0 && (
             <p>{t('settings.scopeWarn', { warnings: docxContextRef.current.coverageWarnings.join('；') })}</p>
@@ -156,7 +156,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       )}
       {documentKind === 'pdf' && pdfContextRef.current && pdfContextRef.current.coverageWarnings.length > 0 && (
-        <p className={`text-xs ${mutedTextClass}`}>
+        <p className={`text-caption ${mutedTextClass}`}>
           {t('settings.scopeWarn', { warnings: pdfContextRef.current.coverageWarnings.join('；') })}
         </p>
       )}
@@ -164,20 +164,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <EmbeddedVisualsNotice isLight={isLight} summary={embeddedVisuals} />
 
       {savedSnapshot && processedData.length === 0 && (
-        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${'border-warning-border bg-warning-soft'}`}>
-          <p className={`text-sm ${'text-warning'}`}>{t('settings.progress.found')}</p>
+        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-control border p-3 ${'border-warning-border bg-warning-soft'}`}>
+          <p className={`text-body ${'text-warning'}`}>{t('settings.progress.found')}</p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={applySavedProgress}
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-hover"
+              className="inline-flex items-center justify-center rounded-control bg-primary px-4 h-9 text-body font-semibold text-on-primary hover:bg-primary-hover"
             >
               {t('settings.progress.restore')}
             </button>
             <button
               type="button"
               onClick={discardSavedProgress}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ${neutralButtonClass}`}
+              className={`inline-flex items-center justify-center rounded-control px-4 h-9 text-body font-semibold ${neutralButtonClass}`}
             >
               {t('settings.progress.discard')}
             </button>
@@ -187,7 +187,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.3fr)_auto] xl:items-start">
         <div className="min-w-0">
-          <label htmlFor="target-language" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.targetLang')}</label>
+          <label htmlFor="target-language" className={`mb-1.5 block text-caption font-medium ${headingMutedClass}`}>{t('settings.targetLang')}</label>
           <select
             id="target-language"
             className={fieldClass}
@@ -204,8 +204,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div>
-          <p className={`mb-1.5 text-xs font-medium ${headingMutedClass}`}>{t('settings.strategy')}</p>
-          <div className={`inline-flex rounded-xl border p-0.5 ${'border-line bg-surface'}`} role="group" aria-label={t('settings.strategy')}>
+          <p className={`mb-1.5 text-caption font-medium ${headingMutedClass}`}>{t('settings.strategy')}</p>
+          <div className={`inline-flex rounded-control border p-0.5 ${'border-line bg-surface'}`} role="group" aria-label={t('settings.strategy')}>
             {([
               ['full', t('settings.strategy.full')],
               ['selective', t('settings.strategy.selective')]
@@ -216,7 +216,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 onClick={() => setTranslationMode(mode)}
                 disabled={isTranslating}
                 aria-pressed={translationMode === mode}
-                className={`rounded-[10px] px-4 py-2 text-sm font-semibold transition-all ${
+                className={`rounded-[10px] px-4 py-2 text-body font-semibold transition-all ${
                   translationMode === mode
                     ? 'bg-primary text-on-primary'
                     : 'text-ink-soft hover:text-ink'
@@ -229,7 +229,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="min-w-0">
-          <label htmlFor="translation-model" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.model')}</label>
+          <label htmlFor="translation-model" className={`mb-1.5 block text-caption font-medium ${headingMutedClass}`}>{t('settings.model')}</label>
           <select
             id="translation-model"
             className={fieldClass}
@@ -251,12 +251,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         <div className="md:col-span-2 xl:col-span-1">
-          <span className="mb-1.5 hidden text-xs xl:block" aria-hidden="true">&nbsp;</span>
+          <span className="mb-1.5 hidden text-caption xl:block" aria-hidden="true">&nbsp;</span>
           <button
             type="button"
             onClick={() => runTranslation('fresh')}
             disabled={!canRunTranslation || isTranslating}
-            className={`w-full whitespace-nowrap rounded-xl px-6 py-2.5 font-semibold transition-all ${
+            className={`inline-flex items-center justify-center w-full whitespace-nowrap rounded-control px-6 h-9 font-semibold transition-all ${
               !canRunTranslation || isTranslating
                 ? disabledButtonClass
                 : 'bg-primary text-on-primary shadow-sm hover:bg-primary-hover active:scale-[0.99]'
@@ -265,12 +265,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             {isTranslating ? t('settings.starting') : t('settings.start')}
           </button>
           {!canRunTranslation && !isTranslating && (
-            <p className={`mt-1.5 text-xs ${mutedTextClass}`}>{t('settings.needFile')}</p>
+            <p className={`mt-1.5 text-caption ${mutedTextClass}`}>{t('settings.needFile')}</p>
           )}
         </div>
       </div>
 
-      <div className={`space-y-1 text-xs ${mutedTextClass}`}>
+      <div className={`space-y-1 text-caption ${mutedTextClass}`}>
         <p>{t('settings.strategy.fullHint')}</p>
         <p>
           {usesDocumentQualityModels
@@ -279,19 +279,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </p>
       </div>
 
-      <details className={`rounded-xl border ${'border-line'}`}>
-        <summary className={`flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm font-semibold ${'text-ink'}`}>
+      <details className={`rounded-control border ${'border-line'}`}>
+        <summary className={`flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-body font-semibold ${'text-ink'}`}>
           <span>{t('settings.more')}</span>
-          <span className={`text-xs font-normal ${mutedTextClass}`}>
+          <span className={`text-caption font-normal ${mutedTextClass}`}>
             {t('settings.more.summary', {
               terms: runtimeProtectedTermsCount,
               tm: translationMemoryEnabled ? t('common.on') : t('common.off')
             })}
           </span>
         </summary>
-        <div className={`grid gap-5 border-t p-4 md:grid-cols-2 ${sectionDividerClass}`}>
+        <div className={`grid gap-6 border-t p-4 md:grid-cols-2 ${sectionDividerClass}`}>
           <div>
-            <label htmlFor="protected-terms" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.protected')}</label>
+            <label htmlFor="protected-terms" className={`mb-1.5 block text-caption font-medium ${headingMutedClass}`}>{t('settings.protected')}</label>
             <textarea
               id="protected-terms"
               className={textareaClass}
@@ -300,12 +300,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               disabled={isTranslating}
               placeholder={t('settings.protected.placeholder')}
             />
-            <p className={`mt-1 text-xs ${mutedTextClass}`}>{t('settings.protected.hint', { count: runtimeProtectedTermsCount })}</p>
+            <p className={`mt-1 text-caption ${mutedTextClass}`}>{t('settings.protected.hint', { count: runtimeProtectedTermsCount })}</p>
           </div>
 
           {documentKind === 'excel' && (
             <div>
-              <label htmlFor="excel-skip-scope" className={`mb-1.5 block text-xs font-medium ${headingMutedClass}`}>{t('settings.skip')}</label>
+              <label htmlFor="excel-skip-scope" className={`mb-1.5 block text-caption font-medium ${headingMutedClass}`}>{t('settings.skip')}</label>
               <textarea
                 id="excel-skip-scope"
                 className={textareaClass}
@@ -314,9 +314,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 disabled={isTranslating}
                 placeholder={t('settings.skip.placeholder')}
               />
-              <p className={`mt-1 text-xs ${mutedTextClass}`}>{t('settings.skip.hint', { summary: excelSkipScopeSummary })}</p>
+              <p className={`mt-1 text-caption ${mutedTextClass}`}>{t('settings.skip.hint', { summary: excelSkipScopeSummary })}</p>
               {excelSkipScope.errors.length > 0 && (
-                <p className={`mt-1 text-[11px] ${'text-warning'}`}>
+                <p className={`mt-1 text-caption ${'text-warning'}`}>
                   {excelSkipScope.errors.slice(0, 3).join('；')}
                   {excelSkipScope.errors.length > 3 ? '；...' : ''}
                 </p>
@@ -324,7 +324,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           )}
 
-          <div className={`space-y-2 text-xs ${mutedTextClass}`}>
+          <div className={`space-y-2 text-caption ${mutedTextClass}`}>
             <div className="flex items-center justify-between gap-3">
               <label className="flex items-center gap-2 font-semibold">
                 <input
@@ -340,7 +340,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 type="button"
                 onClick={clearTranslationMemoryData}
                 disabled={isTranslating || translationMemoryCount === 0}
-                className={`min-h-9 rounded-lg px-3 py-1.5 font-semibold transition-all sm:min-h-0 ${
+                className={`inline-flex items-center justify-center rounded-control px-3 h-9 font-semibold transition-all sm:min-h-0 ${
                   isTranslating || translationMemoryCount === 0 ? disabledButtonClass : neutralButtonClass
                 }`}
               >

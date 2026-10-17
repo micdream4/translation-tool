@@ -25,6 +25,7 @@
   --c-primary-soft: 238 242 255;
   --c-primary-ink: 67 56 202;
   --c-primary-border: 199 210 254;
+  --c-on-primary: 255 255 255;
 
   /* Status colors follow the QA levels: 错误 danger, 需确认 warning, 已保留 kept, 已确认/通过 success. */
   --c-danger: 190 18 60;
@@ -70,6 +71,7 @@
   --c-primary-soft: 28 36 74;
   --c-primary-ink: 165 180 252;
   --c-primary-border: 44 51 112;
+  --c-on-primary: 255 255 255;
 
   --c-danger: 253 164 175;
   --c-danger-soft: 43 28 48;

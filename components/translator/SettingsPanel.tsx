@@ -170,7 +170,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <button
               type="button"
               onClick={applySavedProgress}
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover"
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-hover"
             >
               {t('settings.progress.restore')}
             </button>
@@ -218,7 +218,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 aria-pressed={translationMode === mode}
                 className={`rounded-[10px] px-4 py-2 text-sm font-semibold transition-all ${
                   translationMode === mode
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-on-primary'
                     : 'text-ink-soft hover:text-ink'
                 }`}
               >
@@ -259,7 +259,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             className={`w-full whitespace-nowrap rounded-xl px-6 py-2.5 font-semibold transition-all ${
               !canRunTranslation || isTranslating
                 ? disabledButtonClass
-                : 'bg-primary text-white shadow-sm hover:bg-primary-hover active:scale-[0.99]'
+                : 'bg-primary text-on-primary shadow-sm hover:bg-primary-hover active:scale-[0.99]'
             }`}
           >
             {isTranslating ? t('settings.starting') : t('settings.start')}

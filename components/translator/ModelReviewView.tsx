@@ -193,7 +193,7 @@ const ModelReviewView: React.FC<ModelReviewViewProps> = ({
                     className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition-all ${
                       !canRunModelReview() || isTranslating || isRunningModelReview
                         ? disabledButtonClass
-                        : 'bg-primary hover:bg-primary-hover text-white shadow-sm'
+                        : 'bg-primary hover:bg-primary-hover text-on-primary shadow-sm'
                     }`}
                   >
                     {isRunningModelReview ? t('review.running') : t('review.runButton')}

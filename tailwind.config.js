@@ -32,6 +32,7 @@ export default {
           ink: token('primary-ink'),
           border: token('primary-border')
         },
+        'on-primary': token('on-primary'),
         danger: status('danger'),
         warning: status('warning'),
         kept: status('kept'),

@@ -107,7 +107,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
             !stringInput.trim() || isStringTranslating
               ? 'bg-strong text-muted cursor-not-allowed'
-              : 'bg-primary hover:bg-primary-hover text-white shadow-primary/20 active:scale-95'
+              : 'bg-primary hover:bg-primary-hover text-on-primary shadow-primary/20 active:scale-95'
           }`}
         >
           {isStringTranslating
@@ -150,7 +150,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
             !hasStringOutputs || isStringTranslating
               ? disabledButtonClass
-              : 'bg-primary hover:bg-primary-hover text-white'
+              : 'bg-primary hover:bg-primary-hover text-on-primary'
           }`}
         >
           {t('strings.exportCurrent')}

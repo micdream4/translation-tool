@@ -361,7 +361,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         onClick={() => setFindingSeverityFilter(filter)}
                         className={`min-h-9 px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide transition-all sm:min-h-0 sm:px-2.5 ${
                           findingSeverityFilter === filter
-                            ? 'bg-primary text-white'
+                            ? 'bg-primary text-on-primary'
                             : 'bg-surface text-ink-soft border border-line hover:bg-sunken'
                         }`}
                       >
@@ -424,7 +424,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                           )}
                           <button
                             onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}
-                            className="px-3 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold transition-all"
+                            className="px-3 py-2 rounded-lg bg-primary hover:bg-primary-hover text-on-primary text-xs font-semibold transition-all"
                           >
                             {t('common.jump')}
                           </button>
@@ -545,7 +545,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       !hasQualityReport || processedDataLength === 0
                         ? disabledButtonClass
-                        : 'bg-primary hover:bg-primary-hover text-white'
+                        : 'bg-primary hover:bg-primary-hover text-on-primary'
                     }`}
                   >
                     {t('report.sample.start')}
@@ -556,7 +556,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       !hasQualityReport || processedDataLength === 0 || isRunningSampleReviewAi
                         ? disabledButtonClass
-                        : 'bg-primary hover:bg-primary-hover text-white'
+                        : 'bg-primary hover:bg-primary-hover text-on-primary'
                     }`}
                   >
                     {isRunningSampleReviewAi ? t('report.sample.aiRunning') : t('report.sample.ai')}

@@ -81,7 +81,7 @@ const Header: React.FC<HeaderProps> = ({
     }`}>
       <div className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:min-h-[64px]">
         <div className="order-1 flex min-w-0 flex-1 items-center gap-3 sm:flex-none">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-sm">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-on-primary shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6" />
@@ -180,7 +180,7 @@ const Header: React.FC<HeaderProps> = ({
                 aria-pressed={lang === option}
                 className={`min-h-9 rounded-md px-3 py-1.5 transition-colors sm:min-h-0 sm:px-2.5 ${
                   lang === option
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-on-primary'
                     : 'text-ink-soft hover:text-ink'
                 }`}
               >

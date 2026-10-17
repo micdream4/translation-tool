@@ -167,7 +167,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
             className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
               !canRunQualityCheck || translationStatus === 'running'
                 ? disabledButtonClass
-                : 'bg-primary text-white hover:bg-primary-hover'
+                : 'bg-primary text-on-primary hover:bg-primary-hover'
             }`}
           >
             {t('qc.run')}

@@ -15,7 +15,7 @@ export const getUiClasses = (_isLight?: boolean) => {
     'w-full min-h-[86px] bg-surface border border-line rounded-xl px-3 py-2.5 text-sm text-ink focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all shadow-sm';
   const disabledButtonClass = 'bg-subtle text-muted border border-line cursor-not-allowed';
   const neutralButtonClass = 'bg-surface hover:bg-subtle text-ink-soft border border-line shadow-sm';
-  const primaryInlineButtonClass = 'bg-primary hover:bg-primary-hover text-white border border-primary shadow-sm';
+  const primaryInlineButtonClass = 'bg-primary hover:bg-primary-hover text-on-primary border border-primary shadow-sm';
   const dangerButtonClass = 'bg-surface hover:bg-danger-soft text-danger border border-danger-border';
   const metricCardClass = 'bg-sunken rounded-xl p-3 border border-line shadow-[var(--shadow-card)]';
   const subCardClass = 'rounded-xl border border-line bg-surface p-3 shadow-sm';

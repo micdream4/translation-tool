@@ -78,7 +78,7 @@ const ExportBar: React.FC<ExportBarProps> = ({
           className={`rounded-xl px-6 py-2.5 text-sm font-semibold transition-all ${
             !canDownload
               ? disabledButtonClass
-              : 'bg-primary text-white shadow-sm hover:bg-primary-hover'
+              : 'bg-primary text-on-primary shadow-sm hover:bg-primary-hover'
           }`}
         >
           {documentKind === 'pdf' ? t('export.pdf') : t('export.doc')}

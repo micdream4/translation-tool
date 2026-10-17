@@ -1,5 +1,18 @@
 # 项目进度
 
+## v0.3.5
+
+- 翻译模型切换：DeepSeek Flash（`deepseek-flash`）为主，Cloudflare AI 的 Gemini 3.6 Flash 备用，Gemini 3 Flash 兜底；Cloudflare 调用用 `reasoning_effort=low`。DeepSeek v4 Pro 退出自动翻译链（对比中大量单元格原样未翻），仍可手动选择。审核模型列表不变。
+- “自动”引擎顺序改为可配置：浏览器读 `VITE_PROXY_ENGINES` 的顺序和 `/api/me` 返回的 `engineOrder`，服务端读 `TRANSLATION_ENGINE_ORDER`，共用 `utils/engineOrder.ts`。未配置时保持原顺序（Cloudflare 主模型 -> DeepSeek -> Cloudflare 备用模型）。
+- 超时：DeepSeek 单次请求 60 s（Excel 每次 5 行，DeepSeek Flash 约 20 s 一批），在 90 s 的请求总预算内给 Gemini 备用留出约 30 s。总预算受 Cloudflare 约 100 s 的连接上限约束，不再加大。
+- 回归新增：引擎顺序解析与 `/api/me`、服务端按顺序回退、DeepSeek 少返回一行时自动拆分重试。
+- 模型对比（BA512 前 15 行，俄语 / 法语 / 台湾繁中，新质检规则，每次 5 行；严重问题数）：
+  - DeepSeek Flash：俄语 0，法语 1（缺重音提醒，属实），繁中少返回一行（应用端会自动拆分重试）。
+  - Gemini 3.6 Flash：俄语 2，繁中 14，法语一次 JSON 截断。
+  - GPT-6 Luna：俄语 0，法语 41，繁中 35（大量中文原样未翻或表头残留）。
+  - Claude Haiku 5.5：三种语言输出都被截断，疑似 Cloudflare 上约 4k token 的输出上限。
+  - 按估算价格，15 行 3 种语言约 0.07 美元（DeepSeek Flash）。详见 `local-data/issues/2026-10-16-excel-multilang-model-compare-zhTW-qa-fp/`。
+
 ## v0.3.4
 
 - 台湾繁中质检误报修复：「提示、完成、血小板、中性粒」这些繁简写法相同的词不再被当作简体残留（此前正确的繁体译文如「臨床提示」被标为严重问题，每次台湾繁中翻译有 30–48 条误报）。同时补充只在简体中出现的常用字，原样未翻的简体仍会被拦截。「窗口、信息、文件、硬件、打印、屏幕」属于大陆用词，继续标出。

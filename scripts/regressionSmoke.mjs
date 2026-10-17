@@ -396,7 +396,7 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(wranglerSource, /CLOUDFLARE_AI_REASONING_EFFORT = "low"/);
   assert.match(wranglerSource, /DEEPSEEK_MODELS = "deepseek-flash"/);
   // DeepSeek goes first; its timeout must leave the 90 s request budget room for the Gemini fallback.
-  assert.match(wranglerSource, /DEEPSEEK_REQUEST_TIMEOUT_MS = "50000"/);
+  assert.match(wranglerSource, /DEEPSEEK_REQUEST_TIMEOUT_MS = "60000"/);
   assert.match(wranglerSource, /DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = "120000"/);
   assert.match(wranglerSource, /DEEPSEEK_PRO_MAX_OUTPUT_TOKENS = "24576"/);
   assert.match(wranglerSource, /MODEL_REVIEW_TRANSLATION_CONCURRENCY = "2"/);
@@ -3539,6 +3539,43 @@ test("TranslationHub retry flow splits recoverable proxy batch failures and pres
     } else {
       process.env.VITE_TRANSLATION_MODE = originalMode;
     }
+  }
+});
+
+test("TranslationHub splits a DeepSeek batch that comes back one row short", async () => {
+  const { TranslationHub } = await bundleTsModule(path.join(repoRoot, "services/translationHub.ts"), {
+    external: ["@google/genai"]
+  });
+  const originalMode = process.env.VITE_TRANSLATION_MODE;
+  const sizes = [];
+  try {
+    process.env.VITE_TRANSLATION_MODE = "proxy";
+    await withMockedFetch(async (setFetch) => {
+      setFetch(async (_url, init) => {
+        const body = JSON.parse(String(init.body));
+        sizes.push(body.records.length);
+        // Seen with DeepSeek Flash on Traditional Chinese: a 5-row batch returns 4 rows.
+        const records = body.records.map((record) => ({
+          ...record,
+          payload: { ...record.payload, content: `${record.payload.content} 譯` }
+        }));
+        return new Response(
+          JSON.stringify({ engine: "deepseek", model: "deepseek-flash", records: body.records.length >= 5 ? records.slice(0, -1) : records }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      });
+      const hub = new TranslationHub();
+      const result = await hub.translateBatch({
+        records: ["A", "B", "C", "D", "E"].map((content) => ({ content })),
+        targetLang: "Traditional Chinese (Taiwan)",
+        options: { model: "deepseek" }
+      });
+      assert.deepEqual(sizes, [5, 3, 2]);
+      assert.deepEqual(result.map((row) => row.content), ["A 譯", "B 譯", "C 譯", "D 譯", "E 譯"]);
+    });
+  } finally {
+    if (originalMode === undefined) delete process.env.VITE_TRANSLATION_MODE;
+    else process.env.VITE_TRANSLATION_MODE = originalMode;
   }
 });
 

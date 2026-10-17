@@ -24,7 +24,7 @@ import { isChineseTarget } from '../utils/targetLanguage';
 import { getProseForFormatCheck, getProseForLanguageCheck } from '../rules/spans';
 import { findQualityException, isPendingReview } from './exceptions';
 import { isRetryStuck } from './retryConvergence';
-import { CJK_REGEX, LOCKED_KEY_REGEX, extractCodeWords } from '../rules/patterns';
+import { CJK_REGEX, LOCKED_KEY_REGEX, extractCodeTokens } from '../rules/patterns';
 
 export type {
   AcceptedQualityFinding,
@@ -394,10 +394,10 @@ export const runQualityChecksOnUnits = (
       });
     }
 
-    // Every code word in the source (SpO2, RS232, DC24, YH-HC500 ...) must appear unchanged in the
-    // translation. Decidable against the source, so it is an error, not a judgement call.
+    // Every code word and short code in the source (SpO2, RS232, YH-HC500, T4, fT3, A1c ...) must
+    // appear unchanged in the translation. Decidable against the source, so it is an error.
     const lostCodes = translatedText(unit)
-      ? extractCodeWords(unit.originalText).filter((code) => !hasCodeWord(unit.translatedText, code))
+      ? extractCodeTokens(unit.originalText).filter((code) => !hasCodeWord(unit.translatedText, code))
       : [];
     if (lostCodes.length && !accepted('idMismatch')) {
       totals.idMismatches += 1;

@@ -2,7 +2,7 @@ import { enforceGlossary } from "./glossary";
 import { collectTargetDiacriticRisks } from "./languageProfiles";
 import { enforceSeedTerminology } from "./seedTerminology";
 import type { TargetLanguage } from "../types";
-import { CODE_WORD_REGEX } from "../rules/patterns";
+import { CODE_WORD_REGEX, ORDINAL_MULTIPLIER_REGEX, SHORT_CODE_REGEX } from "../rules/patterns";
 
 const LATIN_CHAR_REGEX = /[A-Za-z]/;
 const NEWLINE_CAPTURE = /(\r?\n)/;
@@ -380,8 +380,8 @@ const lowerFirst = (value: string) => {
   return value.charAt(0).toLowerCase() + value.slice(1);
 };
 
-// Code words (see rules/patterns CODE_WORD_REGEX) and digit:digit ratios/times (1:100, 10:30)
-// are masked before the spacing rules so they are never split.
+// Code words, short codes and ordinals/multipliers (see rules/patterns) and digit:digit
+// ratios/times (1:100, 10:30) are masked before the spacing rules so they are never split.
 const DIGIT_RATIO_REGEX = /\d+(?::\d+)+/g;
 const MASK_BASE = 0xe000;
 
@@ -391,7 +391,11 @@ const maskCodeWords = (text: string) => {
     masked.push(value);
     return String.fromCharCode(MASK_BASE + masked.length - 1);
   };
-  const result = text.replace(new RegExp(CODE_WORD_REGEX.source, "g"), mask).replace(DIGIT_RATIO_REGEX, mask);
+  const result = text
+    .replace(new RegExp(CODE_WORD_REGEX.source, "g"), mask)
+    .replace(new RegExp(SHORT_CODE_REGEX.source, "g"), mask)
+    .replace(new RegExp(ORDINAL_MULTIPLIER_REGEX.source, "g"), mask)
+    .replace(DIGIT_RATIO_REGEX, mask);
   return { result, masked };
 };
 

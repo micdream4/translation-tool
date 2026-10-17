@@ -2995,6 +2995,22 @@ test("UI colors, type sizes and radii come only from the theme tokens", () => {
   assert.match(indexHtml, /document\.documentElement\.dataset\.theme/);
 });
 
+test("spacing cleanup keeps short codes, ordinals and multipliers intact", async () => {
+  const { polishTranslation } = await bundleTsModule(path.join(repoRoot, "utils/postprocess.ts"));
+  const cases = [
+    ["检测T4、fT3和A1c", "Mesurer T4, fT3 et A1c", "French"],
+    ["A2级质控品", "Kontrollmaterial Stufe A2", "German"],
+    ["维生素B12缺乏", "Дефицит витамина B12", "Russian"],
+    ["第3次和第1次质控", "The 3rd and 1st control", "English"],
+    ["放大10x", "Grossissement 10x", "French"]
+  ];
+  for (const [source, target, lang] of cases) {
+    assert.equal(polishTranslation(source, target, lang), target, `${lang}: ${target}`);
+  }
+  // Ordinary glue between a word and a number is still separated.
+  assert.equal(polishTranslation("步骤1", "Step1 du protocole", "French"), "Step 1 du protocole");
+});
+
 test("engine order is configurable and shared by browser and server", async () => {
   const { parseEngineOrder, orderEngines } = await bundleTsModule(path.join(repoRoot, "utils/engineOrder.ts"));
   assert.deepEqual(parseEngineOrder(""), ["cloudflare-ai", "deepseek", "gemini"]);

@@ -21,6 +21,22 @@ export const CODE_WORD_REGEX =
 export const extractCodeWords = (text: string) =>
   Array.from(new Set(String(text || '').match(CODE_WORD_REGEX) || []));
 
+// Short analyte and grade codes with a single capital (T4, fT3, A1c, A2, B12, C3). CODE_WORD_REGEX
+// needs two capitals or a hyphen, so these used to be split by the letter/digit spacing cleanup.
+export const SHORT_CODE_REGEX = /(?<![A-Za-z0-9])[a-z]{0,2}[A-Z]{1,2}\d{1,3}[a-z]{0,2}(?![A-Za-z0-9])/g;
+
+// Ordinals and multipliers in Latin text (1st, 2nd, 3rd, 4th, 10x): one token, never "3 rd".
+export const ORDINAL_MULTIPLIER_REGEX = /(?<![A-Za-z0-9])\d+(?:st|nd|rd|th|x)(?![A-Za-z0-9])/g;
+
+/** Code words and short codes in `text` that a translation must keep exactly. */
+export const extractCodeTokens = (text: string) =>
+  Array.from(
+    new Set([
+      ...(String(text || '').match(CODE_WORD_REGEX) || []),
+      ...(String(text || '').match(SHORT_CODE_REGEX) || [])
+    ])
+  );
+
 // Genera of organisms that veterinary and human POCT texts name (bacteria, fungi, parasites).
 // Their Latin scientific names stay in Latin in every target language.
 export const ORGANISM_GENUS_LIST =

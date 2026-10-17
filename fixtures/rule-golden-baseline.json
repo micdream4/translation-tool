@@ -1,7 +1,7 @@
 {
   "totals": {
-    "cases": 664,
-    "ok": 663,
+    "cases": 669,
+    "ok": 668,
     "falsePositive": 0,
     "falseNegative": 0,
     "unscored": 1
@@ -659,6 +659,11 @@
     "real-ru-dc-interface": "ok",
     "real-ru-address-kept": "ok",
     "real-es-warranty": "ok",
+    "review-fr-short-codes-split": "ok",
+    "review-fr-short-codes-kept": "ok",
+    "review-de-grade-code-split": "ok",
+    "review-ru-vitamin-b12-kept": "ok",
+    "review-es-ordinal-kept": "ok",
     "real-zhtw-clinical-hint": "ok",
     "real-zhtw-acute-inflammation": "ok",
     "real-zhtw-segmented-chronic": "ok",

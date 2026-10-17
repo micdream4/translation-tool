@@ -1,11 +1,11 @@
 // Shared surface and control styles. Colors come from the theme tokens (index.css), which switch
 // between light and dark on their own, so one class string serves both themes.
 export const getUiClasses = (_isLight?: boolean) => {
-  const pageClass = 'min-h-screen flex flex-col bg-bg text-ink';
+  const pageClass = 'min-h-screen flex flex-col page-bg text-ink';
   const panelClass =
-    'bg-surface border border-line rounded-2xl p-6 shadow-[var(--shadow-panel)]';
+    'panel-surface border rounded-2xl p-6 shadow-[var(--shadow-panel)]';
   const detailsCardClass =
-    'bg-surface border border-line rounded-2xl shadow-[var(--shadow-panel)]';
+    'panel-surface border rounded-2xl shadow-[var(--shadow-panel)]';
   const sectionDividerClass = 'border-line';
   const headingMutedClass = 'text-muted';
   const mutedTextClass = 'text-muted';

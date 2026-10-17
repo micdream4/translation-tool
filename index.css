@@ -43,7 +43,13 @@
   --c-success-soft: 236 253 245;
   --c-success-border: 167 243 208;
   --c-success-solid: 5 150 105;
-  --shadow-panel: 0 20px 54px rgb(15 23 42 / 0.09);
+  /* Page background: soft primary glow over a cool gradient (the look before tokens). */
+  --c-glow: 99 102 241;
+  --page-bg-image: radial-gradient(circle at 84% 4%, rgb(var(--c-glow) / 0.12) 0, rgb(var(--c-glow) / 0.04) 28%, transparent 58%),
+    linear-gradient(180deg, #f8fafc 0%, #f5f7fb 46%, #eef2f7 100%);
+  --panel-alpha: 0.92;
+  --panel-border: rgb(255 255 255 / 0.8);
+  --shadow-panel: 0 0 0 1px rgb(15 23 42 / 0.035), 0 20px 54px rgb(15 23 42 / 0.09);
   --shadow-card: 0 8px 22px rgb(15 23 42 / 0.045);
   color-scheme: light;
 }
@@ -81,12 +87,30 @@
   --c-success-soft: 15 42 52;
   --c-success-border: 15 72 68;
   --c-success-solid: 5 150 105;
-  --shadow-panel: 0 24px 70px rgb(0 0 0 / 0.28);
+  --c-glow: 79 70 229;
+  --page-bg-image: radial-gradient(circle at 82% 0%, rgb(var(--c-glow) / 0.2) 0, rgb(15 23 42 / 0.18) 32%, transparent 62%),
+    linear-gradient(180deg, #020617 0%, #070b16 48%, #0b1120 100%);
+  --panel-alpha: 0.82;
+  --panel-border: rgb(255 255 255 / 0.07);
+  --shadow-panel: 0 0 0 1px rgb(255 255 255 / 0.03), 0 24px 70px rgb(0 0 0 / 0.28);
   --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03);
   color-scheme: dark;
 }
 
 body {
   background-color: rgb(var(--c-bg));
+  background-image: var(--page-bg-image);
   color: rgb(var(--c-ink));
+}
+
+@layer components {
+  .page-bg {
+    background-color: rgb(var(--c-bg));
+    background-image: var(--page-bg-image);
+  }
+  /* Translucent panel over the page gradient. */
+  .panel-surface {
+    background-color: rgb(var(--c-surface) / var(--panel-alpha));
+    border-color: var(--panel-border);
+  }
 }

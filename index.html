@@ -5,30 +5,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>POCT Document Translator</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Cpath d='M28 13h8v15h15v8H36v15h-8V36H13v-8h15z' fill='%2338bdf8'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234f46e5'/%3E%3Cpath d='M28 13h8v15h15v8H36v15h-8V36H13v-8h15z' fill='%23ffffff'/%3E%3C/svg%3E">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    // Apply the saved theme before the first paint so the page never flashes the other theme.
+    try {
+      document.documentElement.dataset.theme =
+        localStorage.getItem('poct.ui_theme') === 'dark' ? 'dark' : 'light';
+    } catch (error) {
+      document.documentElement.dataset.theme = 'light';
+    }
+  </script>
   <style>
     body {
       font-family: 'Inter', sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
     }
     .font-mono {
       font-family: 'Fira Code', monospace;
     }
-    [data-theme="dark"] select {
-      color-scheme: dark;
-    }
-    [data-theme="dark"] select option {
-      background-color: #0f172a;
-      color: #e2e8f0;
-    }
-    [data-theme="light"] select {
-      color-scheme: light;
-    }
-    [data-theme="light"] select option {
-      background-color: #ffffff;
-      color: #0f172a;
+    select option {
+      background-color: rgb(var(--c-surface));
+      color: rgb(var(--c-ink));
     }
   </style>
 </head>

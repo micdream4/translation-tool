@@ -192,8 +192,8 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
       </div>
 
 
-      <details className={`rounded-lg border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/30'}`}>
-        <summary className={`cursor-pointer list-none text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('report.moreTools')}</summary>
+      <details className={`rounded-lg border p-3 ${'border-line bg-sunken/80'}`}>
+        <summary className={`cursor-pointer list-none text-xs font-semibold uppercase tracking-wider ${'text-ink'}`}>{t('report.moreTools')}</summary>
         <div className="mt-3 space-y-3">
           <div className="flex flex-wrap gap-2">
           <button
@@ -303,7 +303,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.scanned')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+              <p className={`text-sm mt-1 ${'text-ink'}`}>
                 {t('report.card.rowsCells', { rows: qualityReport.totals.rowsScanned, cells: qualityReport.totals.cellsScanned })}
               </p>
               {formatSnapshot && (
@@ -314,7 +314,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             </div>
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.residual')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+              <p className={`text-sm mt-1 ${'text-ink'}`}>
                 {t('report.card.nonTarget', { cells: residualCells, chinese: qualityReport.totals.chineseCells })}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
@@ -323,7 +323,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             </div>
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.repair')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+              <p className={`text-sm mt-1 ${'text-ink'}`}>
                 {t('report.card.empty', { count: qualityReport.totals.emptyTranslations })}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
@@ -332,7 +332,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             </div>
             <div className={metricCardClass}>
               <p className={`text-[11px] ${mutedTextClass}`}>{t('report.card.formatStructure')}</p>
-              <p className={`text-sm mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+              <p className={`text-sm mt-1 ${'text-ink'}`}>
                 {t('report.card.format', { count: qualityReport.totals.spacingIssues })}
               </p>
               <p className={`text-[11px] mt-1 ${mutedTextClass}`}>
@@ -344,15 +344,15 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             </div>
           </div>
 
-          <details className={`rounded-lg border p-3 ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-950/30'}`}>
+          <details className={`rounded-lg border p-3 ${'border-line bg-sunken/80'}`}>
             <summary className="cursor-pointer list-none flex items-center justify-between">
-              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('report.details')}</span>
+              <span className={`text-xs font-semibold uppercase tracking-wider ${'text-ink'}`}>{t('report.details')}</span>
               <span className={`text-[11px] ${mutedTextClass}`}>{t('report.findings.total', { count: qualityFindings.length })}</span>
             </summary>
             <div className="space-y-3 mt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('report.findings')}</h4>
+                  <h4 className="text-xs font-semibold text-muted uppercase tracking-wider">{t('report.findings')}</h4>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(['all', 'high', 'medium', 'low'] as const).map((filter) => (
                       <button
@@ -361,10 +361,8 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         onClick={() => setFindingSeverityFilter(filter)}
                         className={`min-h-9 px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide transition-all sm:min-h-0 sm:px-2.5 ${
                           findingSeverityFilter === filter
-                            ? 'bg-indigo-600 text-white'
-                            : isLight
-                              ? 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                              : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
+                            ? 'bg-primary text-white'
+                            : 'bg-surface text-ink-soft border border-line hover:bg-sunken'
                         }`}
                       >
                         {t(`report.filter.${filter}`)} {findingCounts[filter]}
@@ -372,12 +370,12 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     ))}
                   </div>
                 </div>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-muted">
                   {t('report.findings.count', { shown: filteredQualityFindings.length, total: qualityFindings.length })}
                 </span>
               </div>
               {filteredQualityFindings.length === 0 ? (
-                <p className="text-xs text-slate-500">{t('report.findings.none')}</p>
+                <p className="text-xs text-muted">{t('report.findings.none')}</p>
               ) : (
                 <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
                   {filteredQualityFindings.slice(0, 40).map((finding) => (
@@ -385,7 +383,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                       <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className={`text-xs font-medium ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                            <p className={`text-xs font-medium ${'text-ink'}`}>
                               {finding.description}
                             </p>
                             {finding.severity && (
@@ -394,13 +392,13 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-500">{finding.locationLabel}</p>
+                          <p className="text-[11px] text-muted">{finding.locationLabel}</p>
                           {finding.original && (
-                            <p className="text-[11px] text-slate-400">
+                            <p className="text-[11px] text-muted">
                               {t('report.finding.original', { text: finding.original.replace(/\s+/g, ' ').slice(0, 120) })}
                             </p>
                           )}
-                          <p className="text-[11px] text-slate-500">
+                          <p className="text-[11px] text-muted">
                             {t('report.finding.translated', { text: (finding.translated || t('common.empty')).replace(/\s+/g, ' ').slice(0, 120) })}
                           </p>
                         </div>
@@ -426,7 +424,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                           )}
                           <button
                             onClick={() => jumpToPreviewCell(finding.rowIndex, finding.columnKey)}
-                            className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all"
+                            className="px-3 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold transition-all"
                           >
                             {t('common.jump')}
                           </button>
@@ -438,7 +436,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                             value={draftTranslation}
                             onChange={(e) => setDraftTranslation(e.target.value)}
                             rows={3}
-                            className={`w-full rounded-lg border px-3 py-2 text-xs ${isLight ? 'border-slate-200 bg-white text-slate-900' : 'border-slate-700 bg-slate-900 text-slate-200'}`}
+                            className={`w-full rounded-lg border px-3 py-2 text-xs ${'border-line bg-surface text-ink'}`}
                           />
                           <label className={`flex items-center gap-2 text-[11px] ${mutedTextClass}`}>
                             <input type="checkbox" checked={rememberDraft} onChange={(e) => setRememberDraft(e.target.checked)} />
@@ -472,7 +470,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               )}
               {acceptedFindings.length > 0 && (
                 <details className={nestedPanelClass}>
-                  <summary className={`cursor-pointer text-xs font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                  <summary className={`cursor-pointer text-xs font-semibold ${'text-ink-soft'}`}>
                     {t('report.accepted.list', { count: acceptedFindings.length })}
                   </summary>
                   <p className={`text-[11px] mt-2 ${mutedTextClass}`}>{t('report.accepted.list.hint')}</p>
@@ -484,19 +482,19 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                       >
                         <div className="space-y-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-[11px] text-slate-500">{item.locationLabel || `${item.rowIndex + 1} / ${item.columnKey}`}</p>
+                            <p className="text-[11px] text-muted">{item.locationLabel || `${item.rowIndex + 1} / ${item.columnKey}`}</p>
                             {item.pendingReview && (
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] ${isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-500/15 text-amber-300'}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] ${'bg-warning-soft text-warning'}`}>
                                 {t('report.accepted.pending')}
                               </span>
                             )}
                           </div>
                           {item.original && item.original.trim() !== item.value.trim() && (
-                            <p className="text-[11px] text-slate-400">
+                            <p className="text-[11px] text-muted">
                               {t('report.finding.original', { text: item.original.replace(/\s+/g, ' ').slice(0, 120) })}
                             </p>
                           )}
-                          <p className="text-[11px] text-slate-500">
+                          <p className="text-[11px] text-muted">
                             {t('report.finding.translated', { text: item.value.replace(/\s+/g, ' ').slice(0, 120) })}
                           </p>
                         </div>
@@ -526,14 +524,14 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
             <div className={`space-y-3 border-t pt-5 ${sectionDividerClass}`}>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{t('report.sample.title')}</h4>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <h4 className="text-xs font-semibold text-muted uppercase tracking-wider">{t('report.sample.title')}</h4>
+                  <p className="text-[11px] text-muted mt-1">
                     {t('report.sample.hint')}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <select
-                    className={isLight ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 shadow-sm' : 'bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200'}
+                    className={'bg-surface border border-line rounded-lg px-3 py-2 text-xs text-ink shadow-sm'}
                     value={sampleReviewCount}
                     onChange={(e) => setSampleReviewCount(Number(e.target.value))}
                   >
@@ -547,7 +545,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       !hasQualityReport || processedDataLength === 0
                         ? disabledButtonClass
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        : 'bg-primary hover:bg-primary-hover text-white'
                     }`}
                   >
                     {t('report.sample.start')}
@@ -558,7 +556,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       !hasQualityReport || processedDataLength === 0 || isRunningSampleReviewAi
                         ? disabledButtonClass
-                        : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                        : 'bg-primary hover:bg-primary-hover text-white'
                     }`}
                   >
                     {isRunningSampleReviewAi ? t('report.sample.aiRunning') : t('report.sample.ai')}
@@ -569,7 +567,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
               {sampleReviewAiSummary.total > 0 && (
                 <div className={subCardClass}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] text-slate-500">AI 审核结果</span>
+                    <span className="text-[11px] text-muted">AI 审核结果</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass('high')}`}>
                       {t('report.risk.high')} {sampleReviewAiSummary.high}
                     </span>
@@ -590,7 +588,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                     </span>
                   </div>
                   {(sampleReviewAiMeta?.model || sampleReviewAiMeta?.engine) && (
-                    <p className="text-[11px] text-slate-500 mt-2">
+                    <p className="text-[11px] text-muted mt-2">
                       {t('report.sample.model', { model: sampleReviewAiMeta?.model || t('common.unknown') })}
                       {sampleReviewAiMeta?.engine ? t('report.sample.engine', { engine: sampleReviewAiMeta.engine }) : ''}
                     </p>
@@ -607,7 +605,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className={`text-xs font-medium ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{item.locationLabel}</p>
+                              <p className={`text-xs font-medium ${'text-ink'}`}>{item.locationLabel}</p>
                               {review && (
                                 <>
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide ${reviewRiskBadgeClass(review.risk)}`}>
@@ -619,9 +617,9 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                                 </>
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-1">抽样理由：{item.reason}</p>
+                            <p className="text-[11px] text-muted mt-1">抽样理由：{item.reason}</p>
                             {review?.issueTypes?.length ? (
-                              <p className="text-[11px] text-slate-500 mt-1">
+                              <p className="text-[11px] text-muted mt-1">
                                 {t('report.sample.issueTypes', { types: review.issueTypes.join(' / ') })}
                               </p>
                             ) : null}
@@ -635,23 +633,23 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                         </div>
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
                           <div className={nestedPanelClass}>
-                            <p className="text-slate-500 uppercase tracking-wider mb-2">{t('preview.source')}</p>
-                            <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{item.original || '(empty)'}</p>
+                            <p className="text-muted uppercase tracking-wider mb-2">{t('preview.source')}</p>
+                            <p className={`${'text-ink-soft'} whitespace-pre-wrap break-words`}>{item.original || '(empty)'}</p>
                           </div>
                           <div className={nestedPanelClass}>
-                            <p className="text-slate-500 uppercase tracking-wider mb-2">{t('preview.target')}</p>
-                            <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{item.translated || '(empty)'}</p>
+                            <p className="text-muted uppercase tracking-wider mb-2">{t('preview.target')}</p>
+                            <p className={`${'text-ink-soft'} whitespace-pre-wrap break-words`}>{item.translated || '(empty)'}</p>
                           </div>
                         </div>
                         {review && (
                           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 text-[11px]">
                             <div className={nestedPanelClass}>
-                              <p className="text-slate-500 uppercase tracking-wider mb-2">{t('report.sample.comment')}</p>
-                              <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.comment || t('report.sample.noComment')}</p>
+                              <p className="text-muted uppercase tracking-wider mb-2">{t('report.sample.comment')}</p>
+                              <p className={`${'text-ink-soft'} whitespace-pre-wrap break-words`}>{review.comment || t('report.sample.noComment')}</p>
                             </div>
                             <div className={nestedPanelClass}>
-                              <p className="text-slate-500 uppercase tracking-wider mb-2">{t('report.sample.suggestion')}</p>
-                              <p className={`${isLight ? 'text-slate-700' : 'text-slate-300'} whitespace-pre-wrap break-words`}>{review.suggestion || t('report.sample.noChange')}</p>
+                              <p className="text-muted uppercase tracking-wider mb-2">{t('report.sample.suggestion')}</p>
+                              <p className={`${'text-ink-soft'} whitespace-pre-wrap break-words`}>{review.suggestion || t('report.sample.noChange')}</p>
                             </div>
                           </div>
                         )}

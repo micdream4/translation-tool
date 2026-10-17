@@ -50,15 +50,15 @@ const EmbeddedVisualsNotice: React.FC<EmbeddedVisualsNoticeProps> = ({ isLight, 
     <div
       role="note"
       className={`rounded-xl border px-4 py-3 text-sm ${
-        isLight ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-amber-400/30 bg-amber-400/10 text-amber-100'
+        'border-warning-border bg-warning-soft text-warning'
       }`}
     >
       <p className="font-semibold">{t('visuals.title')}</p>
       <p className="mt-1">{t('visuals.summary', { parts: describeParts(summary) })}</p>
-      <p className={`mt-1 text-xs ${isLight ? 'text-amber-800' : 'text-amber-200/90'}`}>
+      <p className={`mt-1 text-xs ${'text-warning'}`}>
         {t('visuals.where', { areas: describeAreas(summary) })}
       </p>
-      <p className={`mt-1 text-xs ${isLight ? 'text-amber-800' : 'text-amber-200/90'}`}>{t('visuals.advice')}</p>
+      <p className={`mt-1 text-xs ${'text-warning'}`}>{t('visuals.advice')}</p>
     </div>
   );
 };

@@ -38,11 +38,11 @@ const ExportBar: React.FC<ExportBarProps> = ({
 
   return (
     <div className={`static z-30 flex flex-wrap items-center justify-end gap-3 rounded-2xl border px-4 py-3 sm:sticky sm:bottom-4 sm:px-5 backdrop-blur ${
-      isLight ? 'border-slate-200 bg-white/95 shadow-[0_16px_40px_rgba(15,23,42,0.12)]' : 'border-white/[0.1] bg-slate-900/90'
+      'border-line bg-surface/95 shadow-[var(--shadow-panel)]'
     }`}>
       <p className={`min-w-0 flex-1 text-sm empty:hidden ${
         docxBlockingIssueCount > 0 && translationStatus !== 'running'
-          ? isLight ? 'text-rose-700' : 'text-rose-300'
+          ? 'text-danger'
           : mutedTextClass
       }`}>
         {translationStatus === 'running'
@@ -78,7 +78,7 @@ const ExportBar: React.FC<ExportBarProps> = ({
           className={`rounded-xl px-6 py-2.5 text-sm font-semibold transition-all ${
             !canDownload
               ? disabledButtonClass
-              : 'bg-emerald-600 text-white shadow-[0_10px_24px_rgba(5,150,105,0.22)] hover:bg-emerald-500'
+              : 'bg-primary text-white shadow-sm hover:bg-primary-hover'
           }`}
         >
           {documentKind === 'pdf' ? t('export.pdf') : t('export.doc')}

@@ -557,6 +557,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(UI_THEME_STORAGE_KEY, theme);
+    // The color tokens (index.css) also apply to <html>/<body>, outside the app root.
+    document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   useEffect(() => {
@@ -1321,59 +1323,52 @@ const App: React.FC = () => {
   const severityBadgeClass = (severity?: QualitySeverity) => {
     switch (severity) {
       case 'high':
-        return 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+        return 'text-danger border border-danger-border bg-danger-soft';
       case 'medium':
-        return 'text-amber-300 border border-amber-500/30 bg-amber-500/10';
+        return 'text-warning border border-warning-border bg-warning-soft';
+      // 已保留: kept on purpose (names, addresses); listed for reference, not as a problem.
       case 'low':
-        return 'text-sky-300 border border-sky-500/30 bg-sky-500/10';
+        return 'text-kept border border-kept-border bg-kept-soft';
       default:
-        return 'text-slate-400 border border-slate-700 bg-slate-900/40';
+        return 'text-muted border border-line bg-surface/40';
     }
   };
   const reviewRiskBadgeClass = (risk?: SampleReviewAIResult['risk']) => {
     switch (risk) {
       case 'high':
-        return 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+        return 'text-danger border border-danger-border bg-danger-soft';
       case 'medium':
-        return 'text-amber-300 border border-amber-500/30 bg-amber-500/10';
+        return 'text-warning border border-warning-border bg-warning-soft';
       case 'low':
-        return 'text-emerald-300 border border-emerald-500/30 bg-emerald-500/10';
+        return 'text-success border border-success-border bg-success-soft';
       default:
-        return 'text-slate-400 border border-slate-700 bg-slate-900/40';
+        return 'text-muted border border-line bg-surface/40';
     }
   };
   const reviewVerdictBadgeClass = (verdict?: SampleReviewAIResult['verdict']) => {
     switch (verdict) {
       case 'fail':
-        return 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+        return 'text-danger border border-danger-border bg-danger-soft';
       case 'warning':
-        return 'text-amber-300 border border-amber-500/30 bg-amber-500/10';
+        return 'text-warning border border-warning-border bg-warning-soft';
       case 'pass':
-        return 'text-emerald-300 border border-emerald-500/30 bg-emerald-500/10';
+        return 'text-success border border-success-border bg-success-soft';
       default:
-        return 'text-slate-400 border border-slate-700 bg-slate-900/40';
+        return 'text-muted border border-line bg-surface/40';
     }
   };
   const modelReviewStageClass = (stage: typeof modelReviewStatus.stage) => {
     switch (stage) {
       case 'completed':
-        return isLight
-          ? 'text-emerald-700 border border-emerald-200 bg-emerald-50'
-          : 'text-emerald-300 border border-emerald-500/30 bg-emerald-500/10';
+        return 'text-success border border-success-border bg-success-soft';
       case 'error':
-        return isLight
-          ? 'text-rose-700 border border-rose-200 bg-rose-50'
-          : 'text-rose-300 border border-rose-500/30 bg-rose-500/10';
+        return 'text-danger border border-danger-border bg-danger-soft';
       case 'sampling':
       case 'translating':
       case 'judging':
-        return isLight
-          ? 'text-indigo-700 border border-indigo-200 bg-indigo-50'
-          : 'text-indigo-300 border border-indigo-500/30 bg-indigo-500/10';
+        return 'text-primary-ink border border-primary-border bg-primary-soft';
       default:
-        return isLight
-          ? 'text-slate-600 border border-slate-200 bg-slate-50'
-          : 'text-slate-400 border border-slate-700 bg-slate-900/40';
+        return 'text-ink-soft border border-line bg-sunken';
     }
   };
   const runStatusLabel =
@@ -1794,15 +1789,13 @@ const App: React.FC = () => {
                 onClick={() => setResultTab(tab.key)}
                 className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors ${
                   resultTab === tab.key
-                    ? isLight
-                      ? 'border-indigo-600 text-indigo-700'
-                      : 'border-indigo-400 text-indigo-200'
-                    : `border-transparent ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-400 hover:text-slate-100'}`
+                    ? 'border-primary text-primary-ink'
+                    : `border-transparent ${'text-muted hover:text-ink'}`
                 }`}
               >
                 {tab.label}
                 {tab.badge > 0 && (
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${isLight ? 'bg-rose-50 text-rose-700' : 'bg-rose-500/15 text-rose-200'}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${'bg-danger-soft text-danger'}`}>
                     {tab.badge}
                   </span>
                 )}

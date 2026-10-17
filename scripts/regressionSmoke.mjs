@@ -2954,6 +2954,44 @@ test("Cloudflare AI empty content error names the stop reason and response shape
   );
 });
 
+test("UI colors come only from the theme tokens", () => {
+  // Components use token classes (bg-surface, text-muted, bg-primary, text-danger, ...); hues and their
+  // light/dark values live in index.css and tailwind.config.js. A raw palette class, a gradient or an
+  // inline hex/rgba color in a component brings back the per-component drift this replaced.
+  const roots = ["App.tsx", "components"];
+  const files = [];
+  const walk = (entry) => {
+    const full = path.join(repoRoot, entry);
+    if (fs.statSync(full).isDirectory()) {
+      fs.readdirSync(full).forEach((child) => walk(path.join(entry, child)));
+    } else if (/\.(tsx|ts)$/.test(entry)) {
+      files.push(entry);
+    }
+  };
+  roots.forEach(walk);
+  const rawPalette =
+    /\b(?:bg|text|border|ring|shadow|fill|stroke|divide|outline|accent|placeholder|decoration|from|to|via)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
+  const gradient = /\bbg-gradient-to-/;
+  const arbitraryColor = /-\[[^\]]*(?:#[0-9a-fA-F]{3,8}\b|rgba?\()/;
+  const offenders = [];
+  files.forEach((file) => {
+    fs.readFileSync(path.join(repoRoot, file), "utf8").split("\n").forEach((line, index) => {
+      if (rawPalette.test(line) || gradient.test(line) || arbitraryColor.test(line)) {
+        offenders.push(`${file}:${index + 1}: ${line.trim().slice(0, 120)}`);
+      }
+    });
+  });
+  assert.deepEqual(offenders, []);
+
+  const css = fs.readFileSync(path.join(repoRoot, "index.css"), "utf8");
+  for (const token of ["bg", "surface", "line", "ink", "muted", "primary", "danger", "warning", "kept", "success"]) {
+    assert.match(css, new RegExp(`--c-${token}:[^;]+;[\\s\\S]*\\[data-theme='dark'\\][\\s\\S]*--c-${token}:`), `token ${token} needs light and dark values`);
+  }
+  const indexHtml = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  assert.doesNotMatch(indexHtml, /background-color:\s*#0f172a/);
+  assert.match(indexHtml, /document\.documentElement\.dataset\.theme/);
+});
+
 test("engine order is configurable and shared by browser and server", async () => {
   const { parseEngineOrder, orderEngines } = await bundleTsModule(path.join(repoRoot, "utils/engineOrder.ts"));
   assert.deepEqual(parseEngineOrder(""), ["cloudflare-ai", "deepseek", "gemini"]);

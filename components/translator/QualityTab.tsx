@@ -58,8 +58,8 @@ export interface QualityTabProps {
   retryAllIssues: () => Promise<void>;
   retryCandidates: number[];
   retryableCellCount: number;
-  reviewRiskBadgeClass: (risk?: SampleReviewAIResult["risk"]) => "text-rose-300 border border-rose-500/30 bg-rose-500/10" | "text-amber-300 border border-amber-500/30 bg-amber-500/10" | "text-emerald-300 border border-emerald-500/30 bg-emerald-500/10" | "text-slate-400 border border-slate-700 bg-slate-900/40";
-  reviewVerdictBadgeClass: (verdict?: SampleReviewAIResult["verdict"]) => "text-rose-300 border border-rose-500/30 bg-rose-500/10" | "text-amber-300 border border-amber-500/30 bg-amber-500/10" | "text-emerald-300 border border-emerald-500/30 bg-emerald-500/10" | "text-slate-400 border border-slate-700 bg-slate-900/40";
+  reviewRiskBadgeClass: (risk?: SampleReviewAIResult["risk"]) => "text-danger border border-danger-border bg-danger-soft" | "text-warning border border-warning-border bg-warning-soft" | "text-success border border-success-border bg-success-soft" | "text-muted border border-line bg-surface/40";
+  reviewVerdictBadgeClass: (verdict?: SampleReviewAIResult["verdict"]) => "text-danger border border-danger-border bg-danger-soft" | "text-warning border border-warning-border bg-warning-soft" | "text-success border border-success-border bg-success-soft" | "text-muted border border-line bg-surface/40";
   runAiSampleReview: () => Promise<void>;
   runQualityCheck: () => void;
   sampleReviewAiMeta: { model?: string; engine?: string; };
@@ -69,7 +69,7 @@ export interface QualityTabProps {
   sampleReviewItems: SampleReviewItem[];
   saveQualityFindingCorrection: (finding: QualityFinding, corrected: string, remember: boolean) => Promise<void>;
   setSampleReviewCount: React.Dispatch<React.SetStateAction<number>>;
-  severityBadgeClass: (severity?: QualitySeverity) => "text-rose-300 border border-rose-500/30 bg-rose-500/10" | "text-amber-300 border border-amber-500/30 bg-amber-500/10" | "text-slate-400 border border-slate-700 bg-slate-900/40" | "text-sky-300 border border-sky-500/30 bg-sky-500/10";
+  severityBadgeClass: (severity?: QualitySeverity) => "text-danger border border-danger-border bg-danger-soft" | "text-warning border border-warning-border bg-warning-soft" | "text-kept border border-kept-border bg-kept-soft" | "text-muted border border-line bg-surface/40";
   translationStatus: "running" | "idle" | "paused" | "completed";
   untranslatedLocationPreview: string;
   writeFailedRowIndices: number[];
@@ -167,7 +167,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
             className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
               !canRunQualityCheck || translationStatus === 'running'
                 ? disabledButtonClass
-                : 'bg-indigo-600 text-white hover:bg-indigo-500'
+                : 'bg-primary text-white hover:bg-primary-hover'
             }`}
           >
             {t('qc.run')}
@@ -179,9 +179,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
             className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
               !canRetryIssues
                 ? disabledButtonClass
-                : isLight
-                  ? 'bg-amber-500 text-white hover:bg-amber-400'
-                  : 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                : neutralButtonClass
             }`}
           >
             {isRetryingMissing
@@ -195,7 +193,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
               <li
                 key={step}
                 className={`rounded-full border px-2.5 py-0.5 ${
-                  isLight ? 'border-slate-200 text-slate-500' : 'border-white/[0.1] text-slate-400'
+                  'border-line text-muted'
                 }`}
               >
                 {step}. {t(`qc.flow.${step}`)}
@@ -212,7 +210,7 @@ const QualityTab: React.FC<QualityTabProps> = ({
           <p className={`border-t pt-3 text-xs ${sectionDividerClass} ${mutedTextClass}`}>{t('qc.needTranslation')}</p>
         )}
         {hasTranslationResult && (hasTranslationAlerts || hasDocxIssues || hasPdfIssues || placeholderIssueCount > 0) && (
-          <div className={`space-y-1 border-t pt-3 text-xs ${sectionDividerClass} ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
+          <div className={`space-y-1 border-t pt-3 text-xs ${sectionDividerClass} ${'text-warning'}`}>
             {documentKind === 'excel' && currentIssueSummary.cells > 0 && (
               <p>{t('qc.alert.nonTarget', { cells: currentIssueSummary.cells, rows: currentIssueSummary.rows })}</p>
             )}

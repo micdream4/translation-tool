@@ -116,9 +116,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       <div
         className={`relative flex flex-wrap items-center gap-4 rounded-2xl border-2 border-dashed px-4 py-3 transition-colors ${
-          isLight
-            ? 'border-indigo-100 bg-slate-50/70 hover:border-indigo-300'
-            : 'border-white/[0.08] bg-white/[0.025] hover:border-indigo-500/45'
+          'border-primary-border bg-sunken/70 hover:border-primary-border'
         }`}
       >
         <input
@@ -131,7 +129,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         />
         <div
           className={`grid h-11 w-9 shrink-0 place-items-center rounded-md font-mono text-[11px] font-semibold ${
-            isLight ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-400/15 text-indigo-200'
+            'bg-primary-soft text-primary-ink'
           }`}
           aria-hidden="true"
         >
@@ -143,7 +141,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
         <span
           className={`pointer-events-none rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-            isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-white/[0.1] bg-white/[0.05] text-slate-200'
+            'border-line bg-surface text-ink-soft'
           }`}
         >
           {file ? t('settings.upload.replace') : t('settings.upload.cta')}
@@ -166,13 +164,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <EmbeddedVisualsNotice isLight={isLight} summary={embeddedVisuals} />
 
       {savedSnapshot && processedData.length === 0 && (
-        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${isLight ? 'border-amber-200 bg-amber-50' : 'border-amber-500/30 bg-amber-500/10'}`}>
-          <p className={`text-sm ${isLight ? 'text-amber-800' : 'text-amber-200'}`}>{t('settings.progress.found')}</p>
+        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${'border-warning-border bg-warning-soft'}`}>
+          <p className={`text-sm ${'text-warning'}`}>{t('settings.progress.found')}</p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={applySavedProgress}
-              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500"
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover"
             >
               {t('settings.progress.restore')}
             </button>
@@ -207,7 +205,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
         <div>
           <p className={`mb-1.5 text-xs font-medium ${headingMutedClass}`}>{t('settings.strategy')}</p>
-          <div className={`inline-flex rounded-xl border p-0.5 ${isLight ? 'border-slate-200 bg-white' : 'border-white/[0.1] bg-white/[0.04]'}`} role="group" aria-label={t('settings.strategy')}>
+          <div className={`inline-flex rounded-xl border p-0.5 ${'border-line bg-surface'}`} role="group" aria-label={t('settings.strategy')}>
             {([
               ['full', t('settings.strategy.full')],
               ['selective', t('settings.strategy.selective')]
@@ -220,10 +218,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 aria-pressed={translationMode === mode}
                 className={`rounded-[10px] px-4 py-2 text-sm font-semibold transition-all ${
                   translationMode === mode
-                    ? 'bg-indigo-600 text-white'
-                    : isLight
-                      ? 'text-slate-600 hover:text-slate-900'
-                      : 'text-slate-400 hover:text-slate-100'
+                    ? 'bg-primary text-white'
+                    : 'text-ink-soft hover:text-ink'
                 }`}
               >
                 {label}
@@ -263,7 +259,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             className={`w-full whitespace-nowrap rounded-xl px-6 py-2.5 font-semibold transition-all ${
               !canRunTranslation || isTranslating
                 ? disabledButtonClass
-                : 'bg-indigo-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)] hover:bg-indigo-500 active:scale-[0.99]'
+                : 'bg-primary text-white shadow-sm hover:bg-primary-hover active:scale-[0.99]'
             }`}
           >
             {isTranslating ? t('settings.starting') : t('settings.start')}
@@ -283,8 +279,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </p>
       </div>
 
-      <details className={`rounded-xl border ${isLight ? 'border-slate-200' : 'border-white/[0.08]'}`}>
-        <summary className={`flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+      <details className={`rounded-xl border ${'border-line'}`}>
+        <summary className={`flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm font-semibold ${'text-ink'}`}>
           <span>{t('settings.more')}</span>
           <span className={`text-xs font-normal ${mutedTextClass}`}>
             {t('settings.more.summary', {
@@ -320,7 +316,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
               <p className={`mt-1 text-xs ${mutedTextClass}`}>{t('settings.skip.hint', { summary: excelSkipScopeSummary })}</p>
               {excelSkipScope.errors.length > 0 && (
-                <p className={`mt-1 text-[11px] ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
+                <p className={`mt-1 text-[11px] ${'text-warning'}`}>
                   {excelSkipScope.errors.slice(0, 3).join('；')}
                   {excelSkipScope.errors.length > 3 ? '；...' : ''}
                 </p>
@@ -336,7 +332,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   checked={translationMemoryEnabled}
                   onChange={(e) => setTranslationMemoryEnabled(e.target.checked)}
                   disabled={isTranslating}
-                  className="h-5 w-5 accent-indigo-500 sm:h-4 sm:w-4"
+                  className="h-5 w-5 accent-primary sm:h-4 sm:w-4"
                 />
                 <span>{t('settings.tm.use')}</span>
               </label>

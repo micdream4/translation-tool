@@ -70,13 +70,13 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
     const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap';
     switch (run.status) {
       case 'running':
-        return `${base} ${isLight ? 'bg-indigo-50 text-indigo-700' : 'bg-indigo-500/15 text-indigo-200'}`;
+        return `${base} ${'bg-primary-soft text-primary-ink'}`;
       case 'failed':
-        return `${base} ${isLight ? 'bg-rose-50 text-rose-700' : 'bg-rose-500/15 text-rose-200'}`;
+        return `${base} ${'bg-danger-soft text-danger'}`;
       case 'switched':
-        return `${base} ${isLight ? 'bg-amber-50 text-amber-700' : 'bg-amber-500/15 text-amber-200'}`;
+        return `${base} ${'bg-warning-soft text-warning'}`;
       default:
-        return `${base} ${isLight ? 'bg-emerald-50 text-emerald-700' : 'bg-emerald-500/15 text-emerald-200'}`;
+        return `${base} ${'bg-success-soft text-success'}`;
     }
   };
 
@@ -86,7 +86,7 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold">{t('monitor.title')}</h2>
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            isLight ? 'bg-slate-100 text-slate-700' : 'bg-white/[0.07] text-slate-200'
+            'bg-subtle text-ink-soft'
           }`}>
             {statusLabel}
           </span>
@@ -107,13 +107,13 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
       </div>
 
       <div
-        className={`h-2 overflow-hidden rounded-full ${isLight ? 'bg-slate-100' : 'bg-white/[0.07]'}`}
+        className={`h-2 overflow-hidden rounded-full ${'bg-subtle'}`}
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progress}
       >
-        <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-3">
@@ -137,7 +137,7 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
         <div
           role="status"
           className={`rounded-xl border px-4 py-3 text-sm ${
-            isLight ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+            'border-warning-border bg-warning-soft text-warning'
           }`}
         >
           {t('monitor.slow', { batch: running.batchNum, seconds: Math.round(waitedMs / 1000) })}
@@ -154,12 +154,8 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
               aria-pressed={issuesOnly}
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${
                 issuesOnly
-                  ? isLight
-                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                    : 'border-indigo-400/40 bg-indigo-400/10 text-indigo-200'
-                  : isLight
-                    ? 'border-slate-200 text-slate-600'
-                    : 'border-white/[0.1] text-slate-300'
+                  ? 'border-primary-border bg-primary-soft text-primary-ink'
+                  : 'border-line text-ink-soft'
               }`}
             >
               {t('monitor.issuesOnly')} {problemCount}
@@ -169,12 +165,12 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
 
         {visibleRuns.length === 0 ? (
           <p className={`rounded-xl border border-dashed px-4 py-6 text-center text-sm ${
-            isLight ? 'border-slate-200 text-slate-500' : 'border-white/[0.1] text-slate-400'
+            'border-line text-muted'
           }`}>
             {t('monitor.empty')}
           </p>
         ) : (
-          <ul className={`divide-y ${isLight ? 'divide-slate-100' : 'divide-white/[0.06]'}`}>
+          <ul className={`divide-y ${'divide-line'}`}>
             {visibleRuns.map((run) => {
               const elapsed = run.status === 'running' ? waitedMs : run.elapsedMs || 0;
               return (
@@ -195,7 +191,7 @@ const RunMonitor: React.FC<RunMonitorProps> = ({
                   </div>
                   <span className={statusChip(run)}>{t(`monitor.state.${run.status}`)}</span>
                   {run.status === 'failed' && (
-                    <p className={`col-start-2 col-span-2 text-xs ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
+                    <p className={`col-start-2 col-span-2 text-xs ${'text-danger'}`}>
                       {t('monitor.skippedHint')}
                     </p>
                   )}

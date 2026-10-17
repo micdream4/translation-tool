@@ -61,16 +61,14 @@ const Header: React.FC<HeaderProps> = ({
   const initials = (userEmail || '').split('@')[0].slice(0, 2).toUpperCase() || '·';
   const statusDot =
     authStatus === 'authenticated'
-      ? 'bg-emerald-500'
+      ? 'bg-success-solid'
       : authStatus === 'blocked'
-        ? 'bg-rose-500'
+        ? 'bg-danger-solid'
         : authStatus === 'checking'
-          ? 'bg-amber-400'
-          : 'bg-slate-400';
+          ? 'bg-warning-solid'
+          : 'bg-strong';
   const iconButtonClass = `inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
-    isLight
-      ? 'border-slate-200 bg-white/80 text-slate-600 hover:border-indigo-300 hover:text-indigo-700'
-      : 'border-white/[0.08] bg-white/[0.05] text-slate-300 hover:border-indigo-400/40 hover:text-slate-100'
+    'border-line bg-surface/80 text-ink-soft hover:border-primary-border hover:text-primary-ink'
   }`;
   const navItems = [
     { view: 'translator' as const, label: t('header.nav.translator') },
@@ -79,25 +77,23 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className={`sticky top-0 z-50 border-b backdrop-blur-md ${
-      isLight
-        ? 'border-slate-200/80 bg-white/90 shadow-[0_10px_34px_rgba(15,23,42,0.08)]'
-        : 'border-slate-800 bg-slate-950/85 shadow-[0_10px_34px_rgba(0,0,0,0.22)]'
+      'border-line bg-surface/90 shadow-sm'
     }`}>
       <div className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:min-h-[64px]">
         <div className="order-1 flex min-w-0 flex-1 items-center gap-3 sm:flex-none">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-[0_8px_20px_rgba(79,70,229,0.25)]">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6" />
               <path d="M9 13h6M9 17h4" />
             </svg>
           </div>
-          <h1 className={`truncate text-base font-bold sm:text-lg ${isLight ? 'text-slate-950' : 'text-slate-100'}`}>
+          <h1 className={`truncate text-base font-bold sm:text-lg ${'text-ink'}`}>
             {t('header.title')}
           </h1>
           {version && (
             <span className={`hidden rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-4 sm:inline ${
-              isLight ? 'border-slate-200 text-slate-500' : 'border-white/[0.1] text-slate-400'
+              'border-line text-muted'
             }`}>
               v{version}
             </span>
@@ -118,10 +114,8 @@ const Header: React.FC<HeaderProps> = ({
                 aria-current={active ? 'page' : undefined}
                 className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm transition-colors ${
                   active
-                    ? isLight
-                      ? 'border-indigo-600 font-semibold text-slate-950'
-                      : 'border-indigo-400 font-semibold text-white'
-                    : `border-transparent ${isLight ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400 hover:text-slate-100'}`
+                    ? 'border-primary font-semibold text-ink'
+                    : `border-transparent ${'text-muted hover:text-ink'}`
                 }`}
               >
                 {item.label}
@@ -148,9 +142,9 @@ const Header: React.FC<HeaderProps> = ({
             </button>
             {isGuideOpen && (
             <div className={`fixed inset-x-4 top-full mt-2 max-h-[calc(100vh-96px)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:w-[460px] overflow-y-auto overscroll-contain rounded-xl border p-4 shadow-2xl ${
-              isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-700 bg-slate-950 text-slate-400'
+              'border-line bg-surface text-ink-soft'
             }`}>
-              <div className={`space-y-4 text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              <div className={`space-y-4 text-xs ${'text-ink-soft'}`}>
                 {([
                   ['basic', 6],
                   ['run', 3],
@@ -158,7 +152,7 @@ const Header: React.FC<HeaderProps> = ({
                   ['sample', 2]
                 ] as const).map(([section, count]) => (
                   <section key={section}>
-                    <h3 className={`mb-2 text-[11px] font-semibold tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-300'}`}>{t(`guide.${section}.title`)}</h3>
+                    <h3 className={`mb-2 text-[11px] font-semibold tracking-wider ${'text-ink'}`}>{t(`guide.${section}.title`)}</h3>
                     <ol className="space-y-2 list-decimal list-inside">
                       {Array.from({ length: count }, (_, index) => (
                         <li key={index}>{t(`guide.${section}.${index + 1}`)}</li>
@@ -173,7 +167,7 @@ const Header: React.FC<HeaderProps> = ({
 
           <div
             className={`inline-flex items-center rounded-lg border p-0.5 text-xs font-semibold ${
-              isLight ? 'border-slate-200 bg-white/80' : 'border-white/[0.08] bg-white/[0.05]'
+              'border-line bg-surface/80'
             }`}
             role="group"
             aria-label={t('header.language')}
@@ -186,12 +180,8 @@ const Header: React.FC<HeaderProps> = ({
                 aria-pressed={lang === option}
                 className={`min-h-9 rounded-md px-3 py-1.5 transition-colors sm:min-h-0 sm:px-2.5 ${
                   lang === option
-                    ? isLight
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-950'
-                    : isLight
-                      ? 'text-slate-600 hover:text-slate-950'
-                      : 'text-slate-400 hover:text-slate-100'
+                    ? 'bg-primary text-white'
+                    : 'text-ink-soft hover:text-ink'
                 }`}
               >
                 {option === 'zh' ? '中文' : 'EN'}
@@ -221,12 +211,8 @@ const Header: React.FC<HeaderProps> = ({
           <div
             className={`relative grid h-9 w-9 place-items-center rounded-full text-xs font-semibold ${
               authStatus === 'blocked'
-                ? isLight
-                  ? 'bg-rose-50 text-rose-700'
-                  : 'bg-rose-500/15 text-rose-200'
-                : isLight
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'bg-indigo-400/15 text-indigo-200'
+                ? 'bg-danger-soft text-danger'
+                : 'bg-primary-soft text-primary-ink'
             }`}
             title={authLabel}
             aria-label={`${t('header.account')}: ${authLabel}`}
@@ -235,7 +221,7 @@ const Header: React.FC<HeaderProps> = ({
             {initials}
             <span
               className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 ${statusDot} ${
-                isLight ? 'border-white' : 'border-slate-950'
+                'border-line'
               }`}
               aria-hidden="true"
             />

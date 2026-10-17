@@ -60,27 +60,28 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
   const {
     sectionDividerClass,
     disabledButtonClass,
-    neutralButtonClass
+    neutralButtonClass,
+    dangerButtonClass
   } = getUiClasses(isLight);
 
   return (
       <div className="space-y-3">
     <div className="flex items-center justify-between">
-      <p className="text-xs text-slate-500 pr-3">
+      <p className="text-xs text-muted pr-3">
         {t('strings.desc')}
       </p>
     </div>
     <textarea
-      className={isLight ? 'w-full bg-white border border-slate-200 rounded-lg p-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px] shadow-sm' : 'w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all min-h-[140px]'}
+      className={'w-full bg-surface border border-line rounded-lg p-3 text-sm text-ink focus:ring-2 focus:ring-primary outline-none transition-all min-h-[140px] shadow-sm'}
       placeholder={t('strings.input.placeholder')}
       value={stringInput}
       onChange={(e) => setStringInput(e.target.value)}
       disabled={isStringTranslating}
     />
     <div className="flex flex-col gap-2">
-      <label className="text-xs text-slate-400">{t('strings.outputLang')}</label>
+      <label className="text-xs text-muted">{t('strings.outputLang')}</label>
       <select
-        className={isLight ? 'bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 shadow-sm' : 'bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200'}
+        className={'bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink shadow-sm'}
         value={stringOutputTarget}
         onChange={(e) => setStringOutputTarget(e.target.value)}
         disabled={isStringTranslating}
@@ -92,9 +93,9 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           </option>
         ))}
       </select>
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-muted">
         {t('strings.dateHint')}</p>
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-muted">
         {t('strings.modelHint', { model: currentModelDisplayLabel })}
       </p>
     </div>
@@ -105,8 +106,8 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           disabled={!stringInput.trim() || isStringTranslating}
           className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all shadow-lg ${
             !stringInput.trim() || isStringTranslating
-              ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 active:scale-95'
+              ? 'bg-strong text-muted cursor-not-allowed'
+              : 'bg-primary hover:bg-primary-hover text-white shadow-primary/20 active:scale-95'
           }`}
         >
           {isStringTranslating
@@ -121,25 +122,25 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
             isStringTranslating || (!stringInput.trim() && !hasStringOutputs)
               ? disabledButtonClass
-              : 'bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/20'
+              : dangerButtonClass
           }`}
         >
           {t('strings.clearAll')}
         </button>
       </div>
-      <label className="flex items-center gap-2 text-xs text-slate-400">
+      <label className="flex items-center gap-2 text-xs text-muted">
         <input
           type="checkbox"
           checked={stringAutoFix}
           onChange={(e) => setStringAutoFix(e.target.checked)}
           disabled={isStringTranslating}
-          className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
+          className="h-4 w-4 rounded border-line bg-surface text-primary-ink focus:ring-primary"
         />
         {t('strings.autoFix')}
       </label>
     </div>
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-      <span className="text-xs text-slate-500">
+      <span className="text-xs text-muted">
         {t('strings.history', { count: stringHistoryCount })}
       </span>
       <div className="flex gap-2">
@@ -149,7 +150,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
             !hasStringOutputs || isStringTranslating
               ? disabledButtonClass
-              : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+              : 'bg-primary hover:bg-primary-hover text-white'
           }`}
         >
           {t('strings.exportCurrent')}
@@ -170,8 +171,8 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
           disabled={stringHistoryCount === 0 || isStringTranslating}
           className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
             stringHistoryCount === 0 || isStringTranslating
-              ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-              : 'bg-rose-600/80 hover:bg-rose-500 text-white'
+              ? disabledButtonClass
+              : dangerButtonClass
           }`}
         >
           {t('strings.clearHistory')}
@@ -179,15 +180,15 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
       </div>
     </div>
     {stringQualitySummary && (
-      <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
+      <div className="text-xs text-warning bg-warning-soft border border-warning-border rounded-md px-3 py-2">
         {stringQualitySummary}
       </div>
     )}
     {stringError && (
-      <div className="text-xs text-rose-300 space-y-1">
+      <div className="text-xs text-danger space-y-1">
         <p>{stringError}</p>
         {stringErrorDetails && (
-          <p className="text-rose-200/80">{stringErrorDetails}</p>
+          <p className="text-danger">{stringErrorDetails}</p>
         )}
       </div>
     )}
@@ -196,15 +197,15 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
         {selectedStringTargetLangs.map((lang) => (
           <div
             key={lang}
-            className={isLight ? 'bg-slate-50 border border-slate-200 rounded-lg p-3' : 'bg-slate-950/50 border border-slate-800 rounded-lg p-3'}
+            className={'bg-sunken border border-line rounded-lg p-3'}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-slate-400 uppercase">
+              <span className="text-xs text-muted uppercase">
                 {lang}
               </span>
               <button
                 onClick={() => copyStringOutput(lang)}
-                className="text-[10px] text-slate-500 hover:text-slate-300"
+                className="text-[10px] text-muted hover:text-ink-soft"
                 disabled={!stringOutputs[lang]}
               >
                 {t('common.copy')}
@@ -212,7 +213,7 @@ const StringResourcePanel: React.FC<StringResourcePanelProps> = ({
             </div>
             <textarea
               readOnly
-              className={isLight ? 'w-full bg-white border border-slate-200 rounded-md p-2 text-xs text-slate-900 min-h-[120px] resize-vertical' : 'w-full bg-slate-900 border border-slate-800 rounded-md p-2 text-xs text-slate-200 min-h-[120px] resize-vertical'}
+              className={'w-full bg-surface border border-line rounded-md p-2 text-xs text-ink min-h-[120px] resize-vertical'}
               value={stringOutputs[lang] || ''}
             />
           </div>

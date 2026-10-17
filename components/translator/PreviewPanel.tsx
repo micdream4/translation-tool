@@ -72,9 +72,9 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       ref={previewSectionRef}
       className={`overflow-hidden rounded-xl border ${sectionDividerClass}`}
     >
-      <div className={`p-4 border-b flex justify-between items-center ${isLight ? 'border-slate-200 bg-slate-50/80' : 'border-slate-800 bg-slate-900/50'}`}>
+      <div className={`p-4 border-b flex justify-between items-center ${'border-line bg-sunken/80'}`}>
         <div className="flex items-center gap-4">
-          <h2 className={`text-sm font-semibold uppercase ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>{t('preview.title')}</h2>
+          <h2 className={`text-sm font-semibold uppercase ${'text-ink'}`}>{t('preview.title')}</h2>
           {previewData.length > 0 && (
             <div className="flex items-center gap-2">
               <label className="relative inline-flex items-center cursor-pointer">
@@ -84,7 +84,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                   checked={showComparison}
                   onChange={() => setShowComparison(!showComparison)}
                 />
-                <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                <div className="w-9 h-5 bg-strong peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-line after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface after:border-line after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 <span className={`ml-2 text-xs font-medium ${headingMutedClass}`}>{t('preview.verify')}</span>
               </label>
             </div>
@@ -92,11 +92,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         </div>
         <div className="flex items-center gap-3">
           {previewFocus && (
-            <div className={`flex items-center gap-2 text-[10px] ${isLight ? 'text-indigo-600' : 'text-indigo-300'}`}>
+            <div className={`flex items-center gap-2 text-[10px] ${'text-primary-ink'}`}>
               <span>{t('preview.focused', { label: formatLocationLabel(previewFocus.rowIndex, previewFocus.columnKey) })}</span>
               <button
                 onClick={() => setPreviewFocus(null)}
-                className={isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-500 hover:text-slate-300'}
+                className={'text-muted hover:text-ink'}
               >
                 {t('preview.clearFocus')}
               </button>
@@ -117,10 +117,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       </div>
 
       {focusedPreviewCell && (
-        <div className={`px-4 py-3 border-b ${isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-800 bg-slate-950/40'}`}>
+        <div className={`px-4 py-3 border-b ${'border-line bg-sunken'}`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <p className={`text-[11px] font-semibold uppercase tracking-wider ${isLight ? 'text-indigo-700' : 'text-indigo-300'}`}>
+              <p className={`text-[11px] font-semibold uppercase tracking-wider ${'text-primary-ink'}`}>
                 {t('preview.focusedCell')}
               </p>
               <p className={`text-xs mt-1 ${headingMutedClass}`}>{focusedPreviewCell.locationLabel}</p>
@@ -133,15 +133,15 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </div>
           <div className={`grid gap-3 ${showComparison ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
             <div className={nestedPanelClass}>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{t('preview.target')}</p>
-              <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+              <p className="text-[10px] text-muted uppercase tracking-wider mb-2">{t('preview.target')}</p>
+              <p className={`text-sm whitespace-pre-wrap break-words ${'text-ink'}`}>
                 {focusedPreviewCell.translated || t('common.empty')}
               </p>
             </div>
             {showComparison && (
               <div className={nestedPanelClass}>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{t('preview.source')}</p>
-                <p className={`text-sm whitespace-pre-wrap break-words ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                <p className="text-[10px] text-muted uppercase tracking-wider mb-2">{t('preview.source')}</p>
+                <p className={`text-sm whitespace-pre-wrap break-words ${'text-ink-soft'}`}>
                   {focusedPreviewCell.original || t('common.empty')}
                 </p>
               </div>
@@ -150,22 +150,22 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         </div>
       )}
 
-      <div className={`overflow-auto h-[410px] scrollbar-thin ${isLight ? 'scrollbar-thumb-slate-200' : 'scrollbar-thumb-slate-800'}`}>
+      <div className={'overflow-auto h-[410px] scrollbar-thin'}>
         {previewData.length === 0 ? (
-          <div className={`h-full flex items-center justify-center text-sm italic ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
+          <div className={`h-full flex items-center justify-center text-sm italic ${'text-muted'}`}>
             {t('preview.waiting')}
           </div>
         ) : (
           <table className="w-full text-left border-collapse min-w-full table-fixed">
-            <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${isLight ? 'bg-slate-50 text-slate-500' : 'bg-slate-800 text-slate-400'}`}>
+            <thead className={`sticky top-0 text-[10px] font-semibold uppercase z-10 shadow-sm ${'bg-sunken text-muted'}`}>
               <tr>
-                <th className={`px-4 py-3 border-b w-20 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{t('preview.row')}</th>
+                <th className={`px-4 py-3 border-b w-20 ${'border-line'}`}>{t('preview.row')}</th>
                 {shownColumnKeys.map(key => (
-                  <th key={key} title={key} className={`px-4 py-3 border-b truncate w-40 ${isLight ? 'border-slate-200' : 'border-slate-700'}`}>{displayColumnName(key)}</th>
+                  <th key={key} title={key} className={`px-4 py-3 border-b truncate w-40 ${'border-line'}`}>{displayColumnName(key)}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className={isLight ? 'divide-y divide-slate-100' : 'divide-y divide-slate-800'}>
+            <tbody className={'divide-y divide-line'}>
               {shownRowIndices.map((actualIndex) => {
                 const record = previewData[actualIndex] || {};
                 const originalRecord = previewSourceRows[actualIndex] || {};
@@ -174,9 +174,9 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                 return (
                   <tr
                     key={actualIndex}
-                    className={`${isLight ? 'hover:bg-indigo-50/60' : 'hover:bg-slate-800/30'} transition-colors ${isFocusedRow ? 'bg-indigo-500/10' : ''}`}
+                    className={`${'hover:bg-primary-soft'} transition-colors ${isFocusedRow ? 'bg-primary-soft' : ''}`}
                   >
-                    <td className={`px-4 py-3 border-b text-[11px] text-slate-500 font-mono ${isLight ? 'border-slate-100' : 'border-slate-800/50'}`}>
+                    <td className={`px-4 py-3 border-b text-[11px] text-muted font-mono ${'border-line'}`}>
                       R{formatExcelRowNumber(actualIndex)}
                     </td>
                     {shownColumnKeys.map((key, j) => {
@@ -190,12 +190,12 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                       return (
                         <td
                           key={j}
-                          className={`px-4 py-3 border-b ${isLight ? 'border-slate-100' : 'border-slate-800/50'} ${isFocusedCell ? 'bg-indigo-500/20 ring-1 ring-inset ring-indigo-400' : ''}`}
+                          className={`px-4 py-3 border-b ${'border-line'} ${isFocusedCell ? 'bg-primary-soft ring-1 ring-inset ring-primary' : ''}`}
                         >
                           <div className="flex flex-col gap-0.5">
                             <span
                               title={String(val)}
-                              className={`text-xs truncate whitespace-nowrap ${isDiff ? (isLight ? 'text-indigo-700 font-medium' : 'text-indigo-300 font-medium') : (isLight ? 'text-slate-700' : 'text-slate-300')}`}
+                              className={`text-xs truncate whitespace-nowrap ${isDiff ? ('text-primary-ink font-medium') : ('text-ink-soft')}`}
                             >
                               {String(val)}
                             </span>
@@ -203,13 +203,13 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                             {showComparison && isDiff && (
                               <span
                                 title={String(origVal)}
-                                className={`text-[10px] text-slate-500 truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-white border-slate-200' : 'bg-slate-800/50 border-slate-700/50'}`}
+                                className={`text-[10px] text-muted truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${'bg-surface border-line'}`}
                               >
                                 {String(origVal)}
                               </span>
                             )}
                             {isSkippedCell && (
-                              <span className={`text-[10px] truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${isLight ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/30'}`}>
+                              <span className={`text-[10px] truncate whitespace-nowrap px-1.5 py-0.5 rounded border w-fit max-w-full ${'bg-warning-soft text-warning border-warning-border'}`}>
                                 {t('preview.skipped')}
                               </span>
                             )}

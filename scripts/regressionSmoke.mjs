@@ -3007,8 +3007,26 @@ test("spacing cleanup keeps short codes, ordinals and multipliers intact", async
   for (const [source, target, lang] of cases) {
     assert.equal(polishTranslation(source, target, lang), target, `${lang}: ${target}`);
   }
-  // Ordinary glue between a word and a number is still separated.
-  assert.equal(polishTranslation("步骤1", "Step1 du protocole", "French"), "Step 1 du protocole");
+  assert.equal(polishTranslation("第2次", "La 2e fois, puis le 1er essai", "French"), "La 2e fois, puis le 1er essai");
+  // Everything the letter/digit cleanup did before still happens: number+unit and glued words are
+  // separated exactly as in v0.3.7. Dimensions now stay one token (the spacing check flagged the
+  // old "10 x 20" output).
+  const unchanged = [
+    ["加入10mL", "Add 10mL of buffer", "English", "Add 10 mL of buffer"],
+    ["等待5min", "Attendre 5min", "French", "Attendre 5 min"],
+    ["加入10mL", "Добавьте 10mL буфера", "Russian", "Добавьте 10 mL буфера"],
+    ["37℃孵育", "Incubate at 37℃", "English", "Incubate at 37℃"],
+    ["37°C孵育", "Incubate at 37°C", "English", "Incubate at 37°C"],
+    ["连接电源", "Connectthe power cable", "English", "Connect the power cable"],
+    ["步骤1", "Step1 du protocole", "French", "Step 1 du protocole"],
+    ["在25度", "Store at25 degrees", "English", "Store at 25 degrees"],
+    ["尺寸10x20", "Taille 10x20 mm", "French", "Taille 10x20 mm"],
+    ["2x3 mm切片", "Coupe 2x3 mm", "French", "Coupe 2x3 mm"],
+    ["2.5x3切片", "Coupe 2.5x3 mm", "French", "Coupe 2.5x3 mm"]
+  ];
+  for (const [source, target, lang, expected] of unchanged) {
+    assert.equal(polishTranslation(source, target, lang), expected, `${lang}: ${target}`);
+  }
 });
 
 test("engine order is configurable and shared by browser and server", async () => {
@@ -3718,7 +3736,7 @@ test("TranslationHub retry flow splits recoverable proxy batch failures and pres
   }
 });
 
-test("TranslationHub splits a DeepSeek batch that comes back one row short", async () => {
+test("TranslationHub keeps returned rows and re-requests only the row DeepSeek dropped", async () => {
   const { TranslationHub } = await bundleTsModule(path.join(repoRoot, "services/translationHub.ts"), {
     external: ["@google/genai"]
   });
@@ -3746,7 +3764,7 @@ test("TranslationHub splits a DeepSeek batch that comes back one row short", asy
         targetLang: "Traditional Chinese (Taiwan)",
         options: { model: "deepseek" }
       });
-      assert.deepEqual(sizes, [5, 3, 2]);
+      assert.deepEqual(sizes, [5, 1]);
       assert.deepEqual(result.map((row) => row.content), ["A 譯", "B 譯", "C 譯", "D 譯", "E 譯"]);
     });
   } finally {

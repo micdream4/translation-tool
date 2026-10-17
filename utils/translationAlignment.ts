@@ -63,6 +63,27 @@ export const alignTranslationEnvelopes = (
   });
 };
 
+/**
+ * Splits a model reply into the envelopes that came back (by record id) and the source envelopes
+ * still missing, so a caller can keep the good rows and ask again only for the dropped ones.
+ * A reply that is malformed (no id or payload, duplicate ids) still throws.
+ */
+export const partitionTranslationEnvelopes = (expected: POCTRecord[], translated: POCTRecord[]) => {
+  const expectedIds = new Set(expected.map((record) => record?.[TRANSLATION_RECORD_ID_KEY]));
+  const byId = new Map<number, TranslationEnvelope>();
+  (Array.isArray(translated) ? translated : []).forEach((record) => {
+    const id = record?.[TRANSLATION_RECORD_ID_KEY];
+    const payload = record?.[TRANSLATION_RECORD_PAYLOAD_KEY];
+    if (!Number.isInteger(id) || !isRecord(payload)) {
+      throw alignmentError('model output is missing a record id or payload object.');
+    }
+    if (byId.has(id)) throw alignmentError(`duplicate record id ${id}.`);
+    if (expectedIds.has(id)) byId.set(id, record as TranslationEnvelope);
+  });
+  const missing = expected.filter((record) => !byId.has(record[TRANSLATION_RECORD_ID_KEY]));
+  return { byId, missing };
+};
+
 export const unwrapTranslationEnvelopes = (records: POCTRecord[]): POCTRecord[] =>
   records.map((record) => {
     const payload = record?.[TRANSLATION_RECORD_PAYLOAD_KEY];

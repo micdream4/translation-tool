@@ -1,7 +1,7 @@
 {
   "totals": {
-    "cases": 669,
-    "ok": 668,
+    "cases": 674,
+    "ok": 673,
     "falsePositive": 0,
     "falseNegative": 0,
     "unscored": 1
@@ -664,6 +664,11 @@
     "review-de-grade-code-split": "ok",
     "review-ru-vitamin-b12-kept": "ok",
     "review-es-ordinal-kept": "ok",
+    "review-fr-multiplier-kept": "ok",
+    "review-fr-ordinal-kept": "ok",
+    "review-en-unit-spaced": "ok",
+    "review-ru-unit-temperature": "ok",
+    "review-fr-dimension-kept": "ok",
     "real-zhtw-clinical-hint": "ok",
     "real-zhtw-acute-inflammation": "ok",
     "real-zhtw-segmented-chronic": "ok",

@@ -25,8 +25,10 @@ export const extractCodeWords = (text: string) =>
 // needs two capitals or a hyphen, so these used to be split by the letter/digit spacing cleanup.
 export const SHORT_CODE_REGEX = /(?<![A-Za-z0-9])[a-z]{0,2}[A-Z]{1,2}\d{1,3}[a-z]{0,2}(?![A-Za-z0-9])/g;
 
-// Ordinals and multipliers in Latin text (1st, 2nd, 3rd, 4th, 10x): one token, never "3 rd".
-export const ORDINAL_MULTIPLIER_REGEX = /(?<![A-Za-z0-9])\d+(?:st|nd|rd|th|x)(?![A-Za-z0-9])/g;
+// Ordinals, multipliers and dimensions in Latin text (1st, 2nd, 3rd, 4th; French 1er, 2e, 2ème;
+// 10x; 10x20, 2.5x3): one token, never "3 rd" or "10 x 20" (which the spacing check would flag).
+export const ORDINAL_MULTIPLIER_REGEX =
+  /(?<![A-Za-z0-9.])\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?|st|nd|rd|th|er|re|e|ème|eme|x)(?![A-Za-z0-9À-ÿ])/g;
 
 /** Code words and short codes in `text` that a translation must keep exactly. */
 export const extractCodeTokens = (text: string) =>

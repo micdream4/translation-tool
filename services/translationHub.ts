@@ -5,8 +5,11 @@ import { POCTRecord, TargetLanguage } from "../types";
 import { parseEngineOrder, type OrderedTranslationEngine } from "../utils/engineOrder";
 import type { TranslationProfile } from "../utils/translationProfiles";
 import {
+  TRANSLATION_RECORD_ID_KEY,
+  type TranslationEnvelope,
   alignTranslationEnvelopes,
   isTranslationEnvelopeBatch,
+  partitionTranslationEnvelopes,
   unwrapTranslationEnvelopes,
   wrapTranslationRecords
 } from "../utils/translationAlignment";
@@ -127,7 +130,8 @@ export class TranslationHub {
       message.includes("length mismatch") ||
       message.includes("invalid payload") ||
       message.includes("invalid record data") ||
-      message.includes("translation alignment mismatch")
+      message.includes("translation alignment mismatch") ||
+      /returned \d+ of \d+ records/.test(message)
     );
   }
 
@@ -165,11 +169,21 @@ export class TranslationHub {
   ): Promise<POCTRecord[]> {
     try {
       const translated = await this.translateDirect(req);
-      const aligned = isTranslationEnvelopeBatch(req.records)
-        ? alignTranslationEnvelopes(req.records, translated)
-        : translated;
+      if (!isTranslationEnvelopeBatch(req.records)) {
+        state.availabilityFailures = 0;
+        return translated;
+      }
+      const { byId, missing } = partitionTranslationEnvelopes(req.records, translated);
+      if (missing.length === req.records.length) {
+        throw new Error(`Translation alignment mismatch: received 0 of ${req.records.length} records.`);
+      }
       state.availabilityFailures = 0;
-      return aligned;
+      if (missing.length > 0) {
+        // Keep the rows that came back; ask again only for the ones the model dropped.
+        const retried = await this.translateWithRecovery({ ...req, records: missing }, state);
+        retried.forEach((record) => byId.set(record[TRANSLATION_RECORD_ID_KEY], record as TranslationEnvelope));
+      }
+      return alignTranslationEnvelopes(req.records, req.records.map((record) => byId.get(record[TRANSLATION_RECORD_ID_KEY])!));
     } catch (error) {
       if (req.records.length <= 1) throw error;
       const kind = this.classifyBatchError(error);
@@ -210,7 +224,12 @@ export class TranslationHub {
       this.lastEngine = this.proxy.getLastEngine();
       this.lastModel = this.proxy.getLastModel();
       this.lastModelIssues = this.proxy.getLastModelIssues();
-      if (!Array.isArray(translated) || translated.length !== req.records.length) {
+      // Envelope batches are checked by record id in translateWithRecovery (missing rows are
+      // re-requested there); plain batches must come back complete.
+      if (
+        !Array.isArray(translated) ||
+        (!isTranslationEnvelopeBatch(req.records) && translated.length !== req.records.length)
+      ) {
         throw new Error(
           `Translation returned ${Array.isArray(translated) ? translated.length : 0} records (expected ${req.records.length}).`
         );

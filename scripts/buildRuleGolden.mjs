@@ -148,6 +148,11 @@ add({ id: "review-fr-short-codes-kept", targetLang: "French", category: "prose_t
 add({ id: "review-de-grade-code-split", targetLang: "German", category: "locked_code_changed", sourceText: "A2级质控品", translatedText: "Kontrollmaterial Stufe A 2", expect: "flag", expectTypes: ["idMismatch"], origin: "review-2026-10-17" });
 add({ id: "review-ru-vitamin-b12-kept", targetLang: "Russian", category: "prose_translated", sourceText: "维生素B12缺乏", translatedText: "Дефицит витамина B12", expect: "pass", origin: "review-2026-10-17" });
 add({ id: "review-es-ordinal-kept", targetLang: "Spanish", category: "prose_translated", sourceText: "第3次质控", translatedText: "El 3.º control de calidad", expect: "pass", origin: "review-2026-10-17" });
+add({ id: "review-fr-multiplier-kept", targetLang: "French", category: "prose_translated", sourceText: "放大10x观察", translatedText: "Observer au grossissement 10x", expect: "pass", origin: "review-2026-10-17" });
+add({ id: "review-fr-ordinal-kept", targetLang: "French", category: "prose_translated", sourceText: "第2次测量", translatedText: "La 2e mesure", expect: "pass", origin: "review-2026-10-17" });
+add({ id: "review-en-unit-spaced", targetLang: "English", category: "prose_translated", sourceText: "加入10mL缓冲液", translatedText: "Add 10 mL of buffer", expect: "pass", origin: "review-2026-10-17" });
+add({ id: "review-ru-unit-temperature", targetLang: "Russian", category: "prose_translated", sourceText: "37°C孵育5min", translatedText: "Инкубировать при 37°C 5 min", expect: "pass", origin: "review-2026-10-17" });
+add({ id: "review-fr-dimension-kept", targetLang: "French", category: "prose_translated", sourceText: "尺寸10x20 mm", translatedText: "Taille 10x20 mm", expect: "pass", origin: "review-2026-10-17" });
 // zh-TW: words written the same in simplified and traditional (提示, 完成, 窗口, 中性粒, 血小板) are not simplified residue.
 add({ id: "real-zhtw-clinical-hint", targetLang: "Traditional Chinese (Taiwan)", category: "prose_translated", sourceText: "临床提示", translatedText: "臨床提示", expect: "pass", origin: "real-report-2026-10-16" });
 add({ id: "real-zhtw-acute-inflammation", targetLang: "Traditional Chinese (Taiwan)", category: "prose_translated", sourceText: "提示急性炎症或感染，组织坏死", translatedText: "提示急性發炎或感染，組織壞死", expect: "pass", origin: "real-report-2026-10-16" });

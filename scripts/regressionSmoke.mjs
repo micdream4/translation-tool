@@ -3007,11 +3007,11 @@ test("engine order is configurable and shared by browser and server", async () =
   const models = ["google/gemini-3.6-flash", "google/gemini-3-flash"];
   assert.equal(
     formatAutoModelChainLabel(models, true, ["deepseek", "cloudflare-ai"]),
-    "DeepSeek Flash -> Cloudflare Gemini 3.6 Flash -> Cloudflare Gemini 3 Flash"
+    "DeepSeek Flash → Cloudflare Gemini 3.6 Flash → Cloudflare Gemini 3 Flash"
   );
   assert.equal(
     formatAutoModelChainLabel(models, true),
-    "Cloudflare Gemini 3.6 Flash -> DeepSeek Flash -> Cloudflare Gemini 3 Flash"
+    "Cloudflare Gemini 3.6 Flash → DeepSeek Flash → Cloudflare Gemini 3 Flash"
   );
 
   const hubSource = fs.readFileSync(path.join(repoRoot, "services/translationHub.ts"), "utf8");
@@ -3066,7 +3066,7 @@ test("translation model menu and auto label come from the server's /api/me model
   ]);
   assert.equal(
     shared.formatAutoModelChainLabel(cloudflareModels, true, capabilities.engineOrder, capabilities.deepseekModels),
-    "DeepSeek Flash -> Cloudflare Gemini 3.6 Flash -> Cloudflare Gemini 3 Flash"
+    "DeepSeek Flash → Cloudflare Gemini 3.6 Flash → Cloudflare Gemini 3 Flash"
   );
   // Removed models are not in the menu, so a saved preference for them resets to auto.
   for (const removed of [shared.DEEPSEEK_DIRECT_PRO_MODEL, shared.toCloudflareAiModelValue("openai/gpt-5.4"), shared.toCloudflareAiModelValue("anthropic/claude-sonnet-4.6")]) {

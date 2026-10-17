@@ -108,7 +108,7 @@ export const getTranslationModelLabel = (model: string) => {
   return getModelLabel(model);
 };
 export const formatModelChainLabel = (models: readonly string[]) =>
-  models.map(getModelLabel).join(' -> ');
+  models.map(getModelLabel).join(' → ');
 export const splitCloudflareAutoModels = (models: readonly string[]) => ({
   primary: models.slice(0, 1),
   fallback: models.slice(1)
@@ -127,7 +127,7 @@ export const formatAutoModelChainLabel = (
   return (deepSeekFirst
     ? [...deepSeek, ...cloudflareAuto.primary.map(getModelLabel), ...cloudflareAuto.fallback.map(getModelLabel)]
     : [...cloudflareAuto.primary.map(getModelLabel), ...deepSeek, ...cloudflareAuto.fallback.map(getModelLabel)]
-  ).join(' -> ');
+  ).join(' → ');
 };
 export type TranslationEngine = 'cloudflare-ai' | 'deepseek' | 'gemini';
 export type ThemeMode = 'light' | 'dark';

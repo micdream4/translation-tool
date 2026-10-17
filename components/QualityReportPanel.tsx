@@ -4,6 +4,9 @@ import type { AcceptedQualityFinding, QualityReport, QualitySeverity } from '../
 import type { QualityFinding } from '../quality/report';
 import type { SampleReviewAIResult } from '../types';
 
+// Findings listed before "show all"; the counts always cover every finding.
+const FINDINGS_PAGE_SIZE = 40;
+
 type IssueSummaryView = {
   cells: number;
   rows: number;
@@ -142,6 +145,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
 }) => {
   const { t } = useI18n();
   const [editingFindingId, setEditingFindingId] = useState<string | null>(null);
+  const [showAllFindings, setShowAllFindings] = useState(false);
   const [draftTranslation, setDraftTranslation] = useState('');
   const [rememberDraft, setRememberDraft] = useState(true);
   const [findingSeverityFilter, setFindingSeverityFilter] = useState<'all' | QualitySeverity>('all');
@@ -378,7 +382,7 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                 <p className="text-caption text-muted">{t('report.findings.none')}</p>
               ) : (
                 <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
-                  {filteredQualityFindings.slice(0, 40).map((finding) => (
+                  {(showAllFindings ? filteredQualityFindings : filteredQualityFindings.slice(0, FINDINGS_PAGE_SIZE)).map((finding) => (
                     <div key={finding.id} className={subCardClass}>
                       <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-1">
@@ -466,6 +470,17 @@ const QualityReportPanel: React.FC<QualityReportPanelProps> = ({
                       )}
                     </div>
                   ))}
+                  {filteredQualityFindings.length > FINDINGS_PAGE_SIZE && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllFindings((value) => !value)}
+                      className={`inline-flex h-8 w-full items-center justify-center rounded-control px-3 text-caption font-semibold ${neutralButtonClass}`}
+                    >
+                      {showAllFindings
+                        ? t('report.findings.showLess')
+                        : t('report.findings.showing', { shown: FINDINGS_PAGE_SIZE, total: filteredQualityFindings.length })}
+                    </button>
+                  )}
                 </div>
               )}
               {acceptedFindings.length > 0 && (

@@ -3582,6 +3582,70 @@ test("Proxy translation retries transient fetch failures before surfacing string
   });
 });
 
+test("sample review: unknown verdicts need review and unreviewed samples are listed", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/review-samples.ts"));
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async () =>
+      chatCompletionResponse(
+        JSON.stringify({
+          reviews: [
+            { id: "s1", verdict: "failed", risk: "high", issueTypes: [], comment: "", suggestion: "" },
+            { id: "s2", verdict: "不通过", risk: "high", issueTypes: [], comment: "", suggestion: "" },
+            { id: "s3", verdict: "maybe", risk: "low", issueTypes: [], comment: "", suggestion: "" },
+            { id: "s4", verdict: "通过", risk: "low", issueTypes: [], comment: "", suggestion: "" }
+          ]
+        })
+      )
+    );
+    const samples = ["s1", "s2", "s3", "s4", "s5"].map((id) => ({ id, location: id, source: "白细胞升高", target: "WBC elevated" }));
+    const response = await onRequestPost(
+      functionContext({ samples, targetLang: "English", model: "deepseek:judge-model" }, { DEEPSEEK_API_KEY: "test-deepseek-key" })
+    );
+    const payload = await response.json();
+    const byId = Object.fromEntries(payload.reviews.map((review) => [review.id, review]));
+    assert.equal(byId.s1.verdict, "fail");
+    assert.equal(byId.s2.verdict, "fail");
+    assert.equal(byId.s3.verdict, "warning");
+    assert.equal(byId.s4.verdict, "pass");
+    assert.equal(byId.s5.verdict, "warning");
+    assert.deepEqual(byId.s5.issueTypes, ["not-reviewed"]);
+  });
+});
+
+test("model review aligns candidate translations by id only and rejects an empty reply", async () => {
+  const { alignCandidateTranslations } = await bundleTsModule(path.join(repoRoot, "functions/api/model-review.ts"));
+  const samples = [{ id: "a" }, { id: "b" }];
+  assert.deepEqual(alignCandidateTranslations(samples, [{ id: "b", content: "B" }, { content: "stray" }]), [
+    { id: "a", translation: "" },
+    { id: "b", translation: "B" }
+  ]);
+  assert.throws(() => alignCandidateTranslations(samples, []), /no usable translations/);
+  assert.throws(() => alignCandidateTranslations(samples, [{ id: "x", content: "X" }]), /no usable translations/);
+});
+
+test("sample review sends a routed model id the server accepts, not the UI value", async () => {
+  const shared = await bundleTsModule(path.join(repoRoot, "utils/translatorShared.ts"));
+  const { validateModelList } = await bundleTsModule(path.join(repoRoot, "functions/_shared/limits.ts"));
+  const { parseRoutedModel } = await bundleTsModule(path.join(repoRoot, "functions/_shared/llmProviders.ts"));
+  const cf = shared.toRoutedModelId(shared.toCloudflareAiModelValue("google/gemini-3.6-flash"));
+  const ds = shared.toRoutedModelId(shared.DEEPSEEK_DIRECT_MODEL);
+  assert.equal(cf, "cloudflare-ai:google/gemini-3.6-flash");
+  assert.equal(ds, "deepseek:deepseek-flash");
+  assert.equal(shared.toRoutedModelId(shared.AUTO_MODEL), undefined);
+  assert.equal(validateModelList([cf, ds]), "");
+  assert.equal(parseRoutedModel(cf).engine, "cloudflare-ai");
+  assert.equal(parseRoutedModel(ds).engine, "deepseek");
+  const workflow = fs.readFileSync(path.join(repoRoot, "hooks/useQualityWorkflow.ts"), "utf8");
+  assert.match(workflow, /toRoutedModelId\(translationModelPreference\)/);
+});
+
+test("quality report shows how many findings are listed and can show all", () => {
+  const panel = fs.readFileSync(path.join(repoRoot, "components/QualityReportPanel.tsx"), "utf8");
+  assert.doesNotMatch(panel, /filteredQualityFindings\.slice\(0, 40\)/);
+  assert.match(panel, /showAllFindings \? filteredQualityFindings : filteredQualityFindings\.slice\(0, FINDINGS_PAGE_SIZE\)/);
+  assert.match(panel, /report\.findings\.showing/);
+});
+
 test("API review-samples function parses anonymous review JSON without network", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/review-samples.ts"));
 

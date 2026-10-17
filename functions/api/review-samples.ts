@@ -20,11 +20,33 @@ const DEFAULT_REVIEW_MODELS = [
 
 const parseRequestedModel = (value: unknown) => String(value || "").trim();
 
+// Only an explicit pass counts as pass. Failure words map to fail; anything else (an unknown or
+// missing verdict) needs a person to look: warning (需确认).
+const PASS_VERDICTS = new Set(["pass", "passed", "ok", "通过", "合格"]);
+const FAIL_VERDICTS = new Set(["fail", "failed", "error", "reject", "rejected", "不通过", "不合格", "失败"]);
 const normalizeVerdict = (value: unknown): SampleReviewVerdict => {
   const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "fail") return "fail";
-  if (normalized === "warning") return "warning";
-  return "pass";
+  if (PASS_VERDICTS.has(normalized)) return "pass";
+  if (FAIL_VERDICTS.has(normalized)) return "fail";
+  return "warning";
+};
+
+/** Samples the model did not review are listed as not reviewed (需确认), never dropped. */
+const withUnreviewedSamples = (samples: ReviewSample[], reviews: SampleReviewAIResult[]) => {
+  const reviewed = new Set(reviews.map((review) => review.id));
+  return [
+    ...reviews,
+    ...samples
+      .filter((sample) => !reviewed.has(String(sample.id)))
+      .map<SampleReviewAIResult>((sample) => ({
+        id: String(sample.id),
+        verdict: "warning",
+        risk: "medium",
+        issueTypes: ["not-reviewed"],
+        comment: "模型没有返回这条样本的审核结果，需要人工确认。",
+        suggestion: ""
+      }))
+  ];
 };
 
 const normalizeRisk = (value: unknown): SampleReviewRisk => {
@@ -134,7 +156,7 @@ export const onRequestPost = async (context: any) => {
           json: true
         });
         const parsed = parseModelJsonObject<{ reviews?: unknown }>(result.text);
-        const reviews = normalizeReviewResults(parsed.reviews);
+        const reviews = withUnreviewedSamples(samples, normalizeReviewResults(parsed.reviews));
         return jsonResponse({ engine: result.engine, model, reviews });
       } catch (error) {
         errors.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);

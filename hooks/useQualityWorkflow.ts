@@ -1,6 +1,7 @@
 import type { EmbeddedVisualSummary } from '../utils/embeddedVisuals';
 import { useEffect, useMemo, useState } from 'react';
 import { SampleReviewAuditService } from '../services/sampleReviewAuditService';
+import { toRoutedModelId } from '../utils/translatorShared';
 import type { QualityRows } from '../quality/types';
 import type { TranslationMemoryPair } from '../utils/translationMemory';
 import type { UntranslatedCell } from '../utils/language';
@@ -769,7 +770,7 @@ export const useQualityWorkflow = ({
       const reviewResponse = await sampleReviewAuditService.reviewSamples(
         payload,
         targetLang,
-        translationModelPreference === autoModelValue ? undefined : translationModelPreference
+        translationModelPreference === autoModelValue ? undefined : toRoutedModelId(translationModelPreference)
       );
 
       const resultMap = reviewResponse.reviews.reduce<Record<string, SampleReviewAIResult>>((acc, item) => {

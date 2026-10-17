@@ -102,6 +102,16 @@ export const getDeepSeekDirectProviderModel = (model: string) => DEEPSEEK_DIRECT
 export const isDeepSeekDirectModel = (model: string) =>
   Object.prototype.hasOwnProperty.call(DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS, model);
 export const isDeepSeekDirectProModel = (model: string) => model === DEEPSEEK_DIRECT_PRO_MODEL;
+/**
+ * The model id the server routes (functions/_shared/llmProviders parseRoutedModel) for a model
+ * selector value: "cloudflare-ai:<model>", "deepseek:<model>", or undefined for automatic.
+ */
+export const toRoutedModelId = (value: string): string | undefined => {
+  if (!value || value === AUTO_MODEL) return undefined;
+  if (isCloudflareAiModelValue(value)) return `cloudflare-ai:${getCloudflareAiProviderModel(value)}`;
+  if (isDeepSeekDirectModel(value)) return `deepseek:${getDeepSeekDirectProviderModel(value)}`;
+  return value;
+};
 export const getTranslationModelLabel = (model: string) => {
   if (isDeepSeekDirectModel(model)) return getDeepSeekDirectModelLabel(model);
   if (isCloudflareAiModelValue(model)) return getModelLabel(getCloudflareAiProviderModel(model));

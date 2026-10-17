@@ -117,14 +117,25 @@ const translateWithModel = async ({
     user: buildTranslationPrompt(records, targetLang, profile),
     maxTokens: 7000
   });
-  const parsed = parseModelJsonArray<POCTRecord>(content);
-  return samples.map((sample, index) => {
-    const record = parsed.find((item) => String(item?.id || "") === sample.id) || parsed[index] || {};
-    return {
-      id: sample.id,
-      translation: String(record.content || "").trim()
-    };
-  });
+  return alignCandidateTranslations(samples, parseModelJsonArray<POCTRecord>(content));
+};
+
+/**
+ * Candidate translations are matched to samples by id only; a record without a matching id is
+ * not assigned by position (that silently paired the wrong texts). A reply with no usable
+ * translation is the candidate's failure, not an empty success.
+ */
+export const alignCandidateTranslations = (samples: Array<{ id: string }>, parsed: POCTRecord[]) => {
+  const byId = new Map(
+    (Array.isArray(parsed) ? parsed : [])
+      .filter((item) => item && String(item.id || ""))
+      .map((item) => [String(item.id), String(item.content || "").trim()])
+  );
+  const translations = samples.map((sample) => ({ id: sample.id, translation: byId.get(sample.id) || "" }));
+  if (!translations.some((item) => item.translation)) {
+    throw new Error("Model returned no usable translations for the review samples.");
+  }
+  return translations;
 };
 
 const getReviewStyleGuidance = (reviewStyle: ModelReviewStyle) => {

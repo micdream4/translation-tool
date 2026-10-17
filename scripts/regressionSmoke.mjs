@@ -3136,6 +3136,80 @@ test("API translate auto tries engines in TRANSLATION_ENGINE_ORDER", async () =>
   }
 });
 
+const translateRequest = (records) =>
+  new Request("https://poct-translator.local/api/translate", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-user-email": "dev@example.com" },
+    body: JSON.stringify({ records, targetLang: "Spanish", engine: "auto" })
+  });
+const fallbackEnv = (extra = {}) => ({
+  ALLOW_LOCAL_WITHOUT_ACCESS: "true",
+  LOCAL_DEV_EMAIL: "dev@example.com",
+  DEEPSEEK_API_KEY: "test-deepseek-key",
+  DEEPSEEK_MODELS: "deepseek-flash",
+  TRANSLATION_ENGINE_ORDER: "deepseek,cloudflare-ai",
+  CLOUDFLARE_AI_PRIMARY_MODELS: "google/gemini-3.6-flash",
+  CLOUDFLARE_AI_FALLBACK_MODELS: "google/gemini-3-flash",
+  AI: {
+    run: async (_model, input) => {
+      const ids = [...String(input.messages.at(-1).content).matchAll(/"__poct_record_id":\s*(\d+)/g)].map((m) => Number(m[1]));
+      return {
+        choices: [{ message: { content: JSON.stringify({ records: ids.map((id) => ({ __poct_record_id: id, payload: { content: `es-${id}` } })) }) } }]
+      };
+    }
+  },
+  ...extra
+});
+const envelopes = [0, 1].map((id) => ({ __poct_record_id: id, payload: { content: `原文${id}` } }));
+
+test("API translate times out a DeepSeek response body that never finishes and falls back", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"choices":[{"message":{"content":"'));
+          init?.signal?.addEventListener("abort", () => controller.error(init.signal.reason));
+        }
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  try {
+    const started = Date.now();
+    const response = await onRequestPost({ request: translateRequest(envelopes), env: fallbackEnv({ DEEPSEEK_REQUEST_TIMEOUT_MS: "1500" }) });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.engine, "cloudflare-ai");
+    assert.ok(Date.now() - started < 10_000, "the stalled body must not hold the request");
+    assert.match(JSON.stringify(payload.modelIssues), /deepseek-flash[\s\S]*timed out/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("API translate treats a short model reply as that model's failure and falls back", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ records: [{ __poct_record_id: 0, payload: { content: "solo uno" } }] }) } }]
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  try {
+    const response = await onRequestPost({ request: translateRequest(envelopes), env: fallbackEnv() });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.engine, "cloudflare-ai");
+    assert.equal(payload.records.length, 2);
+    assert.match(JSON.stringify(payload.modelIssues), /deepseek-flash[\s\S]*1 of 2/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("API translate reports every failed model when no engine can serve the request", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const calls = [];

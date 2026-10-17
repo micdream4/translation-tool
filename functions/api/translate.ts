@@ -1,6 +1,11 @@
 import type { POCTRecord, TargetLanguage } from "../../types";
 import { parseModelJsonArray, sanitizeModelJson } from "../../utils/jsonRepair";
 import {
+  TRANSLATION_RECORD_ID_KEY,
+  alignTranslationEnvelopes,
+  isTranslationEnvelopeBatch
+} from "../../utils/translationAlignment";
+import {
   buildTranslationPrompt,
   buildTranslationSystemPrompt,
   type TranslationProfile
@@ -103,24 +108,56 @@ const parseDeepSeekMaxOutputTokens = (env: Record<string, unknown>, model = "") 
   return Math.min(65536, Math.max(1024, Math.round(raw)));
 };
 
-const fetchWithTimeout = async (
+// The timeout covers the whole exchange, body included: a provider that sends headers and then
+// stalls must not hold the request past its budget (the next model would never get a turn).
+const fetchTextWithTimeout = async (
   url: string,
   init: RequestInit,
   timeoutMs: number,
   label: string
 ) => {
   const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`));
-  }, timeoutMs);
+  const timeoutError = new Error(`${label} timed out after ${timeoutMs}ms`);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort(timeoutError);
+      reject(timeoutError);
+    }, timeoutMs);
+  });
   try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal
-    });
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, { ...init, signal: controller.signal });
+        return { response, text: await response.text() };
+      })(),
+      timeout
+    ]);
   } finally {
     clearTimeout(timer);
   }
+};
+
+/**
+ * A reply must cover every record that was sent. Envelope batches (with record ids) must return
+ * every id; plain batches must return the same number of records. Anything else counts as that
+ * model's failure so the next model can serve the request.
+ */
+const describeIncompleteReply = (sent: POCTRecord[], received: unknown): string | null => {
+  if (!Array.isArray(received)) return "reply is not a record list";
+  if (isTranslationEnvelopeBatch(sent)) {
+    try {
+      alignTranslationEnvelopes(sent, received as POCTRecord[]);
+      return null;
+    } catch {
+      const ids = new Set(
+        (received as POCTRecord[]).map((record) => record?.[TRANSLATION_RECORD_ID_KEY]).filter(Number.isInteger)
+      );
+      const covered = sent.filter((record) => ids.has(record[TRANSLATION_RECORD_ID_KEY])).length;
+      return `returned ${covered} of ${sent.length} records`;
+    }
+  }
+  return received.length === sent.length ? null : `returned ${received.length} of ${sent.length} records`;
 };
 
 const parseCloudflareAiModels = (env: Record<string, unknown>) => {
@@ -293,6 +330,12 @@ export const onRequestPost = async (context: any) => {
             })
           );
           const parsed = parseModelJsonArray(text);
+          const incomplete = describeIncompleteReply(records, parsed);
+          if (incomplete) {
+            allErrors.push(`${model}: ${incomplete}.`);
+            allModelIssues.push({ model, message: `Model ${incomplete}.`, kind: "exception" });
+            continue;
+          }
           return jsonResponse({
             engine: "cloudflare-ai",
             model,
@@ -322,7 +365,7 @@ export const onRequestPost = async (context: any) => {
         const requestTimeoutMs = Math.min(parseDeepSeekTimeoutMs(env, model), remainingMs());
         const maxTokens = parseDeepSeekMaxOutputTokens(env, model);
         try {
-          const response = await fetchWithTimeout(
+          const { response, text: responseText } = await fetchTextWithTimeout(
             DEEPSEEK_API_URL,
             {
               method: "POST",
@@ -352,10 +395,9 @@ export const onRequestPost = async (context: any) => {
           );
 
           if (!response.ok) {
-            const text = await response.text();
-            let message = text.slice(0, 200);
+            let message = responseText.slice(0, 200);
             try {
-              const parsed = JSON.parse(text);
+              const parsed = JSON.parse(responseText);
               message = String(parsed?.error?.message || message);
             } catch {
               // Keep raw response preview.
@@ -370,7 +412,7 @@ export const onRequestPost = async (context: any) => {
             continue;
           }
 
-          const result = await response.json();
+          const result = JSON.parse(responseText);
           const finishReason = result?.choices?.[0]?.finish_reason;
           if (finishReason === "length") {
             allErrors.push(`${model}: DeepSeek output was truncated by max_tokens.`);
@@ -392,6 +434,12 @@ export const onRequestPost = async (context: any) => {
             continue;
           }
           const parsed = parseModelJsonArray(text);
+          const incomplete = describeIncompleteReply(records, parsed);
+          if (incomplete) {
+            allErrors.push(`${model}: ${incomplete}.`);
+            allModelIssues.push({ model, message: `Model ${incomplete}.`, kind: "exception" });
+            continue;
+          }
           return jsonResponse({ engine: "deepseek", model, records: parsed, modelIssues: allModelIssues });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

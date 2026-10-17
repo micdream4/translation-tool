@@ -202,6 +202,73 @@ test("agent local command reports model failures and does not publish partial ou
   assert.match(result.files[0].message, /synthetic model failure/);
 });
 
+const createDroppingProvider = ({ dropAlways = "" } = {}) => {
+  const sizes = [];
+  return {
+    sizes,
+    async translate({ records }) {
+      sizes.push(records.length);
+      const translated = records.map((record) =>
+        Object.fromEntries(
+          Object.entries(record).map(([key, value]) => [key, typeof value === "string" ? translateText(value) : value])
+        )
+      );
+      // A multi-record batch comes back one record short; a single record comes back unless it
+      // is the one the model always drops.
+      if (records.length > 1) return { engine: "fake-dropping", records: translated.slice(0, -1) };
+      const dropped = Object.values(records[0]).some((value) => String(value).includes(dropAlways) && dropAlways);
+      return { engine: "fake-dropping", records: dropped ? [] : translated };
+    }
+  };
+};
+
+test("agent re-asks a short batch row by row instead of failing the file", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "poct-agent-short-"));
+  const { excelPath } = await createFixtureSet(root);
+  const provider = createDroppingProvider();
+  const result = await runAgentTranslationTask(
+    {
+      inputPath: excelPath,
+      outputDir: path.join(root, "output"),
+      reportDir: path.join(root, "reports"),
+      taskId: "short-batch",
+      targets: ["French"],
+      model: "deepseek-flash"
+    },
+    { translationProvider: provider }
+  );
+  assert.notEqual(result.status, "FAILED");
+  assert.equal(result.outputFiles.length, 1);
+  assert.ok(provider.sizes.some((size) => size > 1), "first request is a batch");
+  assert.ok(provider.sizes.filter((size) => size === 1).length >= 2, "rows re-asked one by one");
+  assert.ok(provider.sizes.every((size) => size <= 5), "Excel batches match the web app (5 rows)");
+  const failures = result.files.flatMap((file) => file.failures || []);
+  assert.equal(failures.some((failure) => failure.checkName === "model-coverage"), false);
+});
+
+test("agent reports cells the model never returned instead of keeping source text silently", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "poct-agent-omit-"));
+  const { excelPath } = await createFixtureSet(root);
+  const provider = createDroppingProvider({ dropAlways: "中文状态" });
+  const result = await runAgentTranslationTask(
+    {
+      inputPath: excelPath,
+      outputDir: path.join(root, "output"),
+      reportDir: path.join(root, "reports"),
+      taskId: "omitted-cell",
+      targets: ["French"],
+      model: "deepseek-flash"
+    },
+    { translationProvider: provider }
+  );
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.outputFiles.length, 1);
+  const coverage = result.files.flatMap((file) => file.failures || []).find((failure) => failure.checkName === "model-coverage");
+  assert.ok(coverage, "a model-coverage failure is reported");
+  assert.equal(coverage.severity, "critical");
+  assert.match(coverage.detail, /Second/);
+});
+
 test("agent master Quality Report includes every file-level failure with locations", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "poct-agent-quality-summary-"));
   const inputPath = path.join(root, "strings.json");

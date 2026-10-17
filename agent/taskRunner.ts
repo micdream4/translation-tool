@@ -382,6 +382,37 @@ class RepositoryTranslationProvider implements AgentTranslationProvider {
   }
 }
 
+// A short reply (the model dropped rows) never fails the whole file. Plain records carry no ids,
+// so the batch is asked again row by row; a row the model still drops comes back as null and is
+// reported as untranslated by the caller. A provider error still fails the file (an outage).
+const translateRecordsCompletely = async (
+  provider: AgentTranslationProvider,
+  request: AgentTranslateRequest
+): Promise<{ records: Array<POCTRecord | null>; engine: string }> => {
+  const response = await provider.translate(request);
+  if (response.records.length === request.records.length) {
+    return { records: response.records, engine: response.engine };
+  }
+  let engine = response.engine;
+  const records: Array<POCTRecord | null> = [];
+  for (const record of request.records) {
+    const single = await provider.translate({ ...request, records: [record] });
+    engine = single.engine;
+    records.push(single.records.length === 1 ? single.records[0] : null);
+  }
+  return { records, engine };
+};
+
+/** Critical check listing content the model never returned (kept as source text, needs a retry). */
+const modelCoverageCheck = (omitted: string[]): AgentStructureCheck => ({
+  name: "model-coverage",
+  passed: omitted.length === 0,
+  severity: "critical",
+  detail: omitted.length
+    ? `模型未返回 ${omitted.length} 处内容，已保留原文，需要重译：${omitted.slice(0, 8).join("；")}${omitted.length > 8 ? " 等" : ""}。`
+    : "模型返回了全部待翻译内容。"
+});
+
 const finalizeValue = (
   source: string,
   candidate: unknown,
@@ -407,26 +438,27 @@ const translateTextItems = async <T extends string | number>(
   provider: AgentTranslationProvider
 ) => {
   const output = new Map<T, string>();
+  const omitted: T[] = [];
   const batchSize = /deepseek-v4-pro/i.test(model) ? 8 : 20;
   let engine = "not-required";
 
   for (let start = 0; start < items.length; start += batchSize) {
     const batch = items.slice(start, start + batchSize);
     const guards = batch.map((item) => guardTranslationTokens(item.text));
-    const response = await provider.translate({
+    const response = await translateRecordsCompletely(provider, {
       records: guards.map((guard) => ({ content: guard.sanitized })),
       targetLanguage,
       model,
       profile
     });
     engine = response.engine;
-    if (response.records.length !== batch.length) {
-      throw new Error(
-        `模型返回 ${response.records.length} 条，预期 ${batch.length} 条。`
-      );
-    }
     response.records.forEach((record, offset) => {
       const item = batch[offset];
+      if (!record || typeof record.content !== "string") {
+        omitted.push(item.index);
+        output.set(item.index, item.text);
+        return;
+      }
       output.set(
         item.index,
         finalizeValue(
@@ -438,7 +470,7 @@ const translateTextItems = async <T extends string | number>(
       );
     });
   }
-  return { values: output, engine };
+  return { values: output, engine, omitted };
 };
 
 const processExcel = async (
@@ -460,8 +492,16 @@ const processExcel = async (
     sourceBytes.byteOffset + sourceBytes.byteLength
   ) as ArrayBuffer;
   const translatedRows = parsed.records.map((row) => ({ ...row }));
-  const batchSize = /deepseek-v4-pro/i.test(model) ? 5 : 10;
+  // Same batch size as the web app (utils/translatorShared BATCH_SIZE).
+  const batchSize = 5;
   let engine = "unknown";
+  const omitted: string[] = [];
+  const rowLocation = (rowIndex: number) => {
+    const sheet = parsed.context.sheets.find(
+      (item) => rowIndex >= item.startIndex && rowIndex < item.startIndex + item.rowCount
+    );
+    return sheet ? `${sheet.sheetName} 第 ${rowIndex - sheet.startIndex + 1} 行` : `第 ${rowIndex + 1} 行`;
+  };
 
   for (let start = 0; start < parsed.records.length; start += batchSize) {
     const sourceBatch = parsed.records.slice(start, start + batchSize);
@@ -488,21 +528,21 @@ const processExcel = async (
     });
     if (!payload.some((row) => Object.keys(row).length > 0)) continue;
 
-    const response = await provider.translate({
+    const response = await translateRecordsCompletely(provider, {
       records: payload,
       targetLanguage,
       model,
       profile: "spreadsheet"
     });
     engine = response.engine;
-    if (response.records.length !== payload.length) {
-      throw new Error(
-        `模型返回 ${response.records.length} 行，预期 ${payload.length} 行。`
-      );
-    }
     response.records.forEach((translated, offset) => {
       Object.keys(payload[offset]).forEach((key) => {
         const sourceValue = String(sourceBatch[offset][key]);
+        if (!translated || typeof translated[key] !== "string") {
+          // Kept as source, reported below; never silently passed as translated.
+          omitted.push(`${rowLocation(start + offset)}「${key}」`);
+          return;
+        }
         translatedRows[start + offset][key] = finalizeValue(
           sourceValue,
           translated[key],
@@ -560,7 +600,8 @@ const processExcel = async (
       passed: stats.overwrittenFormulas === 0,
       severity: "critical",
       detail: `覆盖公式 ${stats.overwrittenFormulas} 个，跳过公式 ${stats.skippedFormulas} 个。`
-    }
+    },
+    modelCoverageCheck(omitted)
   ];
   const quality = runQualityChecksOnUnits(
     rowsToQualityUnits(parsed.records, reopenedParsed.records, "excel"),
@@ -628,6 +669,12 @@ const processDocx = async (
   const sourceCoordinates = sourceSegments.map((segment) => segment.coordinate);
   const targetCoordinates = reopened.segments.map((segment) => segment.coordinate);
   const checks: AgentStructureCheck[] = [
+    modelCoverageCheck(
+      translated.omitted.map((coordinate) => {
+        const segment = sourceSegmentsByCoordinate.get(coordinate);
+        return segment ? `${segment.partLabel}:${coordinate}` : String(coordinate);
+      })
+    ),
     {
       name: "output-openable",
       passed: true,
@@ -778,10 +825,11 @@ const translateLineStringResource = async (
     payload.push({ content: guarded.sanitized });
   });
 
-  const translated: POCTRecord[] = [];
+  const translated: Array<POCTRecord | null> = [];
+  const omitted: string[] = [];
   let engine = "not-required";
   for (let start = 0; start < payload.length; start += 40) {
-    const response = await provider.translate({
+    const response = await translateRecordsCompletely(provider, {
       records: payload.slice(start, start + 40),
       targetLanguage,
       model,
@@ -789,9 +837,6 @@ const translateLineStringResource = async (
     });
     engine = response.engine;
     translated.push(...response.records);
-  }
-  if (translated.length !== payload.length) {
-    throw new Error(`模型返回 ${translated.length} 条，预期 ${payload.length} 条。`);
   }
 
   const outputLines = entries.map((entry, index) => {
@@ -810,6 +855,9 @@ const translateLineStringResource = async (
       payloadIndex === undefined
         ? structured.translatableContent
         : translated[payloadIndex]?.content;
+    if (payloadIndex !== undefined && typeof candidate !== "string") {
+      omitted.push(`第 ${index + 1} 行`);
+    }
     const restored = restoreStringResourceTokens(
       typeof candidate === "string" ? candidate : structured.translatableContent,
       tokenStore.get(index)
@@ -830,6 +878,7 @@ const translateLineStringResource = async (
     }${structured.outerSuffix}${entry.suffix}`;
   });
   return {
+    omitted,
     output: outputLines.join(lineBreak) + (hasTrailingNewline ? lineBreak : ""),
     engine,
     entries,
@@ -910,6 +959,7 @@ const processStringResource = async (
     translated.values.forEach((text, index) =>
       setJsonPath(targetJson, leaves[index].path, text)
     );
+    checks.push(modelCoverageCheck(translated.omitted.map((index) => leaves[index].path.join("."))));
     output = `${JSON.stringify(targetJson, null, 2)}\n`;
     const reopened = JSON.parse(output);
     const targetLeaves = collectJsonLeaves(reopened);
@@ -943,6 +993,7 @@ const processStringResource = async (
     );
     output = translated.output;
     engine = translated.engine;
+    checks.push(modelCoverageCheck(translated.omitted));
     qualityInput = rowsToQualityUnits(
       translated.entries.map((entry) => ({ content: entry.content })),
       translated.outputEntries.map((entry) => ({ content: entry.content })),

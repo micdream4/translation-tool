@@ -114,7 +114,7 @@ import {
   APP_VERSION,
   AUTO_MODEL,
   BATCH_SIZE,
-  DEEPSEEK_DIRECT_MODEL_VALUES,
+  getDeepSeekMenuValues,
   DOCX_WORD_REGEX,
   PACKAGE_VERSION,
   PROTECTED_TERMS_STORAGE_KEY,
@@ -252,14 +252,20 @@ const App: React.FC = () => {
     }),
     [authState.translationCapabilities, hubCapabilities]
   );
-  const cloudflareAiModels = useMemo(() => parseCloudflareAiModelOptions(), []);
+  // Model lists come from /api/me (the server's wrangler.toml); built-in defaults only until it loads.
+  const cloudflareAiModels = useMemo(
+    () => parseCloudflareAiModelOptions(capabilities.cloudflareAiModels),
+    [capabilities.cloudflareAiModels]
+  );
+  const deepseekModels = capabilities.deepseekModels;
+  const deepseekMenuModels = useMemo(() => getDeepSeekMenuValues(deepseekModels), [deepseekModels]);
   const usesDocumentQualityModels = documentKind === 'docx' || documentKind === 'pdf';
   const availableTranslationModels = useMemo(
     () => [
-      ...(capabilities.deepseek ? DEEPSEEK_DIRECT_MODEL_VALUES : []),
+      ...(capabilities.deepseek ? deepseekMenuModels : []),
       ...(capabilities.cloudflareAi ? cloudflareAiModels.map(toCloudflareAiModelValue) : [])
     ],
-    [capabilities.cloudflareAi, capabilities.deepseek, cloudflareAiModels]
+    [capabilities.cloudflareAi, capabilities.deepseek, cloudflareAiModels, deepseekMenuModels]
   );
   const [translationModelPreference, setTranslationModelPreference] = useState<string>(
     AUTO_MODEL
@@ -1183,7 +1189,7 @@ const App: React.FC = () => {
       : getTranslationModelLabel(translationModelPreference);
   const currentModelChainLabel =
     translationModelPreference === AUTO_MODEL
-      ? formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], capabilities.deepseek, capabilities.engineOrder)
+      ? formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], capabilities.deepseek, capabilities.engineOrder, deepseekModels)
       : currentModelLabel;
   const currentModelDisplayLabel =
     translationModelPreference === AUTO_MODEL
@@ -1414,7 +1420,8 @@ const App: React.FC = () => {
   const autoModelChainLabel = formatAutoModelChainLabel(
     capabilities.cloudflareAi ? cloudflareAiModels : [],
     capabilities.deepseek,
-    capabilities.engineOrder
+    capabilities.engineOrder,
+    deepseekModels
   );
   const isDocumentLoaded =
     documentKind === 'docx'

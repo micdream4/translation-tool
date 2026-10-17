@@ -1,5 +1,13 @@
 # 项目进度
 
+## v0.3.6
+
+- 修复翻译模型下拉框仍显示旧模型（Gemini 3 Flash、GPT-5.4、Claude 4.6 Sonnet、DeepSeek v4 Pro）的问题。原因：`wrangler.toml` 的 `[vars]` 只在 Pages Functions 运行时生效，Vite 构建读不到 `VITE_CLOUDFLARE_AI_MODELS`，前端一直用内置默认值。
+- 改为以服务端为唯一来源：`/api/me` 返回 `cloudflareAiModels`（Cloudflare 主模型加备用模型）和 `deepseekModels`（`DEEPSEEK_MODELS`）；下拉框和“自动”链路说明都由此生成。现在显示为：自动（DeepSeek Flash -> Cloudflare Gemini 3.6 Flash -> Cloudflare Gemini 3 Flash）、DeepSeek Flash、Cloudflare Gemini 3.6 Flash、Cloudflare Gemini 3 Flash。已下架的模型如果是之前保存的选择，会自动回到“自动”。模型审核设置不变。
+- 前端内置默认值同步为 Gemini 3.6 Flash、Gemini 3 Flash 和 DeepSeek Flash，只在 `/api/me` 返回前使用。
+- `wrangler.toml` 中浏览器会读的 `VITE_*` 变量：`VITE_TRANSLATION_MODE`（构建时读不到，生产环境默认就是 proxy，结果正确）、`VITE_PROXY_ENGINES`（由 `/api/me` 的 `engineOrder` 和能力字段覆盖）、`VITE_CLOUDFLARE_AI_MODELS`（本次改为由 `/api/me` 提供）。
+- 回归：下拉选项和“自动”说明由 `/api/me` 的模型列表生成；已下架的模型不出现在选项中。
+
 ## v0.3.5
 
 - 翻译模型切换：DeepSeek Flash（`deepseek-flash`）为主，Cloudflare AI 的 Gemini 3.6 Flash 备用，Gemini 3 Flash 兜底；Cloudflare 调用用 `reasoning_effort=low`。DeepSeek v4 Pro 退出自动翻译链（对比中大量单元格原样未翻），仍可手动选择。审核模型列表不变。

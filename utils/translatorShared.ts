@@ -40,11 +40,12 @@ export const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
 export const TRANSLATION_MEMORY_ENABLED_STORAGE_KEY = 'poct.translation_memory_enabled';
 export const PACKAGE_VERSION = String((packageJson as { version?: string }).version || '').trim();
 export const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || PACKAGE_VERSION).trim();
+// Used until /api/me reports the server's models; keep in line with wrangler.toml.
 export const DEFAULT_CLOUDFLARE_AI_MODELS = [
-  'google/gemini-3-flash',
-  'openai/gpt-5.4',
-  'anthropic/claude-sonnet-4.6'
+  'google/gemini-3.6-flash',
+  'google/gemini-3-flash'
 ] as const;
+export const DEFAULT_DEEPSEEK_MODELS = ['deepseek-flash'] as const;
 // Value of the model selector meaning "let the server pick the fallback chain".
 export const AUTO_MODEL = '__AUTO_MODEL__';
 export const MODEL_LABELS: Record<string, string> = {
@@ -83,8 +84,13 @@ export const DEEPSEEK_DIRECT_MODEL_LABELS: Record<string, string> = {
   [DEEPSEEK_DIRECT_MODEL]: DEEPSEEK_DIRECT_MODEL_LABEL,
   [DEEPSEEK_DIRECT_PRO_MODEL]: DEEPSEEK_DIRECT_PRO_MODEL_LABEL
 };
-// DeepSeek models the server's "auto" chain uses (DEEPSEEK_MODELS); Pro stays available for manual selection.
 export const DEEPSEEK_DIRECT_AUTO_LABELS = [DEEPSEEK_DIRECT_MODEL_LABEL] as const;
+const DEEPSEEK_PROVIDER_ALIASES: Record<string, string> = { 'deepseek-v4-flash': 'deepseek-flash' };
+/** DeepSeek menu entries for the models the server serves (DEEPSEEK_MODELS). */
+export const getDeepSeekMenuValues = (deepseekModels: readonly string[] = DEFAULT_DEEPSEEK_MODELS) => {
+  const served = new Set(deepseekModels.map((model) => DEEPSEEK_PROVIDER_ALIASES[model] || model));
+  return DEEPSEEK_DIRECT_MODEL_VALUES.filter((value) => served.has(DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS[value]));
+};
 export const CLOUDFLARE_AI_MODEL_VALUE_PREFIX = '__CLOUDFLARE_AI__:';
 export const toCloudflareAiModelValue = (model: string) => `${CLOUDFLARE_AI_MODEL_VALUE_PREFIX}${model}`;
 export const isCloudflareAiModelValue = (model: string) => model.startsWith(CLOUDFLARE_AI_MODEL_VALUE_PREFIX);
@@ -110,10 +116,11 @@ export const splitCloudflareAutoModels = (models: readonly string[]) => ({
 export const formatAutoModelChainLabel = (
   cloudflareModels: readonly string[],
   includeDeepSeekDirect: boolean,
-  engineOrder: readonly string[] = []
+  engineOrder: readonly string[] = [],
+  deepseekModels: readonly string[] = DEFAULT_DEEPSEEK_MODELS
 ) => {
   const cloudflareAuto = splitCloudflareAutoModels(cloudflareModels);
-  const deepSeek = includeDeepSeekDirect ? DEEPSEEK_DIRECT_AUTO_LABELS : [];
+  const deepSeek = includeDeepSeekDirect ? getDeepSeekMenuValues(deepseekModels).map(getDeepSeekDirectModelLabel) : [];
   const deepSeekFirst = engineOrder.indexOf('deepseek') !== -1 &&
     (engineOrder.indexOf('cloudflare-ai') === -1 || engineOrder.indexOf('deepseek') < engineOrder.indexOf('cloudflare-ai'));
   // Same order as the server: the first engine, then the other, then the Cloudflare fallback models.
@@ -131,7 +138,8 @@ export type TranslationMemoryStats = {
 };
 export type StageResult = 'paused' | 'completed' | void;
 
-export const parseCloudflareAiModelOptions = () => {
+export const parseCloudflareAiModelOptions = (serverModels?: readonly string[]) => {
+  if (serverModels && serverModels.length) return Array.from(new Set(serverModels));
   const raw =
     String((import.meta as any)?.env?.VITE_CLOUDFLARE_AI_MODELS || '').trim();
   const values = raw

@@ -9,6 +9,9 @@ export type TranslationCapabilities = {
   gemini: boolean;
   /** Order "auto" tries the engines in, from the server's TRANSLATION_ENGINE_ORDER. */
   engineOrder?: OrderedTranslationEngine[];
+  /** Translation models the server serves (CLOUDFLARE_AI_* / DEEPSEEK_MODELS); the model menu uses them. */
+  cloudflareAiModels?: string[];
+  deepseekModels?: string[];
 };
 
 export type AuthState = {
@@ -36,7 +39,13 @@ const normalizeCapabilities = (
     cloudflareAi: Boolean(capabilities.cloudflareAi),
     deepseek: Boolean(capabilities.deepseek),
     gemini: Boolean(capabilities.gemini),
-    ...(Array.isArray(capabilities.engineOrder) ? { engineOrder: parseEngineOrder(capabilities.engineOrder.join(',')) } : {})
+    ...(Array.isArray(capabilities.engineOrder) ? { engineOrder: parseEngineOrder(capabilities.engineOrder.join(',')) } : {}),
+    ...(Array.isArray(capabilities.cloudflareAiModels) && capabilities.cloudflareAiModels.length
+      ? { cloudflareAiModels: capabilities.cloudflareAiModels.map(String) }
+      : {}),
+    ...(Array.isArray(capabilities.deepseekModels) && capabilities.deepseekModels.length
+      ? { deepseekModels: capabilities.deepseekModels.map(String) }
+      : {})
   };
 };
 

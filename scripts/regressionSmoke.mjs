@@ -2992,6 +2992,51 @@ test("engine order is configurable and shared by browser and server", async () =
   assert.deepEqual((await response.json()).translationCapabilities.engineOrder, ["deepseek", "cloudflare-ai", "gemini"]);
 });
 
+test("translation model menu and auto label come from the server's /api/me model lists", async () => {
+  const { onRequestGet } = await bundleTsModule(path.join(repoRoot, "functions/api/me.ts"));
+  const response = await onRequestGet({
+    request: new Request("https://poct-translator.local/api/me", { headers: { "x-user-email": "dev@example.com" } }),
+    env: {
+      ALLOW_LOCAL_WITHOUT_ACCESS: "true",
+      LOCAL_DEV_EMAIL: "dev@example.com",
+      DEEPSEEK_API_KEY: "test-deepseek-key",
+      TRANSLATION_ENGINE_ORDER: "deepseek,cloudflare-ai",
+      DEEPSEEK_MODELS: "deepseek-flash",
+      CLOUDFLARE_AI_MODELS: "google/gemini-3.6-flash,google/gemini-3-flash",
+      CLOUDFLARE_AI_PRIMARY_MODELS: "google/gemini-3.6-flash",
+      CLOUDFLARE_AI_FALLBACK_MODELS: "google/gemini-3-flash",
+      AI: { run: async () => ({}) }
+    }
+  });
+  const capabilities = (await response.json()).translationCapabilities;
+  assert.deepEqual(capabilities.cloudflareAiModels, ["google/gemini-3.6-flash", "google/gemini-3-flash"]);
+  assert.deepEqual(capabilities.deepseekModels, ["deepseek-flash"]);
+
+  const shared = await bundleTsModule(path.join(repoRoot, "utils/translatorShared.ts"));
+  const cloudflareModels = shared.parseCloudflareAiModelOptions(capabilities.cloudflareAiModels);
+  const menu = [
+    ...shared.getDeepSeekMenuValues(capabilities.deepseekModels),
+    ...cloudflareModels.map(shared.toCloudflareAiModelValue)
+  ];
+  assert.deepEqual(menu.map(shared.getTranslationModelLabel), [
+    "DeepSeek Flash",
+    "Cloudflare Gemini 3.6 Flash",
+    "Cloudflare Gemini 3 Flash"
+  ]);
+  assert.equal(
+    shared.formatAutoModelChainLabel(cloudflareModels, true, capabilities.engineOrder, capabilities.deepseekModels),
+    "DeepSeek Flash -> Cloudflare Gemini 3.6 Flash -> Cloudflare Gemini 3 Flash"
+  );
+  // Removed models are not in the menu, so a saved preference for them resets to auto.
+  for (const removed of [shared.DEEPSEEK_DIRECT_PRO_MODEL, shared.toCloudflareAiModelValue("openai/gpt-5.4"), shared.toCloudflareAiModelValue("anthropic/claude-sonnet-4.6")]) {
+    assert.equal(menu.includes(removed), false);
+  }
+  assert.deepEqual(shared.getDeepSeekMenuValues(["deepseek-v4-flash"]), [shared.DEEPSEEK_DIRECT_MODEL]);
+  const appSource = fs.readFileSync(path.join(repoRoot, "App.tsx"), "utf8");
+  assert.match(appSource, /!availableTranslationModels\.includes\(translationModelPreference\)[\s\S]*setTranslationModelPreference\(AUTO_MODEL\)/);
+  assert.match(appSource, /parseCloudflareAiModelOptions\(capabilities\.cloudflareAiModels\)/);
+});
+
 test("API translate auto tries engines in TRANSLATION_ENGINE_ORDER", async () => {
   const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
   const originalFetch = globalThis.fetch;
@@ -3272,7 +3317,7 @@ test("Auto translation routes through the Cloudflare and DeepSeek chain in strin
   assert.match(appSource, /重译问题项: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
   assert.match(appSource, /\$\{label\}: Batch \$\{batchNum\} 使用 \$\{attemptLabel\} 成功，用时/);
   assert.match(appSource, /isDeepSeekDirectProModel\(translationModelPreference\)/);
-  assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS = \[[\s\S]*google\/gemini-3-flash[\s\S]*openai\/gpt-5\.4[\s\S]*anthropic\/claude-sonnet-4\.6/);
+  assert.match(appSource, /DEFAULT_CLOUDFLARE_AI_MODELS = \[\s*'google\/gemini-3\.6-flash',\s*'google\/gemini-3-flash'\s*\]/);
   assert.match(appSource, /strings\.modelHint/);
   assert.match(readI18nSource(), /这里只选择输出语言/);
   assert.match(appSource, /disabled=\{isTranslating \|\| isStringTranslating\}/);
@@ -3284,10 +3329,10 @@ test("Auto translation routes through the Cloudflare and DeepSeek chain in strin
   assert.match(appSource, /availableTranslationModels/);
   assert.match(
     appSource,
-    /\.\.\.\(capabilities\.deepseek \? DEEPSEEK_DIRECT_MODEL_VALUES : \[\]\),[\s\S]*\.\.\.\(capabilities\.cloudflareAi \? cloudflareAiModels\.map\(toCloudflareAiModelValue\) : \[\]\)/
+    /\.\.\.\(capabilities\.deepseek \? deepseekMenuModels : \[\]\),[\s\S]*\.\.\.\(capabilities\.cloudflareAi \? cloudflareAiModels\.map\(toCloudflareAiModelValue\) : \[\]\)/
   );
   assert.match(appSource, /isDeepSeekDirectModel\(translationModelPreference\)[\s\S]*model: 'deepseek' as const[\s\S]*providerModel/);
-  assert.match(appSource, /includeDeepSeekDirect \? DEEPSEEK_DIRECT_AUTO_LABELS : \[\]/);
+  assert.match(appSource, /includeDeepSeekDirect \? getDeepSeekMenuValues\(deepseekModels\)\.map\(getDeepSeekDirectModelLabel\) : \[\]/);
   assert.match(appSource, /formatAutoModelChainLabel\([\s\S]*cloudflareAiModels[\s\S]*capabilities\.deepseek/);
   assert.doesNotMatch(appSource, /openrouter/i);
 });

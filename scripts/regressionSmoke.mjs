@@ -389,10 +389,14 @@ test("frontend auth state is isolated in useAuth hook", () => {
   assert.match(authHookSource, /status: 'blocked'/);
   assert.match(authHookSource, /status: 'anonymous'/);
   assert.match(wranglerSource, /REQUIRE_CF_ACCESS_EMAIL = "true"/);
-  assert.match(wranglerSource, /CLOUDFLARE_AI_PRIMARY_MODELS = "google\/gemini-3-flash"/);
-  assert.match(wranglerSource, /CLOUDFLARE_AI_FALLBACK_MODELS = "openai\/gpt-5\.4,anthropic\/claude-sonnet-4\.6"/);
-  assert.match(wranglerSource, /DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro"/);
-  assert.match(wranglerSource, /DEEPSEEK_REQUEST_TIMEOUT_MS = "90000"/);
+  assert.match(wranglerSource, /VITE_PROXY_ENGINES = "deepseek,cloudflare-ai"/);
+  assert.match(wranglerSource, /TRANSLATION_ENGINE_ORDER = "deepseek,cloudflare-ai"/);
+  assert.match(wranglerSource, /CLOUDFLARE_AI_PRIMARY_MODELS = "google\/gemini-3\.6-flash"/);
+  assert.match(wranglerSource, /CLOUDFLARE_AI_FALLBACK_MODELS = "google\/gemini-3-flash"/);
+  assert.match(wranglerSource, /CLOUDFLARE_AI_REASONING_EFFORT = "low"/);
+  assert.match(wranglerSource, /DEEPSEEK_MODELS = "deepseek-flash"/);
+  // DeepSeek goes first; its timeout must leave the 90 s request budget room for the Gemini fallback.
+  assert.match(wranglerSource, /DEEPSEEK_REQUEST_TIMEOUT_MS = "50000"/);
   assert.match(wranglerSource, /DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = "120000"/);
   assert.match(wranglerSource, /DEEPSEEK_PRO_MAX_OUTPUT_TOKENS = "24576"/);
   assert.match(wranglerSource, /MODEL_REVIEW_TRANSLATION_CONCURRENCY = "2"/);
@@ -436,7 +440,8 @@ test("API me exposes server-side translation capabilities without leaking keys",
   assert.deepEqual(payload.translationCapabilities, {
     cloudflareAi: true,
     deepseek: true,
-    gemini: false
+    gemini: false,
+    engineOrder: ["cloudflare-ai", "deepseek", "gemini"]
   });
   assert.doesNotMatch(JSON.stringify(payload), /test-deepseek-key/);
 });
@@ -2947,6 +2952,86 @@ test("Cloudflare AI empty content error names the stop reason and response shape
     }),
     /empty content \(max_tokens\) \[keys: content,stop_reason,usage\]/
   );
+});
+
+test("engine order is configurable and shared by browser and server", async () => {
+  const { parseEngineOrder, orderEngines } = await bundleTsModule(path.join(repoRoot, "utils/engineOrder.ts"));
+  assert.deepEqual(parseEngineOrder(""), ["cloudflare-ai", "deepseek", "gemini"]);
+  assert.deepEqual(parseEngineOrder("deepseek,cloudflare-ai"), ["deepseek", "cloudflare-ai", "gemini"]);
+  assert.deepEqual(parseEngineOrder(" DeepSeek-Direct , cf ,unknown"), ["deepseek", "cloudflare-ai", "gemini"]);
+  assert.deepEqual(orderEngines(["cloudflare-ai", "deepseek"], parseEngineOrder("deepseek")), ["deepseek", "cloudflare-ai"]);
+  assert.deepEqual(orderEngines(["cloudflare-ai", "deepseek"]), ["cloudflare-ai", "deepseek"]);
+
+  const { formatAutoModelChainLabel } = await bundleTsModule(path.join(repoRoot, "utils/translatorShared.ts"));
+  const models = ["google/gemini-3.6-flash", "google/gemini-3-flash"];
+  assert.equal(
+    formatAutoModelChainLabel(models, true, ["deepseek", "cloudflare-ai"]),
+    "DeepSeek Flash -> Cloudflare Gemini 3.6 Flash -> Cloudflare Gemini 3 Flash"
+  );
+  assert.equal(
+    formatAutoModelChainLabel(models, true),
+    "Cloudflare Gemini 3.6 Flash -> DeepSeek Flash -> Cloudflare Gemini 3 Flash"
+  );
+
+  const hubSource = fs.readFileSync(path.join(repoRoot, "services/translationHub.ts"), "utf8");
+  const routingSource = fs.readFileSync(path.join(repoRoot, "hooks/translation/useModelRouting.ts"), "utf8");
+  assert.match(hubSource, /engineOrder: parseEngineOrder\(raw\)/);
+  assert.match(routingSource, /orderEngines\(engines, capabilities\.engineOrder\)/);
+
+  const { onRequestGet } = await bundleTsModule(path.join(repoRoot, "functions/api/me.ts"));
+  const response = await onRequestGet({
+    request: new Request("https://poct-translator.local/api/me", { headers: { "x-user-email": "dev@example.com" } }),
+    env: {
+      ALLOW_LOCAL_WITHOUT_ACCESS: "true",
+      LOCAL_DEV_EMAIL: "dev@example.com",
+      DEEPSEEK_API_KEY: "test-deepseek-key",
+      TRANSLATION_ENGINE_ORDER: "deepseek,cloudflare-ai",
+      AI: { run: async () => ({}) }
+    }
+  });
+  assert.deepEqual((await response.json()).translationCapabilities.engineOrder, ["deepseek", "cloudflare-ai", "gemini"]);
+});
+
+test("API translate auto tries engines in TRANSLATION_ENGINE_ORDER", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(`deepseek:${String(url)}`);
+    return new Response(JSON.stringify({ error: { message: "deepseek down" } }), { status: 503 });
+  };
+  try {
+    const response = await onRequestPost({
+      request: new Request("https://poct-translator.local/api/translate", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-email": "dev@example.com" },
+        body: JSON.stringify({ records: [{ id: "seg-1", content: "开机" }], targetLang: "Spanish", engine: "auto" })
+      }),
+      env: {
+        ALLOW_LOCAL_WITHOUT_ACCESS: "true",
+        LOCAL_DEV_EMAIL: "dev@example.com",
+        DEEPSEEK_API_KEY: "test-deepseek-key",
+        DEEPSEEK_MODELS: "deepseek-flash",
+        TRANSLATION_ENGINE_ORDER: "deepseek,cloudflare-ai",
+        CLOUDFLARE_AI_PRIMARY_MODELS: "google/gemini-3.6-flash",
+        CLOUDFLARE_AI_FALLBACK_MODELS: "google/gemini-3-flash",
+        AI: {
+          run: async (model) => {
+            calls.push(`cloudflare-ai:${model}`);
+            return { choices: [{ message: { content: '{"records":[{"id":"seg-1","content":"Encender"}]}' } }] };
+          }
+        }
+      }
+    });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.engine, "cloudflare-ai");
+    assert.equal(payload.model, "google/gemini-3.6-flash");
+    assert.equal(calls[0].startsWith("deepseek:"), true);
+    assert.equal(calls[calls.length - 1], "cloudflare-ai:google/gemini-3.6-flash");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("API translate reports every failed model when no engine can serve the request", async () => {

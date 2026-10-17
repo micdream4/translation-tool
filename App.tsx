@@ -1183,7 +1183,7 @@ const App: React.FC = () => {
       : getTranslationModelLabel(translationModelPreference);
   const currentModelChainLabel =
     translationModelPreference === AUTO_MODEL
-      ? formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], capabilities.deepseek)
+      ? formatAutoModelChainLabel(capabilities.cloudflareAi ? cloudflareAiModels : [], capabilities.deepseek, capabilities.engineOrder)
       : currentModelLabel;
   const currentModelDisplayLabel =
     translationModelPreference === AUTO_MODEL
@@ -1413,7 +1413,8 @@ const App: React.FC = () => {
           : '';
   const autoModelChainLabel = formatAutoModelChainLabel(
     capabilities.cloudflareAi ? cloudflareAiModels : [],
-    capabilities.deepseek
+    capabilities.deepseek,
+    capabilities.engineOrder
   );
   const isDocumentLoaded =
     documentKind === 'docx'

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { parseEngineOrder, type OrderedTranslationEngine } from '../utils/engineOrder';
 
 export type AuthStatus = 'checking' | 'authenticated' | 'anonymous' | 'blocked';
 
@@ -6,6 +7,8 @@ export type TranslationCapabilities = {
   cloudflareAi: boolean;
   deepseek: boolean;
   gemini: boolean;
+  /** Order "auto" tries the engines in, from the server's TRANSLATION_ENGINE_ORDER. */
+  engineOrder?: OrderedTranslationEngine[];
 };
 
 export type AuthState = {
@@ -32,7 +35,8 @@ const normalizeCapabilities = (
   return {
     cloudflareAi: Boolean(capabilities.cloudflareAi),
     deepseek: Boolean(capabilities.deepseek),
-    gemini: Boolean(capabilities.gemini)
+    gemini: Boolean(capabilities.gemini),
+    ...(Array.isArray(capabilities.engineOrder) ? { engineOrder: parseEngineOrder(capabilities.engineOrder.join(',')) } : {})
   };
 };
 

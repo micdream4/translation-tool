@@ -2,6 +2,7 @@ import { MedicalAIService } from "./geminiService";
 import { DeepseekService } from "./deepseekService";
 import { ProxyTranslationService, ProxyEngine, type ProxyModelIssue } from "./proxyService";
 import { POCTRecord, TargetLanguage } from "../types";
+import { parseEngineOrder, type OrderedTranslationEngine } from "../utils/engineOrder";
 import type { TranslationProfile } from "../utils/translationProfiles";
 import {
   alignTranslationEnvelopes,
@@ -47,13 +48,15 @@ const isProxyMode = () => {
 const parseProxyCapabilities = () => {
   const raw = (getEnvValue("VITE_PROXY_ENGINES") || "").toLowerCase();
   if (!raw) {
-    return { cloudflareAi: true, deepseek: false, gemini: false };
+    return { cloudflareAi: true, deepseek: false, gemini: false, engineOrder: parseEngineOrder("") };
   }
   const items = raw.split(",").map((item) => item.trim()).filter(Boolean);
   return {
     cloudflareAi: items.includes("cloudflare-ai") || items.includes("cloudflare"),
     deepseek: items.includes("deepseek"),
-    gemini: items.includes("gemini")
+    gemini: items.includes("gemini"),
+    // The order of VITE_PROXY_ENGINES is the order "auto" tries the engines in.
+    engineOrder: parseEngineOrder(raw)
   };
 };
 
@@ -71,6 +74,7 @@ export class TranslationHub {
     cloudflareAi: boolean;
     deepseek: boolean;
     gemini: boolean;
+    engineOrder?: OrderedTranslationEngine[];
   };
   private lastEngine: "cloudflare-ai" | "deepseek" | "gemini" | "unknown" = "unknown";
   private lastModelIssues: ProxyModelIssue[] = [];

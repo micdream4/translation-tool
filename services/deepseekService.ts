@@ -7,7 +7,7 @@ import {
 } from "../utils/translationProfiles";
 
 const API_URL = "https://api.deepseek.com/chat/completions";
-const DEFAULT_MODEL = "deepseek-v4-flash";
+const DEFAULT_MODEL = "deepseek-flash";
 const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
 const DEFAULT_PRO_MAX_OUTPUT_TOKENS = 24576;
 

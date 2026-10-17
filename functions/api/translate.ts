@@ -5,6 +5,7 @@ import {
   buildTranslationSystemPrompt,
   type TranslationProfile
 } from "../../utils/translationProfiles";
+import { orderEngines, parseEngineOrder } from "../../utils/engineOrder";
 import { enforceRequestAuth, jsonResponse } from "../_shared/auth";
 import {
   getMaxRecords,
@@ -180,16 +181,23 @@ const parseRequestedModel = (value: unknown) => String(value || "").trim();
 const parseTranslationProfile = (value: unknown): TranslationProfile =>
   String(value || "").trim() === "docx-manual" ? "docx-manual" : "spreadsheet";
 
+/** TRANSLATION_ENGINE_ORDER (e.g. "deepseek,cloudflare-ai") decides which engine "auto" tries first. */
+const parseServerEngineOrder = (env: Record<string, unknown>) => parseEngineOrder(env.TRANSLATION_ENGINE_ORDER);
+
 const parseEngineChain = (
   engine: string,
   hasCloudflareAi: boolean,
-  hasDeepSeek: boolean
+  hasDeepSeek: boolean,
+  order = parseEngineOrder("")
 ): TranslationEngine[] => {
   if (engine === "auto") {
-    return [
-      ...(hasCloudflareAi ? (["cloudflare-ai"] as const) : []),
-      ...(hasDeepSeek ? (["deepseek"] as const) : [])
-    ];
+    return orderEngines<TranslationEngine>(
+      [
+        ...(hasCloudflareAi ? (["cloudflare-ai"] as const) : []),
+        ...(hasDeepSeek ? (["deepseek"] as const) : [])
+      ],
+      order
+    );
   }
   if (engine === "cloudflare-ai" || engine === "cloudflare" || engine === "cf") {
     return hasCloudflareAi ? ["cloudflare-ai"] : [];
@@ -230,7 +238,7 @@ export const onRequestPost = async (context: any) => {
     const hasDeepSeek = Boolean(deepSeekKey);
     const cloudflareAi = getCloudflareAiBinding(env);
     const hasCloudflareAi = Boolean(cloudflareAi);
-    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasDeepSeek);
+    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasDeepSeek, parseServerEngineOrder(env));
     const allErrors: string[] = [];
     const allModelIssues: TranslationModelIssue[] = [];
 
@@ -400,13 +408,13 @@ export const onRequestPost = async (context: any) => {
     };
 
     if (engine === "auto" && !requestedModel) {
-      if (hasCloudflareAi) {
-        const result = await translateWithCloudflareAi(parseCloudflareAiPrimaryModels(env));
-        if (result) return result;
-      }
-
-      if (hasDeepSeek) {
-        const result = await translateWithDeepSeek();
+      // Engines in configured order; Cloudflare AI tries its primary models there and keeps its
+      // fallback models for last. Default order: Cloudflare primary -> DeepSeek -> Cloudflare fallback.
+      for (const candidate of engineChain) {
+        const result =
+          candidate === "cloudflare-ai"
+            ? await translateWithCloudflareAi(parseCloudflareAiPrimaryModels(env))
+            : await translateWithDeepSeek();
         if (result) return result;
       }
 

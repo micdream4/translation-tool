@@ -1,4 +1,5 @@
 import { TranslationHub } from '../../services/translationHub';
+import { orderEngines, type OrderedTranslationEngine } from '../../utils/engineOrder';
 import type { TranslationEngine } from '../../utils/translatorShared';
 import {
   AUTO_MODEL,
@@ -14,7 +15,7 @@ import {
 } from '../../utils/translatorShared';
 
 export interface ModelRoutingContext {
-  capabilities: { cloudflareAi: boolean; deepseek: boolean; gemini: boolean };
+  capabilities: { cloudflareAi: boolean; deepseek: boolean; gemini: boolean; engineOrder?: OrderedTranslationEngine[] };
   isUsingDeepSeekPro: () => boolean;
   translationHub: TranslationHub;
   translationModelPreference: string;
@@ -38,7 +39,7 @@ export const useModelRouting = (ctx: ModelRoutingContext) => {
       }
     }
 
-    return engines.length > 0 ? engines : ['cloudflare-ai'];
+    return engines.length > 0 ? orderEngines(engines, capabilities.engineOrder) : ['cloudflare-ai'];
   };
 
   const getRetryAttemptModelLabel = (model: TranslationEngine) => {

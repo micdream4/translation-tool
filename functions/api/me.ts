@@ -1,10 +1,12 @@
 import { getAuthContext, jsonResponse } from "../_shared/auth";
+import { parseEngineOrder } from "../../utils/engineOrder";
 import { hasCloudflareAiBinding, getDeepSeekKey, parseDelimitedModelList } from "../_shared/llmProviders";
 
 const getTranslationCapabilities = (env: Record<string, unknown>) => ({
   cloudflareAi: hasCloudflareAiBinding(env),
   deepseek: Boolean(getDeepSeekKey(env)),
-  gemini: false
+  gemini: false,
+  engineOrder: parseEngineOrder(env.TRANSLATION_ENGINE_ORDER)
 });
 
 export const onRequestGet = async (context: any) => {

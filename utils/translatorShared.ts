@@ -49,13 +49,18 @@ export const DEFAULT_CLOUDFLARE_AI_MODELS = [
 export const AUTO_MODEL = '__AUTO_MODEL__';
 export const MODEL_LABELS: Record<string, string> = {
   'cloudflare-ai:google/gemini-3-flash': 'Cloudflare Gemini 3 Flash',
+  'cloudflare-ai:google/gemini-3.6-flash': 'Cloudflare Gemini 3.6 Flash',
   'cloudflare-ai:openai/gpt-5.4': 'Cloudflare OpenAI GPT-5.4',
   'cloudflare-ai:anthropic/claude-sonnet-4.6': 'Cloudflare Claude 4.6 Sonnet',
+  'deepseek:deepseek-flash': 'DeepSeek Flash',
+  'deepseek-flash': 'DeepSeek Flash',
+  // Legacy alias, now served by DeepSeek V4.1 Flash; kept so saved settings and old reports still resolve.
   'deepseek:deepseek-v4-flash': 'DeepSeek Direct v4 Flash',
   'deepseek:deepseek-v4-pro': 'DeepSeek Direct v4 Pro',
   'deepseek-v4-flash': 'DeepSeek Direct v4 Flash',
   'deepseek-v4-pro': 'DeepSeek Direct v4 Pro',
   'google/gemini-3-flash': 'Cloudflare Gemini 3 Flash',
+  'google/gemini-3.6-flash': 'Cloudflare Gemini 3.6 Flash',
   'openai/gpt-5.4': 'Cloudflare OpenAI GPT-5.4',
   'anthropic/claude-sonnet-4.6': 'Cloudflare Claude 4.6 Sonnet',
   'google/gemini-3-flash-preview': 'Gemini 3 Flash Preview',
@@ -67,10 +72,10 @@ export const MODEL_LABELS: Record<string, string> = {
 };
 export const DEEPSEEK_DIRECT_MODEL = '__DEEPSEEK_DIRECT_FLASH__';
 export const DEEPSEEK_DIRECT_PRO_MODEL = '__DEEPSEEK_DIRECT_PRO__';
-export const DEEPSEEK_DIRECT_MODEL_LABEL = 'DeepSeek Direct v4 Flash';
+export const DEEPSEEK_DIRECT_MODEL_LABEL = 'DeepSeek Flash';
 export const DEEPSEEK_DIRECT_PRO_MODEL_LABEL = 'DeepSeek Direct v4 Pro';
 export const DEEPSEEK_DIRECT_MODEL_PROVIDER_IDS: Record<string, string> = {
-  [DEEPSEEK_DIRECT_MODEL]: 'deepseek-v4-flash',
+  [DEEPSEEK_DIRECT_MODEL]: 'deepseek-flash',
   [DEEPSEEK_DIRECT_PRO_MODEL]: 'deepseek-v4-pro'
 };
 export const DEEPSEEK_DIRECT_MODEL_VALUES = [DEEPSEEK_DIRECT_MODEL, DEEPSEEK_DIRECT_PRO_MODEL] as const;
@@ -78,10 +83,8 @@ export const DEEPSEEK_DIRECT_MODEL_LABELS: Record<string, string> = {
   [DEEPSEEK_DIRECT_MODEL]: DEEPSEEK_DIRECT_MODEL_LABEL,
   [DEEPSEEK_DIRECT_PRO_MODEL]: DEEPSEEK_DIRECT_PRO_MODEL_LABEL
 };
-export const DEEPSEEK_DIRECT_AUTO_LABELS = [
-  DEEPSEEK_DIRECT_MODEL_LABEL,
-  DEEPSEEK_DIRECT_PRO_MODEL_LABEL
-] as const;
+// DeepSeek models the server's "auto" chain uses (DEEPSEEK_MODELS); Pro stays available for manual selection.
+export const DEEPSEEK_DIRECT_AUTO_LABELS = [DEEPSEEK_DIRECT_MODEL_LABEL] as const;
 export const CLOUDFLARE_AI_MODEL_VALUE_PREFIX = '__CLOUDFLARE_AI__:';
 export const toCloudflareAiModelValue = (model: string) => `${CLOUDFLARE_AI_MODEL_VALUE_PREFIX}${model}`;
 export const isCloudflareAiModelValue = (model: string) => model.startsWith(CLOUDFLARE_AI_MODEL_VALUE_PREFIX);
@@ -106,14 +109,18 @@ export const splitCloudflareAutoModels = (models: readonly string[]) => ({
 });
 export const formatAutoModelChainLabel = (
   cloudflareModels: readonly string[],
-  includeDeepSeekDirect: boolean
+  includeDeepSeekDirect: boolean,
+  engineOrder: readonly string[] = []
 ) => {
   const cloudflareAuto = splitCloudflareAutoModels(cloudflareModels);
-  return [
-    ...cloudflareAuto.primary.map(getModelLabel),
-    ...(includeDeepSeekDirect ? DEEPSEEK_DIRECT_AUTO_LABELS : []),
-    ...cloudflareAuto.fallback.map(getModelLabel)
-  ].join(' -> ');
+  const deepSeek = includeDeepSeekDirect ? DEEPSEEK_DIRECT_AUTO_LABELS : [];
+  const deepSeekFirst = engineOrder.indexOf('deepseek') !== -1 &&
+    (engineOrder.indexOf('cloudflare-ai') === -1 || engineOrder.indexOf('deepseek') < engineOrder.indexOf('cloudflare-ai'));
+  // Same order as the server: the first engine, then the other, then the Cloudflare fallback models.
+  return (deepSeekFirst
+    ? [...deepSeek, ...cloudflareAuto.primary.map(getModelLabel), ...cloudflareAuto.fallback.map(getModelLabel)]
+    : [...cloudflareAuto.primary.map(getModelLabel), ...deepSeek, ...cloudflareAuto.fallback.map(getModelLabel)]
+  ).join(' -> ');
 };
 export type TranslationEngine = 'cloudflare-ai' | 'deepseek' | 'gemini';
 export type ThemeMode = 'light' | 'dark';

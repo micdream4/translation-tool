@@ -92,3 +92,68 @@ export const unwrapTranslationEnvelopes = (records: POCTRecord[]): POCTRecord[] 
     }
     return payload;
   });
+
+// Keys that describe a record rather than hold text to translate.
+const NON_CONTENT_KEYS = new Set(['id', 'contextBefore', 'contextAfter']);
+
+/**
+ * Whether a record (or an envelope's payload) has any text for the model. Empty rows are not
+ * sent: models tend to drop them from the reply ("returned 4 of 5 records"), which used to fail
+ * or split the whole batch.
+ */
+export const hasTextToTranslate = (record: POCTRecord) => {
+  const payload = isRecord(record?.[TRANSLATION_RECORD_PAYLOAD_KEY]) && Number.isInteger(record?.[TRANSLATION_RECORD_ID_KEY])
+    ? record[TRANSLATION_RECORD_PAYLOAD_KEY]
+    : record;
+  return Object.entries(payload || {}).some(
+    ([key, value]) => !NON_CONTENT_KEYS.has(key) && typeof value === 'string' && value.trim() !== ''
+  );
+};
+
+/**
+ * Puts the records that were not sent (nothing to translate) back in their places, unchanged.
+ * `translated` is the reply for the records that were sent, in the same order.
+ */
+export const mergeUntranslatableRecords = (all: POCTRecord[], translated: POCTRecord[]) => {
+  let next = 0;
+  return all.map((record) => (hasTextToTranslate(record) ? translated[next++] : record));
+};
+
+const CJK_CHAR = /[\u3400-\u9fff\uf900-\ufaff]/;
+// Simplified -> Traditional conversion maps character for character: same length, and the
+// characters that differ are all CJK.
+const isConvertedKey = (sourceKey: string, replyKey: string) =>
+  sourceKey.length === replyKey.length &&
+  [...sourceKey].every((char, index) => char === replyKey[index] || (CJK_CHAR.test(char) && CJK_CHAR.test(replyKey[index])));
+
+/**
+ * Models sometimes translate the keys too (Chinese column headers converted to Traditional
+ * Chinese for zh-TW), so the cells no longer match their columns. Each missing source key is
+ * matched, in order, to a renamed reply key that is a character-for-character conversion of it.
+ */
+export const restoreRecordKeys = (source: POCTRecord, translated: POCTRecord): POCTRecord => {
+  if (!isRecord(source) || !isRecord(translated)) return translated;
+  const missing = Object.keys(source).filter((key) => !(key in translated));
+  const extra = Object.keys(translated).filter((key) => !(key in source));
+  if (!missing.length || !extra.length) return translated;
+  const renamed = new Map<string, string>();
+  missing.forEach((sourceKey) => {
+    const replyKey = extra.find((key) => !renamed.has(key) && isConvertedKey(sourceKey, key));
+    if (replyKey) renamed.set(replyKey, sourceKey);
+  });
+  if (!renamed.size) return translated;
+  return Object.fromEntries(Object.entries(translated).map(([key, value]) => [renamed.get(key) ?? key, value]));
+};
+
+/** restoreRecordKeys for a whole reply: plain records by position, envelopes by record id. */
+export const restoreBatchKeys = (sent: POCTRecord[], reply: POCTRecord[]): POCTRecord[] => {
+  if (!Array.isArray(reply)) return reply;
+  if (!isTranslationEnvelopeBatch(sent)) return reply.map((record, index) => restoreRecordKeys(sent[index], record));
+  const sentById = new Map(sent.map((record) => [record[TRANSLATION_RECORD_ID_KEY], record[TRANSLATION_RECORD_PAYLOAD_KEY]]));
+  return reply.map((record) => {
+    const source = sentById.get(record?.[TRANSLATION_RECORD_ID_KEY]);
+    return source && isRecord(record?.[TRANSLATION_RECORD_PAYLOAD_KEY])
+      ? { ...record, [TRANSLATION_RECORD_PAYLOAD_KEY]: restoreRecordKeys(source, record[TRANSLATION_RECORD_PAYLOAD_KEY]) }
+      : record;
+  });
+};

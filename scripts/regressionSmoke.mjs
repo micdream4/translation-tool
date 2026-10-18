@@ -4300,3 +4300,72 @@ test("the page's static imports leave out the PDF, Excel, DOCX-writer and Gemini
   );
   assert.deepEqual(heavy, []);
 });
+
+test("empty rows are never sent to the model and come back unchanged (DeepSeek used to drop them)", async () => {
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  const sent = [];
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async (_url, init) => {
+      const body = JSON.parse(String(init.body));
+      const input = JSON.parse(body.messages.at(-1).content.split("INPUT:").pop());
+      sent.push(input);
+      // Like DeepSeek Flash: an empty record is left out of the reply.
+      return chatCompletionResponse(
+        JSON.stringify({ records: input.filter((r) => Object.keys(r).length).map((r) => ({ ...r, A: `${r.A} (zh-TW)` })) })
+      );
+    });
+    const env = { DEEPSEEK_API_KEY: "k", DEEPSEEK_MODELS: "deepseek-flash" };
+    const records = [{ A: "白细胞" }, {}, { A: "红细胞", B: "" }];
+    const response = await onRequestPost(
+      functionContext({ records, targetLang: "Traditional Chinese (Taiwan)", engine: "deepseek" }, env)
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).records, [{ A: "白细胞 (zh-TW)" }, {}, { A: "红细胞 (zh-TW)", B: "" }]);
+    assert.deepEqual(sent, [[{ A: "白细胞" }, { A: "红细胞", B: "" }]]);
+
+    const onlyEmpty = await onRequestPost(
+      functionContext({ records: [{}, { A: " " }], targetLang: "German", engine: "deepseek" }, env)
+    );
+    assert.deepEqual((await onlyEmpty.json()).records, [{}, { A: " " }]);
+    assert.equal(sent.length, 1);
+  });
+
+  const { hasTextToTranslate, mergeUntranslatableRecords, wrapTranslationRecords } = await bundleTsModule(
+    path.join(repoRoot, "utils/translationAlignment.ts")
+  );
+  assert.equal(hasTextToTranslate({ id: "p1", content: "", contextBefore: "上文" }), false);
+  assert.equal(hasTextToTranslate(wrapTranslationRecords([{ A: "" }])[0]), false);
+  assert.equal(hasTextToTranslate(wrapTranslationRecords([{ A: "文字" }])[0]), true);
+  assert.deepEqual(mergeUntranslatableRecords([{}, { A: "x" }, { n: 3 }], [{ A: "y" }]), [{}, { A: "y" }, { n: 3 }]);
+});
+
+test("cells stay in their columns when the model also converts the Chinese column keys (zh-TW)", async () => {
+  const { restoreRecordKeys, restoreBatchKeys, wrapTranslationRecords } = await bundleTsModule(
+    path.join(repoRoot, "utils/translationAlignment.ts")
+  );
+  const source = { __EMPTY: "白细胞升高", 诊断结论: "急性炎症反应", 解读: "提示感染" };
+  const reply = { __EMPTY: "白血球升高", 診斷結論: "急性發炎反應", 解讀: "提示感染" };
+  assert.deepEqual(restoreRecordKeys(source, reply), { __EMPTY: "白血球升高", 诊断结论: "急性發炎反應", 解读: "提示感染" });
+  // Also when the model adds a column of its own; a cell it dropped stays missing.
+  assert.deepEqual(restoreRecordKeys(source, { __EMPTY: "x", 診斷結論: "y", "可能疾病 3": "z" }), {
+    __EMPTY: "x",
+    诊断结论: "y",
+    "可能疾病 3": "z"
+  });
+  // A key that is not a character-for-character conversion is left alone.
+  assert.deepEqual(restoreRecordKeys(source, { __EMPTY: "x", Diagnosis: "y", 解读: "z" }), { __EMPTY: "x", Diagnosis: "y", 解读: "z" });
+  const [envelope] = wrapTranslationRecords([source]);
+  assert.deepEqual(restoreBatchKeys([envelope], [{ ...envelope, payload: reply }])[0].payload.诊断结论, "急性發炎反應");
+
+  const { onRequestPost } = await bundleTsModule(path.join(repoRoot, "functions/api/translate.ts"));
+  await withMockedFetch(async (setFetch) => {
+    setFetch(async () => chatCompletionResponse(JSON.stringify({ records: [reply] })));
+    const response = await onRequestPost(
+      functionContext(
+        { records: [source], targetLang: "Traditional Chinese (Taiwan)", engine: "deepseek" },
+        { DEEPSEEK_API_KEY: "k", DEEPSEEK_MODELS: "deepseek-flash" }
+      )
+    );
+    assert.deepEqual((await response.json()).records, [{ __EMPTY: "白血球升高", 诊断结论: "急性發炎反應", 解读: "提示感染" }]);
+  });
+});

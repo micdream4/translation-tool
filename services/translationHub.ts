@@ -8,8 +8,11 @@ import {
   TRANSLATION_RECORD_ID_KEY,
   type TranslationEnvelope,
   alignTranslationEnvelopes,
+  hasTextToTranslate,
   isTranslationEnvelopeBatch,
+  mergeUntranslatableRecords,
   partitionTranslationEnvelopes,
+  restoreRecordKeys,
   unwrapTranslationEnvelopes,
   wrapTranslationRecords
 } from "../utils/translationAlignment";
@@ -332,11 +335,15 @@ export class TranslationHub {
       return this.cache.get(cacheKey)!;
     }
 
-    const translatedEnvelopes = await this.translateWithRecovery({
-      ...req,
-      records: wrapTranslationRecords(req.records)
-    });
-    const translated = unwrapTranslationEnvelopes(translatedEnvelopes);
+    // Rows with no text are returned as they are and never sent to the model.
+    const toSend = req.records.filter(hasTextToTranslate);
+    const translatedEnvelopes = toSend.length
+      ? await this.translateWithRecovery({ ...req, records: wrapTranslationRecords(toSend) })
+      : [];
+    const translated = mergeUntranslatableRecords(
+      req.records,
+      unwrapTranslationEnvelopes(translatedEnvelopes).map((record, index) => restoreRecordKeys(toSend[index], record))
+    );
     this.cache.set(cacheKey, translated);
     return translated;
   }

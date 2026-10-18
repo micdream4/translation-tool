@@ -3,7 +3,10 @@ import { parseModelJsonArray, sanitizeModelJson } from "../../utils/jsonRepair";
 import {
   TRANSLATION_RECORD_ID_KEY,
   alignTranslationEnvelopes,
-  isTranslationEnvelopeBatch
+  hasTextToTranslate,
+  isTranslationEnvelopeBatch,
+  mergeUntranslatableRecords,
+  restoreBatchKeys
 } from "../../utils/translationAlignment";
 import {
   buildTranslationPrompt,
@@ -253,7 +256,18 @@ export const onRequestPost = async (context: any) => {
       return jsonResponse({ error: missing }, 400);
     }
 
-    const prompt = buildTranslationPrompt(records, targetLang, profile);
+    // Rows with no text are not sent (models drop them from the reply) and come back unchanged.
+    const recordsToSend = records.filter(hasTextToTranslate);
+    if (recordsToSend.length === 0) {
+      return jsonResponse({ engine: "none", model: "", records, modelIssues: [] });
+    }
+    const withSkippedRecords = (parsed: POCTRecord[]) =>
+      recordsToSend.length === records.length
+        ? parsed
+        : isTranslationEnvelopeBatch(records)
+          ? [...parsed, ...records.filter((record) => !hasTextToTranslate(record))]
+          : mergeUntranslatableRecords(records, parsed);
+    const prompt = buildTranslationPrompt(recordsToSend, targetLang, profile);
     const requestStartedAt = Date.now();
     const totalBudgetMs = parseTotalBudgetMs(env);
     const remainingMs = () => totalBudgetMs - (Date.now() - requestStartedAt);
@@ -291,8 +305,8 @@ export const onRequestPost = async (context: any) => {
               reasoningEffort: getCloudflareAiReasoningEffort(env)
             })
           );
-          const parsed = parseModelJsonArray(text);
-          const incomplete = describeIncompleteReply(records, parsed);
+          const parsed = restoreBatchKeys(recordsToSend, parseModelJsonArray(text));
+          const incomplete = describeIncompleteReply(recordsToSend, parsed);
           if (incomplete) {
             allErrors.push(`${model}: ${incomplete}.`);
             allModelIssues.push({ model, message: `Model ${incomplete}.`, kind: "exception" });
@@ -301,7 +315,7 @@ export const onRequestPost = async (context: any) => {
           return jsonResponse({
             engine: "cloudflare-ai",
             model,
-            records: parsed,
+            records: withSkippedRecords(parsed),
             modelIssues: allModelIssues
           });
         } catch (error) {
@@ -395,14 +409,14 @@ export const onRequestPost = async (context: any) => {
             });
             continue;
           }
-          const parsed = parseModelJsonArray(text);
-          const incomplete = describeIncompleteReply(records, parsed);
+          const parsed = restoreBatchKeys(recordsToSend, parseModelJsonArray(text));
+          const incomplete = describeIncompleteReply(recordsToSend, parsed);
           if (incomplete) {
             allErrors.push(`${model}: ${incomplete}.`);
             allModelIssues.push({ model, message: `Model ${incomplete}.`, kind: "exception" });
             continue;
           }
-          return jsonResponse({ engine: "deepseek", model, records: parsed, modelIssues: allModelIssues });
+          return jsonResponse({ engine: "deepseek", model, records: withSkippedRecords(parsed), modelIssues: allModelIssues });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           allErrors.push(`${model}: ${message}`);

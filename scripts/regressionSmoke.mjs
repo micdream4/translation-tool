@@ -3038,7 +3038,7 @@ test("Excel runs and retries are tied to the uploaded file and lock the inputs w
   // Upload invalidates in-flight work and clears the old rows before parsing (a failed parse
   // must not leave the previous file's data under the new name).
   assert.match(io, /documentJobRef\.current \+= 1;\s*setFile\(uploadedFile\)/);
-  assert.match(io, /setData\(\[\]\);[\s\S]*?try \{\s*const \{ records, context \} = await parseExcelFile/);
+  assert.match(io, /setData\(\[\]\);[\s\S]*?try \{\s*(?:\/\/[^\n]*\n\s*)?(?:const \{ parseExcelFile \} = await import\('\.\.\/\.\.\/utils\/excel'\);\s*)?const \{ records, context \} = await parseExcelFile/);
   // Runs and both retry paths drop late results from an older job.
   assert.ok((excel.match(/const isStale = \(\) => jobId !== documentJobRef\.current;/g) || []).length >= 3);
   assert.match(excel, /if \(result === 'stale'\)/);
@@ -4270,4 +4270,33 @@ test("a routed chat call stops at the caller's remaining time budget", async () 
     );
     assert.ok(Date.now() - started < 3000);
   });
+});
+
+test("the page's static imports leave out the PDF, Excel, DOCX-writer and Gemini libraries", async () => {
+  const result = await esbuild.build({
+    entryPoints: [path.join(repoRoot, "index.tsx")],
+    bundle: true,
+    write: false,
+    metafile: true,
+    outdir: path.join(os.tmpdir(), "poct-first-load"),
+    format: "esm",
+    logLevel: "silent",
+    loader: { ".svg": "text", ".png": "file" },
+    external: ["*.css"]
+  });
+  const inputs = result.metafile.inputs;
+  const entry = Object.keys(inputs).find((key) => key.endsWith("index.tsx") && !key.includes("node_modules"));
+  const reached = new Set([entry]);
+  const queue = [entry];
+  while (queue.length) {
+    for (const item of inputs[queue.shift()]?.imports || []) {
+      if (item.kind !== "import-statement" || item.external || reached.has(item.path)) continue;
+      reached.add(item.path);
+      queue.push(item.path);
+    }
+  }
+  const heavy = [...reached].filter((file) =>
+    /node_modules\/(pdfjs-dist|pdf-lib|@pdf-lib|@embedpdf|xlsx|docx|@google\/genai)\//.test(file)
+  );
+  assert.deepEqual(heavy, []);
 });

@@ -90,17 +90,10 @@ export default defineConfig(({ mode }) => {
         rollupOptions: {
           output: {
             manualChunks(id: string) {
-              if (!id.includes('node_modules')) {
-                // Rollup pulls shared dependencies of a manual chunk into it, so the light segment helpers
-                // are pinned to their own chunk to keep the heavy PDF chunk lazy.
-                if (id.endsWith('/utils/pdfSegments.ts') || id.endsWith('/utils/pdfTextLayer.ts')) {
-                  return 'app-core';
-                }
-                if (id.endsWith('/utils/pdf.ts')) {
-                  return 'feature-pdf';
-                }
-                return undefined;
-              }
+              // App code is split by Rollup: utils/pdf.ts, utils/excel.ts and the Gemini SDK are
+              // loaded with import(), so they and their libraries stay out of the first download.
+              // (A manual chunk for app code would pull shared helpers into it and preload it.)
+              if (!id.includes('node_modules')) return undefined;
               if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) {
                 return 'vendor-react';
               }
@@ -113,8 +106,15 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/xlsx/')) {
                 return 'vendor-xlsx';
               }
-              if (id.includes('/docx/') || id.includes('/jszip/')) {
+              // jszip is needed up front (DOCX parsing); the docx writer is only used by PDF export.
+              if (id.includes('/jszip/')) {
+                return 'vendor-zip';
+              }
+              if (id.includes('/docx/')) {
                 return 'vendor-docx';
+              }
+              if (id.includes('/@google/genai/')) {
+                return 'vendor-genai';
               }
               return 'vendor-misc';
             }

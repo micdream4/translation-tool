@@ -1,4 +1,4 @@
-import { MedicalAIService } from "./geminiService";
+import type { MedicalAIService } from "./geminiService";
 import { DeepseekService } from "./deepseekService";
 import { ProxyTranslationService, ProxyEngine, type ProxyModelIssue } from "./proxyService";
 import { POCTRecord, TargetLanguage } from "../types";
@@ -68,7 +68,8 @@ const MAX_CONSECUTIVE_AVAILABILITY_FAILURES = 4;
 
 export class TranslationHub {
   private readonly deepseek: DeepseekService;
-  private readonly gemini: MedicalAIService;
+  // Browser-direct Gemini is off in proxy mode; its SDK loads only if a direct-mode run asks for it.
+  private gemini?: Promise<MedicalAIService>;
   private readonly proxy?: ProxyTranslationService;
   private readonly cache = new Map<string, POCTRecord[]>();
   private readonly hasGeminiKey: boolean;
@@ -86,13 +87,11 @@ export class TranslationHub {
   constructor() {
     if (isProxyMode()) {
       this.deepseek = new DeepseekService();
-      this.gemini = new MedicalAIService();
       this.hasGeminiKey = false;
       this.proxy = new ProxyTranslationService();
       this.capabilities = parseProxyCapabilities();
     } else {
       this.deepseek = new DeepseekService();
-      this.gemini = new MedicalAIService();
       this.hasGeminiKey = this.detectGeminiKey();
       this.capabilities = {
         cloudflareAi: false,
@@ -268,8 +267,10 @@ export class TranslationHub {
       }
       throw lastError;
     };
-    const runGemini = () =>
-      this.gemini.translateBatch(req.records, req.targetLang);
+    const runGemini = async () => {
+      this.gemini ??= import("./geminiService").then(({ MedicalAIService }) => new MedicalAIService());
+      return (await this.gemini).translateBatch(req.records, req.targetLang);
+    };
     let translated: POCTRecord[];
     if (preferred === "gemini") {
       if (!this.hasGeminiKey) {

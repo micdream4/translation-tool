@@ -18,7 +18,6 @@ import {
   type DocxContext
 } from '../../utils/docx';
 import type { ExcelContext } from '../../utils/excel';
-import { exportToExcelPreservingStyles,parseExcelFile } from '../../utils/excel';
 import type { ExcelSkipScope } from '../../utils/excelSkipScope';
 import type { PdfContext } from '../../utils/pdf';
 import {
@@ -281,6 +280,8 @@ export const useDocumentIO = (ctx: DocumentIOContext) => {
     setPdfStats({ pages: 0, total: 0, translated: 0 });
     setSavedSnapshot(null);
     try {
+      // The spreadsheet library loads only when a spreadsheet is opened.
+      const { parseExcelFile } = await import('../../utils/excel');
       const { records, context } = await parseExcelFile(uploadedFile);
       setData(records);
       setExcelContext(context);
@@ -439,6 +440,7 @@ const handleDownload = async () => {
       restoreSkippedExcelCells(applyPostprocessRow(data[idx], row, targetLang), idx)
     );
     try {
+      const { exportToExcelPreservingStyles } = await import('../../utils/excel');
       const stats = await exportToExcelPreservingStyles(outputRows, filename, excelContext || undefined);
       if (stats.stylePreserved) {
         addLog('Excel export: 已基于原始工作簿写回译文并保留原格式。');

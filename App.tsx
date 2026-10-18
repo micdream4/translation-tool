@@ -46,7 +46,7 @@ import {
   type DocxSegment
 } from './utils/docx';
 import type { ExcelContext } from './utils/excel';
-import { isExcelFormulaCell } from './utils/excel';
+import { isExcelFormulaCell } from './utils/excelCells';
 import {
   formatExcelSkipScopeSummary,
   isExcelCellSkipped,

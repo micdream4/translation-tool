@@ -1,8 +1,11 @@
 
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { getExcelSheetContextForRow } from './excelCells';
 import { scanXlsxEmbeddedVisuals, type EmbeddedVisualSummary } from './embeddedVisuals';
 import type { POCTRecord } from '../types';
+
+export { isExcelFormulaCell } from './excelCells';
 
 const CYRILLIC_REGEX = /[\u0400-\u04FF]/;
 
@@ -156,30 +159,6 @@ export function parseExcelWorkbook(workbook: XLSX.WorkBook, options: ParseExcelO
     }
   };
 }
-
-const getExcelSheetContextForRow = (context: ExcelContext, rowIndex: number) => {
-  const sheets = context.sheets?.length ? context.sheets : [context];
-  return (
-    sheets.find(
-      (sheet) => rowIndex >= sheet.startIndex && rowIndex < sheet.startIndex + sheet.rowCount
-    ) || context
-  );
-};
-
-export const isExcelFormulaCell = (
-  context: ExcelContext | null | undefined,
-  rowIndex: number,
-  columnKey: string
-) => {
-  if (!context) return false;
-  const sheet = getExcelSheetContextForRow(context, rowIndex);
-  const columnOffset = sheet.headerKeys.indexOf(columnKey);
-  if (columnOffset < 0) return false;
-  const row = sheet.dataStartRow + (rowIndex - sheet.startIndex);
-  const column = sheet.range.s.c + columnOffset;
-  const address = XLSX.utils.encode_cell({ r: row, c: column });
-  return Boolean(sheet.worksheet[address]?.f);
-};
 
 const setCellValue = (cell: XLSX.CellObject, value: unknown) => {
   if (value === undefined) return;

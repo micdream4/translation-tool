@@ -44,11 +44,28 @@ export const pushQualityException = async (entry: QualityException) => {
 export const deleteRemoteQualityException = async (key: string) =>
   Boolean((await request({ method: 'DELETE', query: `?key=${encodeURIComponent(key)}` }))?.ok);
 
+const MAX_PAGES = 50;
+
 /** Pull shared confirmations, then push local ones the store does not have yet. Returns whether the store is on. */
 export const syncQualityExceptions = async () => {
-  const result = await request({ method: 'GET' });
-  if (!result || !Array.isArray(result.entries)) return false;
-  const unsynced = mergeRemoteQualityExceptions(result.entries as QualityException[]);
+  const entries: QualityException[] = [];
+  let cursor = '';
+  let complete = false;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const result = await request({ method: 'GET', query: cursor ? `?cursor=${encodeURIComponent(cursor)}` : '' });
+    if (!result || !Array.isArray(result.entries)) {
+      if (page === 0) return false;
+      break;
+    }
+    entries.push(...(result.entries as QualityException[]));
+    // Older servers return everything at once without paging fields.
+    if (result.complete !== false || !result.cursor) {
+      complete = true;
+      break;
+    }
+    cursor = String(result.cursor);
+  }
+  const unsynced = mergeRemoteQualityExceptions(entries, { complete });
   await Promise.all(unsynced.map((entry) => pushQualityException(entry)));
   return true;
 };

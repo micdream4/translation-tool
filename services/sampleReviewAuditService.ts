@@ -10,7 +10,7 @@ import { getTargetLanguageLabel, getTargetLocaleInstruction } from "../utils/tar
 import { renderRetentionPolicyForReview } from "../rules/policy";
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
-const DEFAULT_MODEL = "deepseek-v4-flash";
+const DEFAULT_MODEL = "deepseek-flash";
 
 const getEnvValue = (key: string): string | undefined => {
   if (typeof import.meta !== "undefined") {

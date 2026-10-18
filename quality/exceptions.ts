@@ -167,9 +167,11 @@ export const markQualityExceptionSynced = (key: string) => {
 /**
  * Merges the shared store into this browser. The shared store wins for entries it has
  * (review status included); synced local entries it no longer has were undone on another
- * device and are removed; unsynced local entries are kept and returned so they can be pushed.
+ * device and are removed, but only when the whole store was read (`complete`), so a partial
+ * read never deletes local confirmations; unsynced local entries are kept and returned so they
+ * can be pushed.
  */
-export const mergeRemoteQualityExceptions = (remote: QualityException[]) => {
+export const mergeRemoteQualityExceptions = (remote: QualityException[], { complete = true } = {}) => {
   const store = load();
   const remoteKeys = new Set<string>();
   remote.forEach((item) => {
@@ -177,9 +179,11 @@ export const mergeRemoteQualityExceptions = (remote: QualityException[]) => {
     remoteKeys.add(item.key);
     store.set(item.key, { ...item, synced: true });
   });
-  [...store.values()].forEach((item) => {
-    if (item.synced && !remoteKeys.has(item.key)) store.delete(item.key);
-  });
+  if (complete) {
+    [...store.values()].forEach((item) => {
+      if (item.synced && !remoteKeys.has(item.key)) store.delete(item.key);
+    });
+  }
   persist();
   return [...store.values()].filter((item) => !item.synced);
 };

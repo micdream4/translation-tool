@@ -27,16 +27,21 @@ import {
   getCloudflareAiTimeoutMs,
   getDeepSeekKey
 } from "../_shared/llmProviders";
+import {
+  getAllowedTranslationModels,
+  getCloudflareAiFallbackModels,
+  getCloudflareAiModels,
+  getCloudflareAiPrimaryModels,
+  getDeepSeekModels,
+  isAllowedModel,
+  isAllowedTargetLanguage
+} from "../_shared/modelAllowlist";
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_DEEPSEEK_REQUEST_TIMEOUT_MS = 90000;
 const DEFAULT_DEEPSEEK_PRO_REQUEST_TIMEOUT_MS = 120000;
 const DEFAULT_DEEPSEEK_MAX_OUTPUT_TOKENS = 16384;
 const DEFAULT_DEEPSEEK_PRO_MAX_OUTPUT_TOKENS = 24576;
-const DEFAULT_DEEPSEEK_MODELS = "deepseek-v4-flash,deepseek-v4-pro";
-const DEFAULT_CLOUDFLARE_AI_PRIMARY_MODELS = "google/gemini-3-flash";
-const DEFAULT_CLOUDFLARE_AI_FALLBACK_MODELS = "openai/gpt-5.4,anthropic/claude-sonnet-4.6";
-const DEFAULT_CLOUDFLARE_AI_MODELS = `${DEFAULT_CLOUDFLARE_AI_PRIMARY_MODELS},${DEFAULT_CLOUDFLARE_AI_FALLBACK_MODELS}`;
 const DEFAULT_CLOUDFLARE_AI_MAX_OUTPUT_TOKENS = 8192;
 
 const DEFAULT_TOTAL_BUDGET_MS = 90_000;
@@ -61,16 +66,6 @@ type TranslationModelIssue = {
 };
 
 type TranslationEngine = "cloudflare-ai" | "deepseek";
-
-const parsePlainModelList = (rawList: string) =>
-  Array.from(
-    new Set(
-      rawList
-        .split(/[,\n;]+/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
 
 const isDeepSeekProModel = (model: string) => /deepseek[-/]v4-pro/i.test(String(model || ""));
 
@@ -160,50 +155,6 @@ const describeIncompleteReply = (sent: POCTRecord[], received: unknown): string 
   return received.length === sent.length ? null : `returned ${received.length} of ${sent.length} records`;
 };
 
-const parseCloudflareAiModels = (env: Record<string, unknown>) => {
-  const rawList = String(
-    env.CLOUDFLARE_AI_MODELS ||
-      env.CLOUDFLARE_AI_MODEL ||
-      env.VITE_CLOUDFLARE_AI_MODELS ||
-      DEFAULT_CLOUDFLARE_AI_MODELS
-  );
-
-  return parsePlainModelList(rawList);
-};
-
-const parseCloudflareAiPrimaryModels = (env: Record<string, unknown>) => {
-  const rawList = String(
-    env.CLOUDFLARE_AI_PRIMARY_MODELS ||
-      env.VITE_CLOUDFLARE_AI_PRIMARY_MODELS ||
-      ""
-  );
-  const explicitModels = parsePlainModelList(rawList);
-  if (explicitModels.length > 0) return explicitModels;
-  return parseCloudflareAiModels(env).slice(0, 1);
-};
-
-const parseCloudflareAiFallbackModels = (env: Record<string, unknown>) => {
-  const rawList = String(
-    env.CLOUDFLARE_AI_FALLBACK_MODELS ||
-      env.VITE_CLOUDFLARE_AI_FALLBACK_MODELS ||
-      ""
-  );
-  const explicitModels = parsePlainModelList(rawList);
-  if (explicitModels.length > 0) return explicitModels;
-  return parseCloudflareAiModels(env).slice(1);
-};
-
-const parseDeepSeekModels = (env: Record<string, unknown>) => {
-  const rawList = String(
-    env.DEEPSEEK_MODELS ||
-      env.DEEPSEEK_MODEL ||
-      env.VITE_DEEPSEEK_MODELS ||
-      DEFAULT_DEEPSEEK_MODELS
-  );
-
-  return parsePlainModelList(rawList);
-};
-
 const parseCloudflareAiMaxOutputTokens = (env: Record<string, unknown>) => {
   const raw = Number(
     env.CLOUDFLARE_AI_MAX_OUTPUT_TOKENS ||
@@ -269,13 +220,24 @@ export const onRequestPost = async (context: any) => {
     if (records.length > getMaxRecords(env)) {
       return jsonResponse({ error: `Too many records (max ${getMaxRecords(env)}).` }, 413);
     }
+    if (!isAllowedTargetLanguage(targetLang)) {
+      return jsonResponse({ error: "Unsupported target language." }, 400);
+    }
     const modelListError = validateModelList([requestedModel].filter(Boolean));
     if (modelListError) return jsonResponse({ error: modelListError }, 400);
     const deepSeekKey = getDeepSeekKey(env);
     const hasDeepSeek = Boolean(deepSeekKey);
     const cloudflareAi = getCloudflareAiBinding(env);
     const hasCloudflareAi = Boolean(cloudflareAi);
-    const engineChain = parseEngineChain(engine, hasCloudflareAi, hasDeepSeek, parseServerEngineOrder(env));
+    let engineChain = parseEngineChain(engine, hasCloudflareAi, hasDeepSeek, parseServerEngineOrder(env));
+    if (requestedModel) {
+      // A requested model is served only by its own engine, and only when the config names it.
+      const allowed = getAllowedTranslationModels(env);
+      engineChain = engineChain.filter((candidate) => isAllowedModel(allowed, `${candidate}:${requestedModel}`));
+      if (engineChain.length === 0) {
+        return jsonResponse({ error: "Model not available on this deployment." }, 400);
+      }
+    }
     const allErrors: string[] = [];
     const allModelIssues: TranslationModelIssue[] = [];
 
@@ -308,7 +270,7 @@ export const onRequestPost = async (context: any) => {
 
     const translateWithCloudflareAi = async (modelsOverride?: string[]) => {
       if (!cloudflareAi) throw new Error("Cloudflare AI binding missing.");
-      const models = requestedModel ? [requestedModel] : modelsOverride ?? parseCloudflareAiModels(env);
+      const models = requestedModel ? [requestedModel] : modelsOverride ?? getCloudflareAiModels(env);
       if (models.length === 0) return null;
       const gatewayId = getCloudflareAiGatewayId(env);
       const maxOutputTokens = parseCloudflareAiMaxOutputTokens(env);
@@ -358,7 +320,7 @@ export const onRequestPost = async (context: any) => {
 
     const translateWithDeepSeek = async () => {
       if (!deepSeekKey) throw new Error("DeepSeek API key missing.");
-      const models = requestedModel ? [requestedModel] : parseDeepSeekModels(env);
+      const models = requestedModel ? [requestedModel] : getDeepSeekModels(env);
 
       for (const model of models) {
         if (!hasBudgetForAnotherModel()) break;
@@ -461,13 +423,13 @@ export const onRequestPost = async (context: any) => {
       for (const candidate of engineChain) {
         const result =
           candidate === "cloudflare-ai"
-            ? await translateWithCloudflareAi(parseCloudflareAiPrimaryModels(env))
+            ? await translateWithCloudflareAi(getCloudflareAiPrimaryModels(env))
             : await translateWithDeepSeek();
         if (result) return result;
       }
 
       if (hasCloudflareAi) {
-        const result = await translateWithCloudflareAi(parseCloudflareAiFallbackModels(env));
+        const result = await translateWithCloudflareAi(getCloudflareAiFallbackModels(env));
         if (result) return result;
       }
 

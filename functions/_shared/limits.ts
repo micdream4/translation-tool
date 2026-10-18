@@ -2,8 +2,9 @@ import { jsonResponse } from "./auth";
 
 type Env = Record<string, unknown>;
 
-export const DEFAULT_MAX_REQUEST_BYTES = 4 * 1024 * 1024;
-export const DEFAULT_MAX_RECORDS = 200;
+// A real batch is about 12,000 characters (~50 KB as JSON); 512 KB leaves room for context fields.
+export const DEFAULT_MAX_REQUEST_BYTES = 512 * 1024;
+export const DEFAULT_MAX_RECORDS = 100;
 export const DEFAULT_MAX_SAMPLES = 100;
 export const MAX_MODELS_PER_REQUEST = 8;
 

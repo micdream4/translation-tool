@@ -2,6 +2,7 @@
 import { CJK_REGEX, LOCKED_KEY_REGEX } from '../rules/patterns';
 import type { DocxIssueDetail } from '../components/translator/types';
 import packageJson from '../package.json';
+import { DEFAULT_CLOUDFLARE_AI_MODELS, DEFAULT_DEEPSEEK_MODELS } from './modelDefaults';
 import {
 shouldTranslateCellValue
 } from '../quality/retryTargets';
@@ -40,12 +41,8 @@ export const UI_THEME_STORAGE_KEY = 'poct.ui_theme';
 export const TRANSLATION_MEMORY_ENABLED_STORAGE_KEY = 'poct.translation_memory_enabled';
 export const PACKAGE_VERSION = String((packageJson as { version?: string }).version || '').trim();
 export const APP_VERSION = String((import.meta as any)?.env?.VITE_APP_VERSION || PACKAGE_VERSION).trim();
-// Used until /api/me reports the server's models; keep in line with wrangler.toml.
-export const DEFAULT_CLOUDFLARE_AI_MODELS = [
-  'google/gemini-3.6-flash',
-  'google/gemini-3-flash'
-] as const;
-export const DEFAULT_DEEPSEEK_MODELS = ['deepseek-flash'] as const;
+// Used until /api/me reports the server's models; same lists as the server defaults.
+export { DEFAULT_CLOUDFLARE_AI_MODELS, DEFAULT_DEEPSEEK_MODELS } from './modelDefaults';
 // Value of the model selector meaning "let the server pick the fallback chain".
 export const AUTO_MODEL = '__AUTO_MODEL__';
 export const MODEL_LABELS: Record<string, string> = {

@@ -299,7 +299,8 @@ export const callRoutedChat = async ({
   system,
   user,
   maxTokens,
-  json = true
+  json = true,
+  timeoutMs
 }: {
   env: FunctionEnv;
   model: string;
@@ -307,8 +308,12 @@ export const callRoutedChat = async ({
   user: string;
   maxTokens?: number;
   json?: boolean;
+  /** Upper bound for this call, e.g. what is left of the request's time budget. */
+  timeoutMs?: number;
 }) => {
   const routed = parseRoutedModel(model);
+  const capTimeout = (fallback: number) =>
+    timeoutMs !== undefined && Number.isFinite(timeoutMs) ? Math.max(200, Math.min(fallback, timeoutMs)) : fallback;
   if (routed.engine === "cloudflare-ai") {
     const ai = getCloudflareAiBinding(env);
     if (!ai) throw new Error("Cloudflare AI binding missing.");
@@ -323,7 +328,7 @@ export const callRoutedChat = async ({
         user,
         maxTokens,
         json,
-        timeoutMs: getCloudflareAiTimeoutMs(env),
+        timeoutMs: capTimeout(getCloudflareAiTimeoutMs(env)),
         reasoningEffort: getCloudflareAiReasoningEffort(env)
       })
     };
@@ -340,7 +345,8 @@ export const callRoutedChat = async ({
       system,
       user,
       maxTokens,
-      json
+      json,
+      timeoutMs: capTimeout(DEFAULT_DEEPSEEK_CHAT_TIMEOUT_MS)
     })
   };
 };

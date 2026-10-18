@@ -168,3 +168,75 @@ test("French typography spaces are not spacing errors; real splits still are", (
   assert.equal(check("French", "Website: www.x.com", "Site web : www.x.com").issues.spacing.length, 0);
   assert.equal(check("Russian", "A4 printer", "Принтер A 4").issues.spacing.length, 1);
 });
+
+test("qa-feedback recomputes keys, keeps browser entries pending, guards other users' entries and pages the list", async () => {
+  const kv = new Map();
+  const QA_FEEDBACK = {
+    get: async (key) => kv.get(key) ?? null,
+    put: async (key, value) => void kv.set(key, value),
+    delete: async (key) => void kv.delete(key),
+    list: async ({ prefix, cursor, limit }) => {
+      const names = [...kv.keys()].filter((k) => k.startsWith(prefix)).sort();
+      const start = Number(cursor || 0);
+      const end = start + limit;
+      return { keys: names.slice(start, end).map((name) => ({ name })), list_complete: end >= names.length, cursor: String(end) };
+    }
+  };
+  const url = "https://example.test/api/qa-feedback";
+  const as = (email) => ({ QA_FEEDBACK, ALLOW_LOCAL_WITHOUT_ACCESS: "true", LOCAL_DEV_EMAIL: email });
+  const post = (email, entry) =>
+    qaFeedbackApi.onRequestPost({ env: as(email), request: new Request(url, { method: "POST", body: JSON.stringify({ entry }) }) });
+  const accepted = acceptQualityException({
+    type: "nonTargetLanguage",
+    targetLang: "Russian",
+    sourceText: "显示模式",
+    translatedText: "Display mode"
+  });
+  clearQualityExceptions();
+
+  // A key without the source hash, or one that does not match the texts, is refused.
+  const [type, lang, translatedHash] = accepted.key.split("|");
+  assert.equal((await post("a@example.com", { ...accepted, key: `${type}|${lang}|${translatedHash}` })).status, 400);
+  assert.equal((await post("a@example.com", { ...accepted, sourceText: "其他句子" })).status, 400);
+
+  // A browser cannot mark its own entry reviewed.
+  assert.equal((await post("a@example.com", { ...accepted, reviewStatus: "reviewed" })).status, 200);
+  const stored = JSON.parse(kv.get(`confirm:${accepted.key}`));
+  assert.equal(stored.reviewStatus, "pending");
+  assert.equal(stored.confirmedBy, "a@example.com");
+
+  // Another user can neither replace nor delete it.
+  assert.equal((await post("b@example.com", { ...accepted, locationLabel: "changed" })).status, 403);
+  const del = (email) =>
+    qaFeedbackApi.onRequestDelete({
+      env: as(email),
+      request: new Request(`${url}?key=${encodeURIComponent(accepted.key)}`, { method: "DELETE" })
+    });
+  assert.equal((await del("b@example.com")).status, 403);
+  assert.equal(kv.size, 1);
+
+  // Listing is paged: 250 entries come back in two pages.
+  for (let index = 0; index < 249; index += 1) kv.set(`confirm:x|y|${index}-a|1-a`, JSON.stringify({ key: `x|y|${index}-a|1-a` }));
+  const first = await (await qaFeedbackApi.onRequestGet({ env: as("a@example.com"), request: new Request(url) })).json();
+  assert.equal(first.entries.length, 200);
+  assert.equal(first.complete, false);
+  const second = await (
+    await qaFeedbackApi.onRequestGet({ env: as("a@example.com"), request: new Request(`${url}?cursor=${first.cursor}`) })
+  ).json();
+  assert.equal(second.entries.length, 50);
+  assert.equal(second.complete, true);
+
+  assert.equal((await del("a@example.com")).status, 200);
+  assert.equal(kv.has(`confirm:${accepted.key}`), false);
+});
+
+test("a partial read of the shared store never deletes local confirmations", () => {
+  clearQualityExceptions();
+  const local = acceptQualityException({ type: "nonTargetLanguage", targetLang: "Russian", sourceText: "显示模式", translatedText: "Display mode" });
+  mergeRemoteQualityExceptions([{ ...local }]);
+  assert.equal(listQualityExceptions()[0].synced, true);
+  mergeRemoteQualityExceptions([], { complete: false });
+  assert.equal(listQualityExceptions().length, 1);
+  mergeRemoteQualityExceptions([], { complete: true });
+  assert.equal(listQualityExceptions().length, 0);
+});

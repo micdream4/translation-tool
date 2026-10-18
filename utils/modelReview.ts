@@ -1,5 +1,6 @@
 import type { TargetLanguage } from "../types";
 import { type TranslationProfile } from "./translationProfiles";
+import { DEFAULT_MODEL_REVIEW_JUDGE_MODELS, DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS } from "./modelDefaults";
 
 export type ModelReviewStyle =
   | "auto"
@@ -75,21 +76,7 @@ export interface ModelReviewResult {
   ranking: ModelReviewRankingRow[];
 }
 
-export const DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS = Array.from(
-  new Set([
-    "cloudflare-ai:google/gemini-3-flash",
-    "deepseek:deepseek-v4-flash",
-    "deepseek:deepseek-v4-pro",
-    "cloudflare-ai:openai/gpt-5.4",
-    "cloudflare-ai:anthropic/claude-sonnet-4.6"
-  ])
-);
-
-export const DEFAULT_MODEL_REVIEW_JUDGE_MODELS = [
-  "cloudflare-ai:openai/gpt-5.4",
-  "cloudflare-ai:anthropic/claude-sonnet-4.6",
-  "deepseek:deepseek-v4-pro"
-];
+export { DEFAULT_MODEL_REVIEW_JUDGE_MODELS, DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS };
 
 export const DEFAULT_DOCX_REVIEW_MODEL_CHAIN = DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS;
 

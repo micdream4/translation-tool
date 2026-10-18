@@ -1,8 +1,6 @@
 import type { POCTRecord, TargetLanguage } from "../../types";
 import {
   buildModelReviewRanking,
-  DEFAULT_MODEL_REVIEW_JUDGE_MODELS,
-  DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS,
   normalizeModelReviewScores,
   type ModelReviewStyle,
   type ModelReviewCandidate,
@@ -24,10 +22,18 @@ import { renderRetentionPolicyForReview } from "../../rules/policy";
 import { enforceRequestAuth, jsonResponse } from "../_shared/auth";
 import { getMaxRequestBytes, getMaxSamples, readJsonBodyWithLimit, validateModelList } from "../_shared/limits";
 import { callRoutedChat, parseDelimitedModelList, parseRoutedModel } from "../_shared/llmProviders";
+import {
+  findDisallowedModel,
+  getAllowedReviewModels,
+  getReviewJudgeModels,
+  getReviewTranslationModels,
+  isAllowedTargetLanguage
+} from "../_shared/modelAllowlist";
+import { UNTRUSTED_DATA_RULE, wrapUntrustedJson } from "../../utils/promptIsolation";
 
-const parseModelList = (value: unknown, fallback: string[]) => {
-  return parseDelimitedModelList(value, fallback);
-};
+// Translations and judging run inside one request, which Cloudflare closes after about 100 s.
+const TOTAL_BUDGET_MS = 90_000;
+const MIN_MODEL_ATTEMPT_MS = 4_000;
 
 const MODEL_REVIEW_STYLES = new Set<ModelReviewStyle>([
   "auto",
@@ -79,15 +85,20 @@ const callModel = async ({
   model,
   system,
   user,
-  maxTokens = 5000
+  maxTokens = 5000,
+  timeoutMs
 }: {
   env: Record<string, unknown>;
   model: string;
   system: string;
   user: string;
   maxTokens?: number;
+  timeoutMs?: number;
 }) => {
-  const result = await callRoutedChat({ env, model, system, user, maxTokens, json: true });
+  if (timeoutMs !== undefined && timeoutMs < MIN_MODEL_ATTEMPT_MS) {
+    throw new Error(`Skipped: the ${TOTAL_BUDGET_MS / 1000}s time budget is used up.`);
+  }
+  const result = await callRoutedChat({ env, model, system, user, maxTokens, json: true, timeoutMs });
   return sanitizeContent(result.text);
 };
 
@@ -96,13 +107,15 @@ const translateWithModel = async ({
   model,
   samples,
   targetLang,
-  profile
+  profile,
+  timeoutMs
 }: {
   env: Record<string, unknown>;
   model: string;
   samples: ModelReviewSample[];
   targetLang: TargetLanguage;
   profile: TranslationProfile;
+  timeoutMs?: number;
 }): Promise<ModelReviewCandidate["translations"]> => {
   const records: POCTRecord[] = samples.map((sample) => ({
     id: sample.id,
@@ -115,7 +128,8 @@ const translateWithModel = async ({
     model,
     system: buildTranslationSystemPrompt(profile),
     user: buildTranslationPrompt(records, targetLang, profile),
-    maxTokens: 7000
+    maxTokens: 7000,
+    timeoutMs
   });
   return alignCandidateTranslations(samples, parseModelJsonArray<POCTRecord>(content));
 };
@@ -207,6 +221,7 @@ ${renderRetentionPolicyForReview()}
 ${localeInstruction}
 ${taiwanJudgingRule}
 ${styleGuidance.guidance}
+${UNTRUSTED_DATA_RULE}
 
 Score each candidate 1-10 on:
 accuracy, fluency, manualStyle, terminology, formatSafety, avoidLiteral, avoidYou, overall.
@@ -215,10 +230,10 @@ Return only valid JSON:
 {"scores":[{"alias":"Candidate A","accuracy":9,"fluency":9,"manualStyle":9,"terminology":9,"formatSafety":9,"avoidLiteral":9,"avoidYou":9,"overall":9,"notes":"concise Chinese notes"}]}
 
 Samples:
-${JSON.stringify(samples)}
+${wrapUntrustedJson("samples", samples)}
 
 Anonymous candidate outputs:
-${JSON.stringify(anonymousOutputs)}
+${wrapUntrustedJson("candidate_outputs", anonymousOutputs)}
 `;
 };
 
@@ -268,14 +283,12 @@ export const onRequestPost = async (context: any) => {
     if (samples.length > getMaxSamples(env)) {
       return jsonResponse({ error: `Too many samples (max ${getMaxSamples(env)}).` }, 413);
     }
-    const translationModels = parseModelList(
-      payload?.translationModels || env.MODEL_REVIEW_TRANSLATION_MODELS || env.CLOUDFLARE_REVIEW_TRANSLATION_MODELS,
-      DEFAULT_MODEL_REVIEW_TRANSLATION_MODELS
-    );
-    const judgeModels = parseModelList(
-      payload?.judgeModels || env.MODEL_REVIEW_JUDGE_MODELS || env.CLOUDFLARE_REVIEW_JUDGE_MODELS,
-      DEFAULT_MODEL_REVIEW_JUDGE_MODELS
-    );
+    if (!isAllowedTargetLanguage(targetLang)) {
+      return jsonResponse({ error: "Unsupported target language." }, 400);
+    }
+    // The browser may narrow the lists, but only to models the deployment config names.
+    const translationModels = parseDelimitedModelList(payload?.translationModels, getReviewTranslationModels(env));
+    const judgeModels = parseDelimitedModelList(payload?.judgeModels, getReviewJudgeModels(env));
     const translationConcurrency = parseConcurrencyLimit(
       payload?.translationConcurrency ||
         env.MODEL_REVIEW_TRANSLATION_CONCURRENCY ||
@@ -292,6 +305,11 @@ export const onRequestPost = async (context: any) => {
     const modelListError =
       validateModelList(translationModels) || validateModelList(judgeModels);
     if (modelListError) return jsonResponse({ error: modelListError }, 400);
+    if (findDisallowedModel(getAllowedReviewModels(env), [...translationModels, ...judgeModels])) {
+      return jsonResponse({ error: "Model not available on this deployment." }, 400);
+    }
+    const startedAt = Date.now();
+    const remainingMs = () => TOTAL_BUDGET_MS - (Date.now() - startedAt);
 
     const aliases = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
     const candidates: ModelReviewCandidate[] = await runWithConcurrency(translationModels, translationConcurrency, async (model, index) => {
@@ -303,7 +321,8 @@ export const onRequestPost = async (context: any) => {
           model,
           samples,
           targetLang,
-          profile
+          profile,
+          timeoutMs: remainingMs()
         });
         return {
           model,
@@ -335,7 +354,8 @@ export const onRequestPost = async (context: any) => {
           model,
           system: getReviewStyleGuidance(reviewStyle).system,
           user: buildJudgePrompt(samples, successfulCandidates, targetLang, reviewStyle),
-          maxTokens: 7000
+          maxTokens: 7000,
+          timeoutMs: remainingMs()
         });
         const parsed = parseModelJsonObject<{ scores?: unknown }>(content);
         return {
